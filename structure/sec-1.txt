@@ -1,0 +1,43 @@
+<div class="paulus-popup-form-size"><div class="stepper"><div id="step1"><form><div id="paulus-form-title" class="paulus-form-layout flex-row warp"><div class="flx xs-12" style="text-align: center;"><span style="font-family: Roboto; color: rgb(208, 2, 27); font-size: 28px; font-style: normal; text-transform: none; text-decoration: none; line-height: 1.2; letter-spacing: 0px; font-weight: 400; margin-top: 11px; margin-bottom: 11px;">¡Ayúdenos a evangelizar!</span></div></div><div id="paulus-form-description" class="paulus-form-layout flex-row wrap"><div class="flx xs-12" style="text-align: center;"><span style="font-family: Roboto; color: rgb(121, 134, 51); font-size: 25px; font-style: normal; text-transform: none; text-decoration: none; line-height: 1.5; letter-spacing: 0px; font-weight: 400; margin-top: 0px; margin-bottom: 0px;">Haga ya su donación</span></div></div><div id="paulus-popup-form-button" class="paulus-form-layout flex-row wrap"><div class="flx"><div class="paulus-form-layout flex-row"><button type="button" class="block inline paulus-frequency squareRounded 
+                        " style="background-color: rgb(255, 255, 255); color: rgb(0, 0, 0);">Única</button><button type="button" class="block inline paulus-frequency squareRounded 
+                        " style="background-color: rgb(255, 255, 255); color: rgb(0, 0, 0);">Mensual</button></div></div></div><div class="currencies-layout paulus-form-layout flex-row justify-content-center text-center"><div class="flx xs-12"><div class="paulus-input-form inline"><div class="input-form-contol
+                "><label class="label-form
+                  " style="color: rgb(74, 74, 74);"></label><select id="" class="
+                    input-form
+                    squareRounded
+                    "><option value="ESP">Spain - EUR</option><option value="COL">Colombia - COP</option><option value="USA">United States of America - USD</option><option value="MEX">Mexico - MXN</option></select></div></div></div></div><div id="paulus-form-amounts" class="paulus-form-layout flex-row justify-content-center text-center"><div class="flx"><button type="button" class="form-amount inline
+              squareRounded
+              
+              " style="background-color: rgb(255, 255, 255); color: rgb(0, 0, 0);"><div class="money-amount">COP</div><span>$10.000,00</span></button></div><div class="flx"><button type="button" class="form-amount inline squareRounded 
+              " style="background-color: rgb(255, 255, 255); color: rgb(0, 0, 0);"><div class="money-amount">COP</div><span>$25.000,00</span></button></div><div class="flx"><button type="button" class="form-amount
+              squareRounded
+              
+              " style="background-color: rgb(0, 127, 255); color: rgb(255, 255, 255); border: none;"><div class="money-amount">COP</div><span>$50.000,00</span></button></div><div class="flx"><button type="button" class="form-amount
+              squareRounded
+              
+              " style="background-color: rgb(255, 255, 255); color: rgb(0, 0, 0);"><div class="money-amount">COP</div><span>$80.000,00</span></button></div></div><div class="amount-layout paulus-form-layout flex-row wrap" style="margin-top: 0px;"><div class="flx xs-12"><div class="paulus-input-form" style="margin-top: 0px;"><div class="input-form-contol
+                    squareRounded
+                    "><label class="label-form
+                        " style="color: rgb(74, 74, 74);">También puedes elegir otro monto:</label><div class="paulus-input-group
+                    
+                    "><div class="input-group-append"><div class="input-group-text
+                          border-right-0 rounded-left
+                          squareRounded
+                          ">$</div></div><input id="other-amount" placeholder="Otro monto" class="form-amount border-left-0 border-right-0
+                        input-form
+                        " type="number" min="0" max="9999999999" step="1" name="amount" value="50000"><div class="input-group-prepend bg-white"><span class="input-group-text
+                         border-left-0 rounded-right
+                          squareRounded
+                          ">COP</span></div></div></div></div></div></div><div id="paulus-form-phrase" class="paulus-form-layout flex-row wrap"></div><div class="paulus-form-layout flex-row wrap"><div class="flx"></div></div><div class="paulus-form-layout flex-row wrap"><button type="submit" class="donate btns block submit
+                squareRounded
+                " style="background-color: rgb(35, 178, 112); color: rgb(255, 255, 255);">Donar</button></div></form></div></div></div>
+
+
+
+
+
+TUTO
+1-al inicio del formulario se debe seleccionar el botón Única no el botón Mensual
+2-selecciona la moneda colombiana
+3-selecciona la opción de 50.000cop
+4-da click en donar

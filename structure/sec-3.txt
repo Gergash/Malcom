@@ -1,0 +1,10 @@
+<div class="flx text-center"><div style="color: rgb(0, 0, 0);"><div><p>Tu donación</p></div><div><h3 class="donation_amount_pay">$ 50.000,00</h3></div></div><div id="loading-payment" style="margin-top: auto;"><div id="load"><div><div class="load-icon"><img src="https://my.afrus.org/img/icon_error.png"></div><div style="font-size: 20px; color: rgb(240, 35, 35); font-weight: bold;">Lo sentimos German</div><div style="color: rgb(0, 0, 0);">No pudimos completar tu donación. Por favor, revise el mensaje de abajo.</div><div class="payment-error">Cliente no creado: Tu tarjeta fue rechazada.</div><div class="text-center"><button type="button" class="donate btns block error">Regresar</button></div></div></div></div></div>
+
+
+
+
+
+TUTO
+1-lee el error de la tarjeta o el mensaje que te entregue respecto al estado de la tarjeta
+
+
