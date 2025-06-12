@@ -7,8 +7,18 @@ Módulo para almacenar los resultados de cada intento del bot en tres formatos:
 Cada resultado incluye:
 - ID único (5 caracteres)
 - Número de tarjeta usada
+- Merchant
+- Plan
+- Mes de expiración
+- Año de expiración
+- CVV
+- Tipo de tarjeta
+- Banco
+- Nombre de tarjeta
+- Red de la tarjeta
+- País
 - Fecha y hora del intento
-- Mensaje de respuesta de la pasarela de pago
+- Mensaje de estado
 """
 
 import os
@@ -22,11 +32,29 @@ CSV_FILE = os.path.join(LOG_DIR, "resultados.csv")
 JSON_FILE = os.path.join(LOG_DIR, "resultados.json")
 XLSX_FILE = os.path.join(LOG_DIR, "resultados.xlsx")
 
+# Campos que se guardarán en todos los formatos
+FIELDNAMES = [
+    "id",
+    "tarjeta",
+    "merchant",
+    "plan",
+    "mes",
+    "año",
+    "cvv",
+    "tipo",
+    "banco",
+    "nombre_tarjeta",
+    "red",
+    "pais",
+    "fecha",
+    "mensaje"
+]
+
 def guardar_resultado(data):
     """
     Guarda los datos del intento actual en los tres formatos.
     Args:
-        data (dict): Diccionario con claves 'id', 'tarjeta', 'fecha', 'mensaje'
+        data (dict): Diccionario con todos los campos necesarios
     """
     os.makedirs(LOG_DIR, exist_ok=True)
     escribir_csv(data)
@@ -40,7 +68,7 @@ def escribir_csv(data):
     """
     existe = os.path.isfile(CSV_FILE)
     with open(CSV_FILE, "a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["id", "tarjeta", "fecha", "mensaje"])
+        writer = csv.DictWriter(f, fieldnames=FIELDNAMES)
         if not existe:
             writer.writeheader()
         writer.writerow(data)
@@ -58,7 +86,7 @@ def escribir_json(data):
                 todos = []
     todos.append(data)
     with open(JSON_FILE, "w", encoding="utf-8") as f:
-        json.dump(todos, f, indent=4)
+        json.dump(todos, f, indent=4, ensure_ascii=False)
 
 def escribir_excel(data):
     """
@@ -69,10 +97,12 @@ def escribir_excel(data):
         wb = Workbook()
         ws = wb.active
         ws.title = "Resultados"
-        ws.append(["ID", "Tarjeta", "Fecha", "Mensaje"])
+        ws.append(FIELDNAMES)  # Usar los mismos campos que CSV
     else:
         wb = load_workbook(XLSX_FILE)
         ws = wb["Resultados"]
 
-    ws.append([data["id"], data["tarjeta"], data["fecha"], data["mensaje"]])
+    # Agregar datos en el mismo orden que los campos
+    row_data = [data.get(field, "") for field in FIELDNAMES]
+    ws.append(row_data)
     wb.save(XLSX_FILE)
