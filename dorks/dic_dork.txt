@@ -1,0 +1,39 @@
+inurl:billing OR inurl:invoice OR inurl:factura OR inurl:recibo site:example.com  
+intext:"Billing Information" OR intext:"Datos de Facturación" site:example.com  
+inurl:paypal OR inurl:paypal-checkout OR inurl:paypal-payment site:example.com  
+site:example.com intext:"paypal.com" OR intext:"paypalobjects.com"  
+inurl:"paypal.com/cgi-bin/webscr" site:example.com  
+inurl:openpay OR inurl:openpay-payment site:example.com  
+site:example.com intext:"openpay.mx" OR intext:"openpay.co"  
+inurl:"openpay" (js OR api) site:example.com  
+inurl:mercadopago OR inurl:mercadopago-checkout site:example.com  
+site:example.com intext:"mercadopago.com" OR intext:"mercadolibre.com"  
+inurl:"mercadopago.com/checkout" site:example.com  
+inurl:payu OR inurl:payu-latam OR inurl:payu-checkout site:example.com  
+site:example.com intext:"payu.com" OR intext:"payulatam.com"  
+inurl:"payu.com/payment" OR inurl:"gateway.payu.com" site:example.com  
+inurl:epayco OR inurl:epayco-checkout site:example.com  
+site:example.com intext:"epayco.co" OR intext:"secure.epayco.co"  
+inurl:"epayco.co/checkout" OR inurl:"epayco.com/payment" site:example.com  
+inurl:credivanco OR inurl:redeban OR inurl:credibanco-checkout site:example.com  
+site:example.com intext:"credibanco.com" OR intext:"redeban.com.co" 
+site:example.com filetype:php "Stripe\Stripe::setApiKey"  
+site:example.com filetype:js "const stripe = Stripe"  
+site:example.com intext:"pk_test_" OR "sk_test_"  
+site:example.com intext:"test mode" AND "stripe.com"  
+site:example.com intext:"js.stripe.com/v3"  
+site:example.com intext:"https://js.stripe.com/v3/"  
+site:example.com filetype:js "stripe.js" OR "stripe.com/v3"  
+site:example.com intext:"stripe.elements()" OR "stripe.createToken"  
+site:example.com intext:"cardElement.mount" OR "paymentElement.mount"  
+site:example.com inurl:"/create-payment-intent" OR inurl:"/confirm-payment"  
+site:example.com intext:"stripe.confirmPayment" OR "stripe.confirmCardPayment"  
+site:example.com inurl:"/stripe" AND ("v3" OR "payment_intent")  
+site:example.com inurl:"checkout" AND ("stripe" OR "payment_element")  
+site:example.com intext:"Stripe Checkout" OR "Stripe Payment"  
+site:example.com inurl:"wp-content/plugins" AND ("stripe" OR "woocommerce-gateway-stripe")  
+site:example.com intext:"stripe-wp" OR "stripe-for-woocommerce"  
+site:example.com inurl:"/webhook" AND ("stripe" OR "payment_intent")  
+site:example.com intext:"stripe-webhook" OR "stripe-signature"  
+site:example.com filetype:json "stripe_publishable_key" OR "payment_intent"  
+site:example.com inurl:".json" AND ("stripe_key" OR "stripe.js/v3")  
