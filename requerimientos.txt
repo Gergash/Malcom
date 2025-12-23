@@ -1,7 +1,8 @@
-pandas
-faker
-playwright
-openpyxl
-python-telegram-bot==20.6
-flask
+fastapi
+uvicorn
+python-telegram-bot  # Para la interfaz
+google-generativeai # Para Gemini
+pandas              # Para análisis de datos
+matplotlib          # Para las gráficas
+python-dotenv       # Para las llaves secretas
 
