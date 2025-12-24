@@ -20,22 +20,39 @@ class AnalystAgent:
             tools=[{'code_execution': {}}] # El MCP para Python
         )
 
-    async def analyze_data(self, user_query: str, file_paths: list = None):
+    async def analyze_data(self, user_query: str, local_file_path: str = None):
         # Preparar lista de archivos para que la IA sepa dónde están
-        context_files = ""
-        if file_paths:
-            context_files = "\nArchivos del cliente en el servidor:\n" + "\n".join(file_paths)
+        prompt_parts = [user_query]  
+        if local_file_path and os.path.exists(local_file_path):
+            # LOG DE CONSOLA 2
+            print(f"IA: Detectado archivo en {local_file_path}. Subiendo a Google API...")
+        try:
+            # FORZAMOS el mime_type a 'text/csv' para evitar el error 400
+            # Si es un Excel real (.xlsx), usa 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            mime_type = 'text/csv' 
+            if local_file_path.endswith('.xlsx'):
+                mime_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            elif local_file_path.endswith('.pdf'):
+                mime_type = 'application/pdf'
 
-        prompt = f"""
-        Eres el analista de 'InsightFlow'. 
-        Pregunta: {user_query}
-        {context_files}
-        
-        Instrucciones:
-        1. Usa Python para analizar datos o crear gráficas si es necesario.
-        2. Guarda cualquier gráfica como 'output_plot.png'.
-        3. Responde siempre con insights para mejorar comunidades digitales.
-        """
-        
-        response = self.model.generate_content(prompt)
-        return response.text
+            remote_file = genai.upload_file(path=local_file_path, mime_type=mime_type)
+            print(f"IA: Archivo subido con éxito: {remote_file.name}")
+            prompt_parts.append(remote_file)
+            # Instrucción explícita para activar el código Python
+            prompt_parts.append(
+                "\nINSTRUCCIÓN TÉCNICA: Tienes este archivo adjunto. "
+                "Cárgalo usando la librería pandas en Python, analiza los datos para responder la duda "
+                "y genera una gráfica con matplotlib guardándola como 'output_plot.png'."
+            )
+        except Exception as e:
+            print(f"IA: Error en subida: {e}")
+
+        response = self.model.generate_content(prompt_parts)
+        try:
+            # Recorremos las partes de la respuesta y unimos solo las que tienen texto
+            full_text = "".join([part.text for part in response.candidates[0].content.parts if part.text])
+            return full_text
+        except Exception as e:
+            print(f"Error extrayendo texto: {e}")
+        # Si falla el anterior, intentamos la forma directa pero protegida
+        return response.text if response.text else "He procesado los datos, pero no pude generar un resumen de texto."
