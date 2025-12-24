@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
-from app.agents.analyst_agent import AnalystAgent
+from agents.analyst_agent import AnalystAgent
 # ... (importaciones anteriores)
 
 
@@ -26,39 +26,36 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+# ... (importaciones y configuración de logging)
+
 agent = AnalystAgent()
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     chat_id = update.effective_chat.id
     
-    # Avisar al usuario que estamos trabajando
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
     
-    # 1. Llamar al Agente
-    # Por ahora enviamos file_paths como None hasta que implementes la carga de archivos
+    # Llamada al agente actualizado
     respuesta_ia = await agent.analyze_data(user_text)
     
-    # 2. Enviar la respuesta de texto
     await context.bot.send_message(chat_id=chat_id, text=respuesta_ia)
     
-    # 3. Si Gemini generó una gráfica, el archivo 'output_plot.png' existirá
+    # Si la IA generó una gráfica localmente
     if os.path.exists("output_plot.png"):
         with open("output_plot.png", "rb") as photo:
-            await context.bot.send_photo(chat_id=chat_id, photo=photo, caption="Aquí tienes el análisis visual.")
-        os.remove("output_plot.png") # Limpiamos para la siguiente consulta
+            await context.bot.send_photo(chat_id=chat_id, photo=photo, caption="Análisis visual generado.")
+        os.remove("output_plot.png")
 
 if __name__ == '__main__':
-    # Crear la aplicación del bot
     application = ApplicationBuilder().token(TOKEN).build()
     
-    # Manejadores (Handlers)
+    # AQUÍ ESTABA EL ERROR: Cambiamos 'echo' por 'handle_message'
     start_handler = CommandHandler('start', start)
-    echo_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), echo)
+    message_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message)
     
-    # Registrar los manejadores en la aplicación
     application.add_handler(start_handler)
-    application.add_handler(echo_handler)
+    application.add_handler(message_handler)
     
     print("InsightFlow Bot está corriendo...")
     application.run_polling()
