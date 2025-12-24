@@ -36,16 +36,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
     
-    # Llamada al agente actualizado
-    respuesta_ia = await agent.analyze_data(user_text)
-    
-    await context.bot.send_message(chat_id=chat_id, text=respuesta_ia)
-    
-    # Si la IA generó una gráfica localmente
-    if os.path.exists("output_plot.png"):
-        with open("output_plot.png", "rb") as photo:
-            await context.bot.send_photo(chat_id=chat_id, photo=photo, caption="Análisis visual generado.")
-        os.remove("output_plot.png")
+    try:
+        # Llamada al agente
+        respuesta_ia = await agent.analyze_data(user_text)
+        await context.bot.send_message(chat_id=chat_id, text=respuesta_ia)
+        
+        # Lógica de la gráfica (opcional)
+        if os.path.exists("output_plot.png"):
+            with open("output_plot.png", "rb") as photo:
+                await context.bot.send_photo(chat_id=chat_id, photo=photo)
+            os.remove("output_plot.png")
+            
+    except Exception as e:
+        # Esto te avisará en Telegram cuál es el error exacto
+        error_msg = f"Hubo un error técnico: {str(e)}"
+        await context.bot.send_message(chat_id=chat_id, text=error_msg)
+        print(f"Error detallado: {e}")
 
 if __name__ == '__main__':
     application = ApplicationBuilder().token(TOKEN).build()

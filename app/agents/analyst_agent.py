@@ -7,11 +7,16 @@ load_dotenv()
 # Configurar la API con la librería estable
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
+#LISTA LOS MODELOS DISPONIBLES PARA UTILIZAR
+#for m in genai.list_models():
+#    if 'generateContent' in m.supported_generation_methods:
+#        print(m.name)
+
 class AnalystAgent:
     def __init__(self):
         # Usamos 1.5-flash que es extremadamente estable con esta librería
         self.model = genai.GenerativeModel(
-            model_name='models/gemini-1.5-flash',
+            model_name='models/gemini-2.5-flash',
             tools=[{'code_execution': {}}] # El MCP para Python
         )
 
