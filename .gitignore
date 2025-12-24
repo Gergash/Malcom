@@ -1,0 +1,18 @@
+# --- Seguridad ---
+.env
+
+# --- Datos de Usuarios y Temporales ---
+data/
+output_plot.png
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv
+env/
+.env/
+
+# --- Otros ---
+.DS_Store
