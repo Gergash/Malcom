@@ -1,6 +1,7 @@
 import google.generativeai as genai
 import os
 from dotenv import load_dotenv
+import pandas as pd
 
 load_dotenv()
 
@@ -11,6 +12,11 @@ genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 #for m in genai.list_models():
 #    if 'generateContent' in m.supported_generation_methods:
 #        print(m.name)
+
+
+
+
+
 class AnalystAgent:
     def __init__(self):
         # Usamos 1.5-flash que es extremadamente estable con esta librería
@@ -19,71 +25,79 @@ class AnalystAgent:
             tools=[{'code_execution': {}}] # El MCP para Python
         )
     async def analyze_data(self, user_query: str, local_file_path: str = None):
-        # 1. Definimos el comportamiento (System Prompt)
+        # 1. Definición del comportamiento (System Prompt) optimizado para grandes datos
         system_prompt = (
-            "Eres un Analista de Datos experto de InsightFlow.\n"
-            "TIENES ACTIVADA LA HERRAMIENTA DE EJECUCIÓN DE CÓDIGO PYTHON.\n"
-            "INSTRUCCIONES OBLIGATORIAS:\n"
-            "1. Si el usuario pide gráficas, DEBES escribir y EJECUTAR un bloque de código Python.\n"
-            "2. Usa pandas para leer el archivo. El archivo se carga como un objeto de tipo 'File'.\n"
-            "3. Guarda la gráfica con: plt.savefig('output_plot.png')\n"
-            "4. No des solo el código, ejecútalo y entrega el análisis."
+            "Eres un Analista de Datos senior de InsightFlow.\n"
+            "REGLAS DE ORO PARA GRANDES VOLÚMENES:\n"
+            "1. Se te proporcionará un ESQUEMA (columnas y muestra) del archivo.\n"
+            "2. Para responder, DEBES usar la herramienta de ejecución de código Python.\n"
+            "3. No intentes 'leer' los datos como texto; usa pandas para procesar el archivo completo.\n"
+            "4. Si se piden gráficas, guárdalas SIEMPRE como 'output_plot.png' usando plt.savefig().\n"
+            "5. El archivo está disponible en el entorno de ejecución con el nombre que se te indique."
         )
-        # 2. INICIALIZAMOS la lista PRIMERO
+
+        # 2. INICIALIZAMOS la lista de partes
         prompt_parts = [system_prompt]
-        # 3. MANEJO DE ARCHIVOS (Subida y asociación)
+
+        # 3. EXTRACCIÓN DE ESQUEMA (Para evitar el error de límite de tokens)
         if local_file_path and os.path.exists(local_file_path):
-            print(f"IA: Detectado archivo en {local_file_path}. Subiendo...")
+            print(f"IA: Analizando esquema de {local_file_path}...")
             try:
+                # Leemos solo las primeras 5 filas para enviarle a la IA la estructura
+                df_sample = pd.read_csv(local_file_path, nrows=5)
+                
+                schema_info = (
+                    f"\n--- INFORMACIÓN DEL ARCHIVO ---\n"
+                    f"Nombre: {os.path.basename(local_file_path)}\n"
+                    f"Columnas detectadas: {list(df_sample.columns)}\n"
+                    f"Tipos de datos: \n{df_sample.dtypes.to_string()}\n"
+                    f"Muestra de las primeras filas:\n{df_sample.to_string()}\n"
+                    f"--------------------------------"
+                )
+                prompt_parts.append(schema_info)
+
+                # Subida a la API (Gemini File API permite hasta 2GB por archivo)
+                # Al subirlo aquí, el modelo puede usarlo con 'code_execution'
                 mime_type = 'text/csv'
                 if local_file_path.endswith('.xlsx'):
                     mime_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            
-                # Subida a la API
+                
                 remote_file = genai.upload_file(path=local_file_path, mime_type=mime_type)
-                print(f"IA: Archivo subido con éxito: {remote_file.name}")
-            
-                # Agregamos el archivo a la lista de partes
+                print(f"IA: Archivo subido con éxito a la nube: {remote_file.name}")
                 prompt_parts.append(remote_file)
-            
-                # Le damos una pista a la IA sobre cómo leer el archivo en su entorno
-                prompt_parts.append(f"Nota: El archivo de datos es {os.path.basename(local_file_path)}.")
-            
+
             except Exception as e:
-                print(f"IA: Error crítico en subida: {e}")
+                print(f"IA: Error procesando esquema/subida: {e}")
         else:
             print("IA: No se encontró archivo local. Procesando solo texto.")
 
-        # 4. AGREGAMOS la consulta del usuario al FINAL
-        prompt_parts.append(f"Consulta del usuario: {str(user_query)}")
-        # 5. EJECUCIÓN Y RESPUESTA (Actualizado para capturar imágenes)
+        # 4. AGREGAMOS la consulta del usuario
+        prompt_parts.append(f"\nConsulta del usuario: {str(user_query)}")
+
+        # 5. EJECUCIÓN Y RESPUESTA
         try:
-            # Enviamos todas las piezas juntas en orden (Instrucciones + Archivo + Consulta)
+            # Llamada al modelo (Ahora el prompt es pequeño, solo contiene el esquema y el link al archivo)
             response = self.model.generate_content(prompt_parts)
 
             full_text = ""
-            # Recorremos las partes de la respuesta para buscar texto y datos binarios
             if response.candidates and response.candidates[0].content.parts:
                 for part in response.candidates[0].content.parts:
-                    # 1. Extraer texto si existe
                     if part.text:
                         full_text += part.text
                     
-                    # 2. Extraer imagen si la herramienta Code Execution la generó
-                    # Verificamos inline_data para capturar el gráfico directamente de la respuesta
+                    # Captura de la imagen generada por el código Python
                     if part.inline_data and part.inline_data.mime_type == 'image/png':
-                        print("LOG: Detectada imagen binaria en la respuesta de Gemini. Guardando...")
+                        print("LOG: Detectada gráfica generada. Guardando localmente...")
                         with open("output_plot.png", "wb") as f:
                             f.write(part.inline_data.data)
                 
-                return full_text if full_text else "Análisis completado (sin resumen de texto)."
+                return full_text if full_text else "Análisis completado."
             
-            return "Procesado, pero no se generó contenido en la respuesta."
+            return "No se generó contenido en la respuesta."
 
         except Exception as e:
-            print(f"Error crítico procesando la respuesta de la IA: {e}")
-            # Intentamos retornar al menos el texto plano si el bucle falla
+            print(f"Error crítico: {e}")
             try:
                 return response.text
             except:
-                return f"Error técnico en la comunicación con la IA: {str(e)}"
+                return f"Error técnico en InsightFlow: {str(e)}"

@@ -32,21 +32,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 agent = AnalystAgent()
 
-async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_document(update, context):
+    file = await update.message.document.get_file()    
+    # 1. Definimos una ruta absoluta para evitar confusiones de carpetas
+    filename = update.message.document.file_name
     chat_id = update.effective_chat.id
-    document = update.message.document
-    
-    user_folder = os.path.join("data", str(chat_id))
-    os.makedirs(user_folder, exist_ok=True)
-    file_path = os.path.join(user_folder, document.file_name)
-    
-    # Descargar el archivo
-    new_file = await context.bot.get_file(document.file_id)
-    await new_file.download_to_drive(file_path)
-    # ESTA LÍNEA ES CLAVE: Guardamos la ruta en la "memoria" del bot para este usuario
-    context.user_data['current_file'] = file_path
-    print(f"DEBUG: Archivo guardado exitosamente en: {file_path}") # Esto DEBE salir en tu terminal
-    await update.message.reply_text(f"✅ Archivo '{document.file_name}' recibido. ¿Qué quieres saber sobre estos datos?")
+    # Creamos la ruta completa
+    relative_path = f"data/{chat_id}/{filename}"
+    full_path = os.path.abspath(relative_path) # <-- DIFERENCIA: Ruta absoluta
+    # 2. Creamos los directorios si no existen
+    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+    # 3. Descargamos el archivo
+    await file.download_to_drive(full_path)
+    # 4. Guardamos la ruta en context.user_data para que handle_message la encuentre
+    context.user_data['current_file'] = full_path
+    print(f"DEBUG: Archivo de {chat_id} guardado físicamente en: {full_path}")
+    await update.message.reply_text(
+        f"✅ Archivo '{filename}' recibido.\n"
+        "Ya puedes pedirme el análisis o las gráficas que necesites."
+    )
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
