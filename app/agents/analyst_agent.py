@@ -1,73 +1,89 @@
 import google.generativeai as genai
 import os
-from dotenv import load_dotenv
 import pandas as pd
+import matplotlib.pyplot as plt
+import re
+from dotenv import load_dotenv
 
 load_dotenv()
 
-# Configurar la API con la librería estable
+# Configuración global de la API
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-
-#LISTA LOS MODELOS DISPONIBLES PARA UTILIZAR
-#for m in genai.list_models():
-#    if 'generateContent' in m.supported_generation_methods:
-#        print(m.name)
 
 class AnalystAgent:
     def __init__(self):
-        # Usamos 1.5-flash que es extremadamente estable con esta librería
-        self.model = genai.GenerativeModel(
-            model_name='models/gemini-2.5-flash',
-            tools=[{'code_execution': {}}] # El MCP para Python
-        )
+        # Usamos gemini-1.5-flash: es el más estable y rápido para análisis de datos
+        # No usamos el prefijo 'models/' ni 'gemini-2.5' para evitar errores 404
+        self.model = genai.GenerativeModel(model_name='gemini-1.5-flash')
+
+    def _extraer_codigo(self, texto_ia):
+        """Limpia la respuesta de la IA para obtener solo el código ejecutable."""
+        patron = r"```python\s*(.*?)\s*```"
+        match = re.search(patron, texto_ia, re.DOTALL)
+        if match:
+            return match.group(1)
+        return texto_ia.replace("```python", "").replace("```", "").strip()
+
     async def analyze_data(self, user_query: str, local_file_path: str = None):
-        # 1. System Prompt Reforzado
-        system_prompt = (
-            "Eres un Analista Senior de InsightFlow. El usuario ha subido un archivo extenso.\n"
-            "REGLA DE ORO: No intentes leer los datos del prompt. USA la herramienta 'code_execution'.\n"
-            "He cargado el archivo en tu entorno. Usa pandas para analizarlo completamente.\n"
-            "Si se piden gráficas, guárdalas como 'output_plot.png'."
-        )
-        prompt_parts = [system_prompt]
+        # Si no hay archivo, respondemos como un chat normal
+        if not local_file_path or not os.path.exists(local_file_path):
+            response = self.model.generate_content(user_query)
+            return response.text
 
-        if local_file_path and os.path.exists(local_file_path):
-            try:
-                # 2. ESQUEMA (Gasta poquísimos tokens)
-                df_sample = pd.read_csv(local_file_path, nrows=2)
-                schema_info = f"\nEstructura: {list(df_sample.columns)}\nMuestra: {df_sample.to_dict('records')}"
-                prompt_parts.append(schema_info)
-
-                # 3. CORRECCIÓN DEL MIME TYPE (Aquí se soluciona el Error 400)
-                file_ext = local_file_path.lower()
-                if file_ext.endswith('.csv'):
-                    mime_type = 'text/csv' # Forzamos el tipo correcto para Google
-                elif file_ext.endswith('.xlsx'):
-                    mime_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-                else:
-                    mime_type = 'text/plain'
-
-                # Subida a la API de Archivos (Soporta hasta 2GB)
-                remote_file = genai.upload_file(path=local_file_path, mime_type=mime_type)
-                print(f"DEBUG: Archivo subido exitosamente como {mime_type}: {remote_file.name}")
-                prompt_parts.append(remote_file)
-
-            except Exception as e:
-                print(f"Error procesando archivo: {e}")
-                return f"Tuve un problema al leer el archivo: {str(e)}"
-
-        # 4. Consulta del usuario
-        prompt_parts.append(f"Consulta: {user_query}")
-
-        # 5. Respuesta y captura de imagen
+        # 1. PREPARACIÓN DEL ESQUEMA (Gasta menos de 500 tokens, sin importar el tamaño del CSV)
         try:
-            response = self.model.generate_content(prompt_parts)
-            full_text = ""
-            if response.candidates and response.candidates[0].content.parts:
-                for part in response.candidates[0].content.parts:
-                    if part.text: full_text += part.text
-                    if part.inline_data and part.inline_data.mime_type == 'image/png':
-                        with open("output_plot.png", "wb") as f:
-                            f.write(part.inline_data.data)
-                return full_text if full_text else "Análisis completado."
+            # Leemos solo 2 filas para darle a la IA la estructura de las columnas
+            df_sample = pd.read_csv(local_file_path, nrows=2)
+            schema_info = (
+                f"ESTRUCTURA DEL ARCHIVO LOCAL:\n"
+                f"Columnas: {list(df_sample.columns)}\n"
+                f"Ejemplo de datos:\n{df_sample.to_dict('records')}"
+            )
         except Exception as e:
-            return f"Error técnico en la comunicación: {str(e)}"
+            return f"Error al leer el esquema del archivo local: {e}"
+
+        # 2. SYSTEM PROMPT (IA como Arquitecto, tu PC como Obrero)
+        clean_path = local_file_path.replace("\\", "/")
+        system_prompt = (
+            "Eres el motor de InsightFlow. El usuario ha subido un archivo masivo.\n"
+            "REGLA DE ORO: El archivo es demasiado grande para enviarlo por chat. "
+            "Genera CÓDIGO PYTHON para que YO lo ejecute localmente en mi servidor.\n\n"
+            f"RUTA DEL ARCHIVO: '{clean_path}'\n"
+            "INSTRUCCIONES TÉCNICAS:\n"
+            "1. Usa pandas para leer el archivo desde la ruta proporcionada.\n"
+            "2. Si se pide una gráfica, usa matplotlib y guárdala SIEMPRE como 'output_plot.png'.\n"
+            "3. Usa plt.savefig('output_plot.png') y luego plt.close() para liberar memoria.\n"
+            "4. Devuelve el código dentro de bloques de triple comilla ```python."
+        )
+
+        prompt_parts = [
+            system_prompt,
+            f"\nINFORMACIÓN DEL ARCHIVO:\n{schema_info}",
+            f"\nCONSULTA DEL USUARIO: {user_query}"
+        ]
+
+        # 3. LLAMADA A LA IA PARA GENERAR EL CÓDIGO
+        try:
+            # Enviamos solo el ESQUEMA (esto soluciona el error de tokens 400)
+            response = self.model.generate_content(prompt_parts)
+            respuesta_texto = response.text
+            codigo_python = self._extraer_codigo(respuesta_texto)
+        except Exception as e:
+            return f"Error técnico en la comunicación (Tokens): {str(e)}"
+
+        # 4. EJECUCIÓN LOCAL (Aquí es donde procesas 50k filas o 10GB sin límites de Google)
+        try:
+            # Entorno de ejecución local controlado
+            namespace = {'pd': pd, 'plt': plt, 'os': os}
+            
+            print(f"DEBUG: Ejecutando análisis local sobre: {clean_path}")
+            
+            # Ejecución real en tu máquina
+            exec(codigo_python, namespace)
+            
+            # Devolvemos la explicación que dio la IA
+            return respuesta_texto
+
+        except Exception as e:
+            print(f"Error ejecutando código local: {e}")
+            return f"La IA sugirió un análisis, pero hubo un error al ejecutarlo localmente: {e}\n\nCódigo intentado:\n{codigo_python}"
