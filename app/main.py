@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
 from agents.analyst_agent import AnalystAgent
+from agents.predictor_agent import PredictorAgent
 import asyncio
 
 # ... (importaciones anteriores)
@@ -31,6 +32,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ... (importaciones y configuración de logging)
 
 agent = AnalystAgent()
+predictor = PredictorAgent()
+
+# Keywords that route to the predictor (business/recommendation questions)
+PREDICTION_KEYWORDS = (
+    "stock", "comprar", "buy", "cuánto", "how much", "pronóstico", "forecast",
+    "recomendación", "recommend", "inventory", "inventario", "pedido", "order",
+    "esta semana", "this week", "semanas", "weeks"
+)
 
 async def handle_document(update, context):
     file = await update.message.document.get_file()    
@@ -57,18 +66,32 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     chat_id = update.effective_chat.id
     
-    # Recuperamos la ruta del archivo (limpiamos el código repetido)
-    file_path = context.user_data.get('current_file')
+    # Carpeta exclusiva de este usuario: data/{chat_id}. Ahí se guardan sus archivos.
+    user_data_folder = os.path.abspath(f"data/{chat_id}")
+    file_path = context.user_data.get("current_file")
     
     print(f"\n--- NUEVA CONSULTA ---")
     print(f"Usuario {chat_id} dice: {user_text}")
-    print(f"Archivo en memoria: {file_path}")
+    print(f"Carpeta usuario: {user_data_folder}")
+    print(f"Archivo actual: {file_path}")
     
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
     
     try:
-        # 1. Llamada al agente
-        respuesta_ia = await agent.analyze_data(user_text, file_path)
+        # Route: preguntas de recomendación -> PredictorAgent, resto -> AnalystAgent
+        is_prediction = any(kw in user_text.lower() for kw in PREDICTION_KEYWORDS)
+        if is_prediction:
+            respuesta_ia = predictor.answer_business_question(
+                user_text,
+                local_file_path=file_path,
+                user_data_folder=user_data_folder,
+            )
+        else:
+            respuesta_ia = await agent.analyze_data(
+                user_text,
+                local_file_path=file_path,
+                user_data_folder=user_data_folder,
+            )
         # 2. Enviamos el texto primero
         await context.bot.send_message(chat_id=chat_id, text=respuesta_ia)  
         # 3. Pequeña pausa de seguridad (0.5 seg) para que el sistema de archivos asiente la imagen

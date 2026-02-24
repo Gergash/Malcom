@@ -7,8 +7,39 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# 1. Configuración de la API con el nombre exacto de tu lista
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
+# Extensiones que el analista puede usar (carpeta del usuario)
+_DATA_EXTENSIONS = (".csv", ".xlsx", ".xls")
+
+
+def _get_latest_data_file_in_folder(user_data_folder: str):
+    """Devuelve la ruta del archivo más reciente (CSV/XLSX) en la carpeta del usuario."""
+    if not user_data_folder or not os.path.isdir(user_data_folder):
+        return None
+    candidates = []
+    for name in os.listdir(user_data_folder):
+        if name.lower().endswith(_DATA_EXTENSIONS):
+            path = os.path.join(user_data_folder, name)
+            try:
+                candidates.append((os.path.getmtime(path), path))
+            except OSError:
+                continue
+    if not candidates:
+        return None
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    return candidates[0][1]
+
+
+def _read_schema_sample(path: str):
+    """Lee una muestra (2 filas) para obtener esquema; soporta CSV y Excel."""
+    path_lower = path.lower()
+    if path_lower.endswith(".csv"):
+        return pd.read_csv(path, nrows=2)
+    if path_lower.endswith((".xlsx", ".xls")):
+        return pd.read_excel(path, nrows=2)
+    return pd.read_csv(path, nrows=2)
+
 
 class AnalystAgent:
     def __init__(self):
@@ -34,15 +65,29 @@ class AnalystAgent:
             return match.group(1)
         return texto_ia.replace("```python", "").replace("```", "").strip()
 
-    async def analyze_data(self, user_query: str, local_file_path: str = None):
-        if not local_file_path or not os.path.exists(local_file_path):
+    async def analyze_data(
+        self,
+        user_query: str,
+        local_file_path: str = None,
+        user_data_folder: str = None,
+    ):
+        """
+        Analiza según la pregunta del usuario.
+        - local_file_path: archivo que acaba de subir (opcional).
+        - user_data_folder: carpeta del usuario (data/{chat_id}); si no hay archivo,
+          se usa el archivo de datos más reciente en esta carpeta.
+        """
+        # Resolver archivo: el enviado ahora o el más reciente en la carpeta del usuario
+        file_path = local_file_path
+        if not file_path and user_data_folder:
+            file_path = _get_latest_data_file_in_folder(user_data_folder)
+        if not file_path or not os.path.exists(file_path):
             response = self.model.generate_content(user_query)
             return response.text
 
-        # 2. PROCESAMIENTO DE ESQUEMA (Evita el Error 400 de tokens)
+        # PROCESAMIENTO DE ESQUEMA (evita saturar contexto)
         try:
-            # Leemos solo la estructura para no saturar la ventana de contexto
-            df_sample = pd.read_csv(local_file_path, nrows=2)
+            df_sample = _read_schema_sample(file_path)
             schema_info = (
                 f"Columnas detectadas: {list(df_sample.columns)}\n"
                 f"Muestra de datos:\n{df_sample.to_dict('records')}"
@@ -50,14 +95,19 @@ class AnalystAgent:
         except Exception as e:
             return f"Error al leer la estructura del archivo local: {e}"
 
-        # 3. SYSTEM PROMPT (IA como Arquitecto, tu PC como Obrero)
-        clean_path = local_file_path.replace("\\", "/")
+        clean_path = file_path.replace("\\", "/")
+        # Indicar cómo leer según extensión (CSV vs Excel)
+        path_lower = clean_path.lower()
+        if path_lower.endswith((".xlsx", ".xls")):
+            read_instruction = f"Usa pd.read_excel('{clean_path}') para cargar el archivo."
+        else:
+            read_instruction = f"Usa pd.read_csv('{clean_path}') para cargar el archivo."
         system_prompt = (
             "Eres el cerebro analítico de InsightFlow basado en Gemini 2.5 Pro.\n"
             "TU OBJETIVO: Generar código Python para analizar archivos locales masivos.\n"
             "REGLAS CRÍTICAS:\n"
             "1. El archivo es muy grande. NO intentes leerlo tú. Genera código para que mi sistema lo lea.\n"
-            f"2. Usa la ruta exacta del archivo: '{clean_path}'\n"
+            f"2. Ruta exacta del archivo: '{clean_path}'. {read_instruction}\n"
             "3. IMPORTANTE: Si se pide una gráfica, usa matplotlib y guarda SIEMPRE como 'output_plot.png'.\n"
             "4. Usa 'plt.savefig(\"output_plot.png\")' y luego 'plt.close()'.\n"
             "5. Responde con un análisis profesional y el código dentro de un bloque ```python."

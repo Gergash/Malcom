@@ -3,6 +3,7 @@ uvicorn
 python-telegram-bot  # Para la interfaz
 google-generativeai # Para Gemini
 pandas              # Para análisis de datos
+openpyxl            # Para leer Excel (.xlsx) en datos de usuario
 matplotlib          # Para las gráficas
 python-dotenv       # Para las llaves secretas
 
