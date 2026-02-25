@@ -1,3 +1,5 @@
+import io
+import contextlib
 import google.generativeai as genai
 import pandas as pd
 import os
@@ -110,7 +112,8 @@ class AnalystAgent:
             f"2. Ruta exacta del archivo: '{clean_path}'. {read_instruction}\n"
             "3. IMPORTANTE: Si se pide una gráfica, usa matplotlib y guarda SIEMPRE como 'output_plot.png'.\n"
             "4. Usa 'plt.savefig(\"output_plot.png\")' y luego 'plt.close()'.\n"
-            "5. Responde con un análisis profesional y el código dentro de un bloque ```python."
+            "5. IMPORTANTE: Imprime con print() todos los números, años y resultados clave del análisis para que el usuario los reciba.\n"
+            "6. Responde con un análisis profesional y el código dentro de un bloque ```python."
         )
 
         prompt = f"{system_prompt}\n\nESTRUCTURA DEL ARCHIVO:\n{schema_info}\n\nPREGUNTA DEL USUARIO: {user_query}"
@@ -123,16 +126,28 @@ class AnalystAgent:
         except Exception as e:
             return f"Error de comunicación con Gemini 2.5 Pro: {str(e)}"
 
-        # 5. EJECUCIÓN LOCAL (Potencia ilimitada para tus 10GB)
+        # 5. EJECUCIÓN LOCAL Y CAPTURA DE RESULTADOS
         try:
-            # Entorno de ejecución local
+            output_capturado = io.StringIO()
             namespace = {'pd': pd, 'plt': plt, 'os': os}
-            print(f"DEBUG: Ejecutando análisis local con Gemini 2.5 Pro sobre {clean_path}...")
-            
-            # El código corre en tu máquina, no en los servidores de Google
-            exec(codigo_python, namespace)
-            
-            return respuesta_texto
+
+            print(f"DEBUG: Ejecutando análisis local sobre {clean_path}...")
+
+            with contextlib.redirect_stdout(output_capturado):
+                exec(codigo_python, namespace)
+
+            resultados_finales = output_capturado.getvalue()
+
+            # 6. SEGUNDA LLAMADA: Traducir resultados a lenguaje humano
+            prompt_final = (
+                f"El código se ejecutó con éxito. Estos son los resultados técnicos:\n{resultados_finales}\n\n"
+                f"Basado en esto, responde al usuario como Analista Senior de InsightFlow. "
+                f"No menciones el código, solo da las conclusiones y hallazgos en lenguaje natural (números, años, tendencias)."
+            )
+
+            respuesta_final = self.model.generate_content(prompt_final)
+            return respuesta_final.text
+
         except Exception as e:
             print(f"Error ejecutando código local: {e}")
-            return f"Error en ejecución local: {e}\n\nCódigo generado: {codigo_python}"
+            return f"Error en ejecución: {e}\n\nCódigo generado: {codigo_python}"
