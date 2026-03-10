@@ -7,6 +7,7 @@ openpyxl            # Para leer Excel (.xlsx) en datos de usuario
 matplotlib          # Para las gráficas
 python-dotenv       # Para las llaves secretas
 pypdf               # Para extraer texto de PDF (KnowledgeAgent)
+pymupdf             # Respaldo para PDFs complejos o cuando pypdf no extrae texto
 python-docx         # Para extraer texto de DOCX (KnowledgeAgent)
 numpy               # Para similitud coseno en búsqueda vectorial
 

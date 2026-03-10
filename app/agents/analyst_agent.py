@@ -15,6 +15,14 @@ genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 # Extensiones que el analista puede usar (carpeta del usuario)
 _DATA_EXTENSIONS = (".csv", ".xlsx", ".xls")
 
+# Límite de Telegram: 4096 caracteres por mensaje. Dejamos margen de 30.
+MAX_RESPONSE_CHARS = 4096 - 30  # 4066
+LENGTH_INSTRUCTION = (
+    f"LÍMITE ESTRICTO: tu respuesta debe tener MÁXIMO {MAX_RESPONSE_CHARS} caracteres (límite del canal). "
+    "Redacta de forma concisa: prioriza hallazgos clave, evita listas interminables y repeticiones. "
+    "Si el análisis es extenso, resume en secciones breves con los números y conclusiones más importantes."
+)
+
 
 def _get_latest_data_file_in_folder(user_data_folder: str):
     """Devuelve la ruta del archivo más reciente (CSV/XLSX) en la carpeta del usuario."""
@@ -35,13 +43,22 @@ def _get_latest_data_file_in_folder(user_data_folder: str):
 
 
 def _read_schema_sample(path: str):
-    """Lee una muestra (2 filas) para obtener esquema; soporta CSV y Excel."""
+    """
+    Lee una muestra (2 filas) para obtener esquema; soporta CSV y Excel.
+    Para CSV prueba UTF-8, luego latin-1/cp1252 si falla (evita error 'utf-8 codec can't decode').
+    Devuelve (DataFrame, encoding_usado o None para Excel).
+    """
     path_lower = path.lower()
-    if path_lower.endswith(".csv"):
-        return pd.read_csv(path, nrows=2)
     if path_lower.endswith((".xlsx", ".xls")):
-        return pd.read_excel(path, nrows=2)
-    return pd.read_csv(path, nrows=2)
+        return pd.read_excel(path, nrows=2), None
+    # CSV: intentar varios encodings
+    for encoding in ("utf-8", "latin-1", "cp1252", "iso-8859-1"):
+        try:
+            df = pd.read_csv(path, nrows=2, encoding=encoding)
+            return df, encoding
+        except (UnicodeDecodeError, Exception):
+            continue
+    return pd.read_csv(path, nrows=2, encoding="latin-1"), "latin-1"
 
 
 class AnalystAgent:
@@ -53,7 +70,8 @@ class AnalystAgent:
             "Eres el cerebro analítico de InsightFlow, una plataforma de BI avanzada.\n"
             "Tu propósito es transformar datos complejos en insights de negocio claros.\n"
             "Siempre te presentas como el Analista Senior de InsightFlow.\n"
-            "Cuando hay archivos, generas código Python local para analizarlos."
+            "Cuando hay archivos, generas código Python local para analizarlos.\n"
+            f"Siempre que des una respuesta en texto, respétala máximo {MAX_RESPONSE_CHARS} caracteres (límite del canal): sé conciso, prioriza hallazgos clave."
         )
         # Configuramos el modelo con la instrucción de sistema permanente
         self.model = genai.GenerativeModel(
@@ -68,6 +86,44 @@ class AnalystAgent:
         if match:
             return match.group(1)
         return texto_ia.replace("```python", "").replace("```", "").strip()
+
+    def _sanitize_code_for_exec(self, codigo: str) -> str:
+        """
+        Evita que caracteres como ¡ (U+00A1) o ¿ (U+00BF) en la salida de la IA
+        rompan exec() (invalid character en línea 1).
+        """
+        if not codigo:
+            return codigo
+        # Quitar BOM y espacios/caracteres raros al inicio
+        codigo = codigo.lstrip("\ufeff\u00a0")
+        # Reemplazar ¡ y ¿ que pueden aparecer al inicio de línea o en comentarios
+        codigo = codigo.replace("\u00a1", "# ")   # ¡
+        codigo = codigo.replace("\u00bf", "# ")   # ¿
+        return codigo
+
+    def _cap_response_length(self, text: str) -> str:
+        """Asegura que la respuesta no supere el límite del mensaje (Telegram)."""
+        if not text or len(text) <= MAX_RESPONSE_CHARS:
+            return text or ""
+        return text[: MAX_RESPONSE_CHARS - 50].rstrip() + "\n\n[— Respuesta recortada por límite del mensaje.]"
+
+    def _looks_like_python_code(self, codigo: str) -> bool:
+        """
+        Detecta si el bloque extraído es código Python ejecutable y no prosa con #.
+        Si la IA respondió con texto en lugar de código (ej. saludo o explicación),
+        no debemos ejecutarlo.
+        """
+        if not codigo or not codigo.strip():
+            return False
+        codigo = codigo.strip()
+        # Debe contener indicios de código de análisis (pandas/archivo)
+        has_pandas_or_io = (
+            "read_csv" in codigo or "read_excel" in codigo
+            or "pd." in codigo or "import pandas" in codigo or "import pd" in codigo
+        )
+        # Debe tener al menos una línea que no sea solo comentario
+        non_comment = [l for l in codigo.splitlines() if l.strip() and not l.strip().startswith("#")]
+        return bool(has_pandas_or_io and len(non_comment) >= 1)
 
     def _get_document_context(self, user_query: str, top_k: int = 5) -> str:
         """
@@ -118,15 +174,16 @@ class AnalystAgent:
             if document_context:
                 response = self.model.generate_content(
                     f"{document_context}\n\nPREGUNTA DEL USUARIO: {user_query}\n\n"
-                    "Responde como Analista Senior de InsightFlow, integrando si aplica la información de los documentos anteriores."
+                    "Responde como Analista Senior de InsightFlow, integrando si aplica la información de los documentos anteriores. "
+                    + LENGTH_INSTRUCTION
                 )
-                return response.text
-            response = self.model.generate_content(user_query)
-            return response.text
+                return self._cap_response_length(response.text)
+            response = self.model.generate_content(user_query + "\n\n" + LENGTH_INSTRUCTION)
+            return self._cap_response_length(response.text)
 
-        # PROCESAMIENTO DE ESQUEMA (evita saturar contexto)
+        # PROCESAMIENTO DE ESQUEMA (evita saturar contexto; soporta encodings no UTF-8)
         try:
-            df_sample = _read_schema_sample(file_path)
+            df_sample, csv_encoding = _read_schema_sample(file_path)
             schema_info = (
                 f"Columnas detectadas: {list(df_sample.columns)}\n"
                 f"Muestra de datos:\n{df_sample.to_dict('records')}"
@@ -135,12 +192,15 @@ class AnalystAgent:
             return f"Error al leer la estructura del archivo local: {e}"
 
         clean_path = file_path.replace("\\", "/")
-        # Indicar cómo leer según extensión (CSV vs Excel)
+        # Indicar cómo leer según extensión (CSV vs Excel) y encoding si aplica
         path_lower = clean_path.lower()
         if path_lower.endswith((".xlsx", ".xls")):
             read_instruction = f"Usa pd.read_excel('{clean_path}') para cargar el archivo."
         else:
-            read_instruction = f"Usa pd.read_csv('{clean_path}') para cargar el archivo."
+            if csv_encoding and csv_encoding != "utf-8":
+                read_instruction = f"Usa pd.read_csv('{clean_path}', encoding='{csv_encoding}') para cargar el archivo (este CSV no es UTF-8)."
+            else:
+                read_instruction = f"Usa pd.read_csv('{clean_path}') para cargar el archivo."
         system_prompt = (
             "Eres el cerebro analítico de InsightFlow basado en Gemini 2.5 Pro.\n"
             "TU OBJETIVO: Generar código Python para analizar archivos locales masivos.\n"
@@ -150,7 +210,8 @@ class AnalystAgent:
             "3. IMPORTANTE: Si se pide una gráfica, usa matplotlib y guarda SIEMPRE como 'output_plot.png'.\n"
             "4. Usa 'plt.savefig(\"output_plot.png\")' y luego 'plt.close()'.\n"
             "5. IMPORTANTE: Imprime con print() todos los números, años y resultados clave del análisis para que el usuario los reciba.\n"
-            "6. Responde con un análisis profesional y el código dentro de un bloque ```python."
+            "6. Responde con un análisis profesional y el código dentro de un bloque ```python.\n"
+            "7. Si el usuario solo saluda o dice que va a subir un archivo (sin pedir análisis), responde en lenguaje natural SIN bloques de código."
         )
 
         doc_block = f"\n\n{document_context}\n\n" if document_context else ""
@@ -161,8 +222,13 @@ class AnalystAgent:
             response = self.model.generate_content(prompt)
             respuesta_texto = response.text
             codigo_python = self._extraer_codigo(respuesta_texto)
+            codigo_python = self._sanitize_code_for_exec(codigo_python)
         except Exception as e:
             return f"Error de comunicación con Gemini 2.5 Pro: {str(e)}"
+
+        # 4b. Si la IA respondió con prosa (saludo, explicación) y no con código ejecutable, devolver la respuesta sin ejecutar
+        if not self._looks_like_python_code(codigo_python):
+            return self._cap_response_length(respuesta_texto)
 
         # 5. EJECUCIÓN LOCAL Y CAPTURA DE RESULTADOS
         try:
@@ -187,12 +253,12 @@ class AnalystAgent:
             prompt_final = (
                 f"El código se ejecutó con éxito. Estos son los resultados técnicos:\n{resultados_finales}\n\n"
                 f"Basado en esto, responde al usuario como Analista Senior de InsightFlow. "
-                f"No menciones el código, solo da las conclusiones y hallazgos en lenguaje natural (números, años, tendencias)."
-                f"{context_instruction}"
+                f"No menciones el código, solo da las conclusiones y hallazgos en lenguaje natural (números, años, tendencias). "
+                f"{context_instruction} {LENGTH_INSTRUCTION}"
             )
 
             respuesta_final = self.model.generate_content(prompt_final)
-            return respuesta_final.text
+            return self._cap_response_length(respuesta_final.text)
 
         except Exception as e:
             print(f"Error ejecutando código local: {e}")

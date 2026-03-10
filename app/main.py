@@ -8,6 +8,10 @@ from agents.predictor_agent import PredictorAgent
 from agents.knowledge_agent import KnowledgeAgent, DOC_EXTENSIONS
 import asyncio
 
+# Telegram permite 4096 caracteres por mensaje; enviamos en bloques para no superar el límite
+TELEGRAM_MAX_CHARS = 4096
+SEND_CHUNK_SIZE = TELEGRAM_MAX_CHARS - 30  # 4066
+
 # Cargar variables de entorno
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -32,6 +36,22 @@ _vector_db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", 
 knowledge_agent = KnowledgeAgent(vector_db_path=_vector_db_path)
 agent = AnalystAgent(knowledge_agent=knowledge_agent)
 predictor = PredictorAgent()
+
+async def _send_long_message(bot, chat_id: int, text: str):
+    """Envía un texto que puede superar el límite de Telegram, partiéndolo en mensajes de SEND_CHUNK_SIZE."""
+    if not text:
+        return
+    text = text.strip()
+    while text:
+        chunk = text[:SEND_CHUNK_SIZE] if len(text) > SEND_CHUNK_SIZE else text
+        if len(text) > SEND_CHUNK_SIZE:
+            # Cortar en el último salto de línea para no partir palabras
+            last_nl = chunk.rfind("\n")
+            if last_nl > SEND_CHUNK_SIZE // 2:
+                chunk = chunk[: last_nl + 1]
+        await bot.send_message(chat_id=chat_id, text=chunk)
+        text = text[len(chunk) :].lstrip()
+
 
 # Keywords that route to the predictor (business/recommendation questions)
 PREDICTION_KEYWORDS = (
@@ -113,8 +133,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 local_file_path=file_path,
                 user_data_folder=user_data_folder,
             )
-        # 2. Enviamos el texto primero
-        await context.bot.send_message(chat_id=chat_id, text=respuesta_ia)  
+        # 2. Enviamos el texto (en uno o varios mensajes si supera el límite de Telegram)
+        await _send_long_message(context.bot, chat_id, respuesta_ia)
         # 3. Pequeña pausa de seguridad (0.5 seg) para que el sistema de archivos asiente la imagen
         # LOG DE DIAGNÓSTICO
         print(f"DEBUG: ¿Existe el archivo de imagen? {os.path.exists('output_plot.png')}")

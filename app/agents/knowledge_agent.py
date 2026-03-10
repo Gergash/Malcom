@@ -36,15 +36,43 @@ def _extract_text_txt(file_path: str) -> str:
 
 
 def _extract_text_pdf(file_path: str) -> str:
-    """Extrae texto de un PDF usando pypdf."""
-    from pypdf import PdfReader
-    reader = PdfReader(file_path)
-    parts = []
-    for page in reader.pages:
-        text = page.extract_text()
-        if text:
-            parts.append(text)
-    return "\n\n".join(parts)
+    """
+    Extrae texto de un PDF. Prueba pypdf; si no obtiene texto, intenta PyMuPDF (fitz).
+    Algunos PDFs son solo imágenes (escaneos) y no devuelven texto.
+    """
+    path_str = os.fspath(file_path)
+    # 1) pypdf
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(path_str)
+        parts = []
+        for page in reader.pages:
+            text = page.extract_text()
+            if text and text.strip():
+                parts.append(text)
+        if parts:
+            return "\n\n".join(parts)
+    except Exception as e:
+        print(f"KnowledgeAgent: pypdf falló para {path_str}: {e}")
+
+    # 2) PyMuPDF (fitz) como respaldo — suele extraer mejor en PDFs complejos
+    try:
+        import fitz  # PyMuPDF
+        doc = fitz.open(path_str)
+        parts = []
+        for page in doc:
+            text = page.get_text()
+            if text and text.strip():
+                parts.append(text)
+        doc.close()
+        if parts:
+            return "\n\n".join(parts)
+    except ImportError:
+        pass  # PyMuPDF no instalado
+    except Exception as e:
+        print(f"KnowledgeAgent: PyMuPDF falló para {path_str}: {e}")
+
+    return ""
 
 
 def _extract_text_docx(file_path: str) -> str:
@@ -62,16 +90,18 @@ def extract_text_from_file(file_path: str) -> Optional[str]:
     path = Path(file_path)
     if not path.exists() or not path.is_file():
         return None
+    # Usar ruta absoluta y normalizada (evita problemas de encoding en Windows)
+    path_str = os.path.abspath(path)
     suffix = path.suffix.lower()
     try:
         if suffix == ".txt":
-            return _extract_text_txt(file_path)
+            return _extract_text_txt(path_str)
         if suffix == ".pdf":
-            return _extract_text_pdf(file_path)
+            return _extract_text_pdf(path_str)
         if suffix in (".docx", ".doc"):
-            return _extract_text_docx(file_path)
+            return _extract_text_docx(path_str)
     except Exception as e:
-        print(f"KnowledgeAgent: error extrayendo texto de {file_path}: {e}")
+        print(f"KnowledgeAgent: error extrayendo texto de {path_str}: {e}")
         return None
     return None
 
@@ -189,8 +219,14 @@ class KnowledgeAgent:
         if path.suffix.lower() not in DOC_EXTENSIONS:
             ext = ",".join(DOC_EXTENSIONS)
             return 0, f"Formato no soportado. Use: {ext}"
-        text = extract_text_from_file(file_path)
+        path_str = os.path.abspath(path)
+        text = extract_text_from_file(path_str)
         if not text or not text.strip():
+            if path.suffix.lower() == ".pdf":
+                return 0, (
+                    "No se pudo extraer texto del PDF. "
+                    "Puede ser un PDF escaneado (solo imágenes); en ese caso convierte a texto con OCR o sube un PDF con texto seleccionable."
+                )
             return 0, "No se pudo extraer texto del archivo."
         chunks = _chunk_text(text)
         if not chunks:
