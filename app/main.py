@@ -5,13 +5,11 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
 from agents.analyst_agent import AnalystAgent
 from agents.predictor_agent import PredictorAgent
+from agents.knowledge_agent import KnowledgeAgent, DOC_EXTENSIONS
 import asyncio
 
-# ... (importaciones anteriores)
-
-
 # Cargar variables de entorno
-load_dotenv() 
+load_dotenv()
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 
 # Configuración de logs para ver errores en consola
@@ -29,9 +27,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# ... (importaciones y configuración de logging)
-
-agent = AnalystAgent()
+# Base vectorial: data/vector_db (relativa a la raíz del proyecto Malcom)
+_vector_db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "vector_db"))
+knowledge_agent = KnowledgeAgent(vector_db_path=_vector_db_path)
+agent = AnalystAgent(knowledge_agent=knowledge_agent)
 predictor = PredictorAgent()
 
 # Keywords that route to the predictor (business/recommendation questions)
@@ -56,10 +55,32 @@ async def handle_document(update, context):
     # 4. Guardamos la ruta en context.user_data para que handle_message la encuentre
     context.user_data['current_file'] = full_path
     print(f"DEBUG: Archivo de {chat_id} guardado físicamente en: {full_path}")
-    await update.message.reply_text(
-        f"✅ Archivo '{filename}' recibido.\n"
-        "Ya puedes pedirme el análisis o las gráficas que necesites."
-    )
+
+    # 5. Si es PDF, DOCX o TXT, indexar en la base vectorial para búsqueda semántica
+    _suffix = os.path.splitext(filename)[1].lower() if filename else ""
+    if _suffix in DOC_EXTENSIONS:
+        try:
+            n_chunks, err = knowledge_agent.index_file(full_path, source_id=filename)
+            if err:
+                await update.message.reply_text(
+                    f"✅ Archivo '{filename}' recibido.\n⚠️ No se pudo indexar para búsqueda: {err}"
+                )
+            else:
+                await update.message.reply_text(
+                    f"✅ Archivo '{filename}' recibido e indexado ({n_chunks} fragmentos).\n"
+                    "Lo usaré para enriquecer el análisis de tus datos (ej. reportes, reglas de negocio).\n"
+                    "Ya puedes pedirme el análisis o las gráficas que necesites."
+                )
+        except Exception as e:
+            print(f"DEBUG: Error indexando documento: {e}")
+            await update.message.reply_text(
+                f"✅ Archivo '{filename}' recibido.\n⚠️ Error al indexar: {str(e)}"
+            )
+    else:
+        await update.message.reply_text(
+            f"✅ Archivo '{filename}' recibido.\n"
+            "Ya puedes pedirme el análisis o las gráficas que necesites."
+        )
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):

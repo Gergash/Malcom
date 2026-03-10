@@ -5,6 +5,7 @@ import pandas as pd
 import os
 import matplotlib.pyplot as plt
 import re
+from typing import Optional
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -44,8 +45,9 @@ def _read_schema_sample(path: str):
 
 
 class AnalystAgent:
-    def __init__(self):
+    def __init__(self, knowledge_agent=None):
         genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+        self.knowledge_agent = knowledge_agent  # opcional: búsqueda semántica en documentos
         # Definimos la identidad fija AQUÍ
         self.identity = (
             "Eres el cerebro analítico de InsightFlow, una plataforma de BI avanzada.\n"
@@ -67,6 +69,30 @@ class AnalystAgent:
             return match.group(1)
         return texto_ia.replace("```python", "").replace("```", "").strip()
 
+    def _get_document_context(self, user_query: str, top_k: int = 5) -> str:
+        """
+        Búsqueda semántica en la base vectorial de documentos (PDF, DOCX, TXT).
+        Si no hay knowledge_agent o no hay resultados, devuelve cadena vacía.
+        """
+        if not self.knowledge_agent:
+            return ""
+        try:
+            results = self.knowledge_agent.search(user_query, top_k=top_k)
+            if not results:
+                return ""
+            lines = []
+            for r in results:
+                source = r.get("source", "documento")
+                text = (r.get("text", "") or "").strip()
+                if text:
+                    lines.append(f"[Fuente: {source}]\n{text}")
+            if not lines:
+                return ""
+            return "CONTEXTO DE DOCUMENTOS INDEXADOS (reportes, reglas de negocio, etc.):\n\n" + "\n\n---\n\n".join(lines)
+        except Exception as e:
+            print(f"DEBUG: búsqueda semántica fallida: {e}")
+            return ""
+
     async def analyze_data(
         self,
         user_query: str,
@@ -78,12 +104,23 @@ class AnalystAgent:
         - local_file_path: archivo que acaba de subir (opcional).
         - user_data_folder: carpeta del usuario (data/{chat_id}); si no hay archivo,
           se usa el archivo de datos más reciente en esta carpeta.
+        Antes de responder, hace búsqueda semántica en la base vectorial (si hay
+        KnowledgeAgent) para complementar con documentos de negocio (PDF, DOCX, TXT).
         """
+        # Búsqueda semántica en documentos indexados (ej. "junio", "cierre planta")
+        document_context = self._get_document_context(user_query)
+
         # Resolver archivo: el enviado ahora o el más reciente en la carpeta del usuario
         file_path = local_file_path
         if not file_path and user_data_folder:
             file_path = _get_latest_data_file_in_folder(user_data_folder)
         if not file_path or not os.path.exists(file_path):
+            if document_context:
+                response = self.model.generate_content(
+                    f"{document_context}\n\nPREGUNTA DEL USUARIO: {user_query}\n\n"
+                    "Responde como Analista Senior de InsightFlow, integrando si aplica la información de los documentos anteriores."
+                )
+                return response.text
             response = self.model.generate_content(user_query)
             return response.text
 
@@ -116,7 +153,8 @@ class AnalystAgent:
             "6. Responde con un análisis profesional y el código dentro de un bloque ```python."
         )
 
-        prompt = f"{system_prompt}\n\nESTRUCTURA DEL ARCHIVO:\n{schema_info}\n\nPREGUNTA DEL USUARIO: {user_query}"
+        doc_block = f"\n\n{document_context}\n\n" if document_context else ""
+        prompt = f"{system_prompt}\n\nESTRUCTURA DEL ARCHIVO:\n{schema_info}{doc_block}PREGUNTA DEL USUARIO: {user_query}"
 
         # 4. GENERACIÓN DE CÓDIGO
         try:
@@ -138,11 +176,19 @@ class AnalystAgent:
 
             resultados_finales = output_capturado.getvalue()
 
-            # 6. SEGUNDA LLAMADA: Traducir resultados a lenguaje humano
+            # 6. SEGUNDA LLAMADA: Traducir resultados a lenguaje humano (con contexto de documentos si existe)
+            context_instruction = ""
+            if document_context:
+                context_instruction = (
+                    f" Además, tienes este contexto de documentos de negocio del usuario:\n\n{document_context}\n\n"
+                    "Cuando sea relevante, integra esta información para dar insights más profundos "
+                    "(ej.: si los datos muestran una caída en ventas y un documento menciona cierre por mantenimiento, relaciónalo)."
+                )
             prompt_final = (
                 f"El código se ejecutó con éxito. Estos son los resultados técnicos:\n{resultados_finales}\n\n"
                 f"Basado en esto, responde al usuario como Analista Senior de InsightFlow. "
                 f"No menciones el código, solo da las conclusiones y hallazgos en lenguaje natural (números, años, tendencias)."
+                f"{context_instruction}"
             )
 
             respuesta_final = self.model.generate_content(prompt_final)
