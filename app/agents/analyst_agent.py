@@ -154,6 +154,7 @@ class AnalystAgent:
         user_query: str,
         local_file_path: str = None,
         user_data_folder: str = None,
+        chat_id: int = None,
     ):
         """
         Analiza según la pregunta del usuario.
@@ -201,14 +202,15 @@ class AnalystAgent:
                 read_instruction = f"Usa pd.read_csv('{clean_path}', encoding='{csv_encoding}') para cargar el archivo (este CSV no es UTF-8)."
             else:
                 read_instruction = f"Usa pd.read_csv('{clean_path}') para cargar el archivo."
+        plot_filename = f"output_plot_{chat_id}.png" if chat_id else "output_plot.png"
         system_prompt = (
             "Eres el cerebro analítico de InsightFlow basado en Gemini 2.5 Pro.\n"
             "TU OBJETIVO: Generar código Python para analizar archivos locales masivos.\n"
             "REGLAS CRÍTICAS:\n"
             "1. El archivo es muy grande. NO intentes leerlo tú. Genera código para que mi sistema lo lea.\n"
             f"2. Ruta exacta del archivo: '{clean_path}'. {read_instruction}\n"
-            "3. IMPORTANTE: Si se pide una gráfica, usa matplotlib y guarda SIEMPRE como 'output_plot.png'.\n"
-            "4. Usa 'plt.savefig(\"output_plot.png\")' y luego 'plt.close()'.\n"
+            f"3. IMPORTANTE: Si se pide una gráfica, usa matplotlib y guarda SIEMPRE como '{plot_filename}'.\n"
+            f"4. Usa 'plt.savefig(\"{plot_filename}\")' y luego 'plt.close()'.\n"
             "5. IMPORTANTE: Imprime con print() todos los números, años y resultados clave del análisis para que el usuario los reciba.\n"
             "6. Responde con un análisis profesional y el código dentro de un bloque ```python.\n"
             "7. Si el usuario solo saluda o dice que va a subir un archivo (sin pedir análisis), responde en lenguaje natural SIN bloques de código."

@@ -132,31 +132,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 user_text,
                 local_file_path=file_path,
                 user_data_folder=user_data_folder,
+                chat_id=chat_id,
             )
         # 2. Enviamos el texto (en uno o varios mensajes si supera el límite de Telegram)
         await _send_long_message(context.bot, chat_id, respuesta_ia)
-        # 3. Pequeña pausa de seguridad (0.5 seg) para que el sistema de archivos asiente la imagen
-        # LOG DE DIAGNÓSTICO
-        print(f"DEBUG: ¿Existe el archivo de imagen? {os.path.exists('output_plot.png')}")
+        # 3. Pequeña pausa de seguridad para que el sistema de archivos asiente la imagen
+        plot_filename = f"output_plot_{chat_id}.png"
+        print(f"DEBUG: ¿Existe el archivo de imagen? {os.path.exists(plot_filename)}")
         await asyncio.sleep(1)
-        
+
         # 4. Verificación y envío de la imagen
-        if os.path.exists("output_plot.png"):
-            print("LOG: ¡Gráfica encontrada! Enviando a Telegram...")
-            # Usamos 'async with' para un manejo de archivos más moderno
-            with open("output_plot.png", "rb") as photo:
+        if os.path.exists(plot_filename):
+            print(f"LOG: ¡Gráfica encontrada! Enviando a Telegram ({plot_filename})...")
+            with open(plot_filename, "rb") as photo:
                 await context.bot.send_photo(
-                    chat_id=chat_id, 
-                    photo=photo, 
+                    chat_id=chat_id,
+                    photo=photo,
                     caption="📊 Análisis visual generado por InsightFlow."
                 )
-            
-            # Limpieza inmediata
-            os.remove("output_plot.png")
+            os.remove(plot_filename)
         else:
-            # Si el usuario pidió una gráfica y no está, lo registramos en consola
             if "grafic" in user_text.lower() or "dibuj" in user_text.lower():
-                print("LOG: El usuario pidió gráfica pero 'output_plot.png' no fue creado.")
+                print(f"LOG: El usuario pidió gráfica pero '{plot_filename}' no fue creado.")
                 
     except Exception as e:
         print(f"ERROR en handle_message: {e}")
