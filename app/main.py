@@ -121,6 +121,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 chat_id=chat_id,
             )
         await _send_long_message(context.bot, chat_id, respuesta_ia)
+
+        pdf_report_path = agent.peek_pending_pdf_report()
+        if pdf_report_path and os.path.isfile(pdf_report_path):
+            try:
+                with open(pdf_report_path, "rb") as doc:
+                    await context.bot.send_document(
+                        chat_id=chat_id,
+                        document=doc,
+                        filename="reporte_final.pdf",
+                        caption="📄 Informe PDF generado por InsightFlow.",
+                    )
+                os.remove(pdf_report_path)
+            except Exception as pdf_err:
+                logging.warning("No se pudo enviar reporte_final.pdf: %s", pdf_err)
+            finally:
+                agent.clear_pending_pdf_report()
+
         plot_filename = f"output_plot_{chat_id}.png"
         print(f"DEBUG: ¿Existe el archivo de imagen? {os.path.exists(plot_filename)}")
         await asyncio.sleep(1)

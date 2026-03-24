@@ -5,6 +5,7 @@ google-generativeai # Para Gemini
 pandas              # Para análisis de datos
 openpyxl            # Para leer Excel (.xlsx) en datos de usuario
 matplotlib          # Para las gráficas
+fpdf2               # Reportes PDF estilizados (AnalystAgent)
 python-dotenv       # Para las llaves secretas
 pypdf               # Para extraer texto de PDF (KnowledgeAgent)
 pymupdf             # Respaldo para PDFs complejos o cuando pypdf no extrae texto

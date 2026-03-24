@@ -2,7 +2,10 @@
 AnalystAgent: análisis de datos con Gemini (vía ModelManager) y contexto de documentos.
 Genera código Python para analizar CSV/Excel, lo ejecuta y resume resultados en lenguaje natural.
 Cada usuario (chat_id) tiene su propia base vectorial; los embeddings nunca se mezclan.
+PDFs y documentos se manejan exclusivamente vía KnowledgeAgent (contexto vectorial).
 """
+import datetime
+import functools
 import io
 import contextlib
 import os
@@ -13,9 +16,10 @@ import google.generativeai as genai
 import pandas as pd
 import matplotlib.pyplot as plt
 from dotenv import load_dotenv
+from fpdf import FPDF
 
 from agents.model_manager import ModelManager
-from agents.knowledge_agent import KnowledgeAgent
+from agents.knowledge_agent import KnowledgeAgent, DOC_EXTENSIONS
 
 load_dotenv()
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
@@ -34,9 +38,21 @@ LENGTH_INSTRUCTION = (
     "Si el análisis es extenso, resume en secciones breves con los números y conclusiones más importantes."
 )
 
-_CODE_INDICATORS = ("read_csv", "read_excel", "pd.", "import pandas", "import pd")
+_CODE_INDICATORS = (
+    "read_csv",
+    "read_excel",
+    "pd.",
+    "import pandas",
+    "import pd",
+    "generar_reporte_pdf",
+)
 
 _PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+
+def _is_document_file(path: str) -> bool:
+    """True si el archivo es un documento indexable (PDF, DOCX, TXT) que NO se puede leer con pandas."""
+    return path.lower().endswith(DOC_EXTENSIONS)
 
 
 def _get_latest_data_file_in_folder(user_data_folder: str) -> Optional[str]:
@@ -68,10 +84,49 @@ def _read_schema_sample(path: str) -> Tuple[pd.DataFrame, Optional[str]]:
     return pd.read_csv(path, nrows=2, encoding="latin-1"), "latin-1"
 
 
+def generar_reporte_pdf(
+    texto_contenido: str,
+    ruta_salida: str = "reporte_final.pdf",
+    ruta_grafica: Optional[str] = None,
+) -> None:
+    """
+    Backend: crea un PDF A4 con cabecera/pie; el modelo no debe usar FPDF directamente.
+    Si existe ruta_grafica, inserta la imagen centrada debajo del texto.
+    """
+    abs_out = os.path.abspath(ruta_salida)
+    parent = os.path.dirname(abs_out)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+
+    class ReportePDF(FPDF):
+        def header(self) -> None:
+            self.set_font("Arial", "B", 14)
+            self.cell(0, 10, "InsightFlow - Análisis de Inteligencia", ln=1, align="C")
+            self.ln(5)
+
+        def footer(self) -> None:
+            self.set_y(-15)
+            self.set_font("Arial", "I", 8)
+            self.cell(0, 10, f"Página {self.page_no()}", ln=0, align="C")
+
+    pdf = ReportePDF()
+    pdf.add_page()
+    pdf.set_font("Arial", "", 11)
+    raw = texto_contenido or ""
+    texto_limpio = raw.encode("latin-1", "replace").decode("latin-1")
+    pdf.multi_cell(0, 7, txt=f"Fecha: {datetime.date.today()}\n\n{texto_limpio}")
+
+    if ruta_grafica and os.path.isfile(ruta_grafica):
+        pdf.image(ruta_grafica, x=30, w=150)
+
+    pdf.output(abs_out)
+
+
 class AnalystAgent:
     """
     Analista que genera código Python sobre datos del usuario y resume resultados con Gemini.
     Cada chat_id obtiene su propio KnowledgeAgent (base vectorial aislada en data/{chat_id}/vector_db/).
+    PDFs/documentos se resuelven exclusivamente por contexto vectorial; nunca se intentan leer con pandas.
     """
 
     def __init__(self, model_names: Optional[List[str]] = None):
@@ -79,7 +134,10 @@ class AnalystAgent:
             "Eres el cerebro analítico de InsightFlow, una plataforma de BI avanzada.\n"
             "Tu propósito es transformar datos complejos en insights de negocio claros.\n"
             "Siempre te presentas como el Analista Senior de InsightFlow.\n"
-            "Cuando hay archivos, generas código Python local para analizarlos.\n"
+            "Cuando hay archivos CSV/Excel, generas código Python local para analizarlos.\n"
+            "Para informes PDF existe la función de backend `generar_reporte_pdf` inyectada en ejecución; "
+            "el contexto de manuales va en `contexto_documentos`. La plataforma envía reporte_final.pdf al chat.\n"
+            "Cuando hay PDFs o documentos indexados, usas el contexto textual proporcionado (nunca código para leerlos).\n"
             f"Siempre que des una respuesta en texto, respétala máximo {MAX_RESPONSE_CHARS} caracteres (límite del canal): sé conciso, prioriza hallazgos clave."
         )
         self._manager = ModelManager(
@@ -88,6 +146,15 @@ class AnalystAgent:
             api_key=os.getenv("GEMINI_API_KEY"),
         )
         self._knowledge_agents: Dict[int, KnowledgeAgent] = {}
+        self._pending_pdf_report_path: Optional[str] = None
+
+    def peek_pending_pdf_report(self) -> Optional[str]:
+        """Ruta absoluta del último reporte_final.pdf registrado tras exec (si lo hubo)."""
+        return self._pending_pdf_report_path
+
+    def clear_pending_pdf_report(self) -> None:
+        """Limpia la referencia al PDF pendiente (p. ej. tras enviarlo al chat)."""
+        self._pending_pdf_report_path = None
 
     def get_knowledge_agent(self, chat_id: int) -> KnowledgeAgent:
         """Devuelve el KnowledgeAgent para un chat_id, creándolo si no existe."""
@@ -107,20 +174,17 @@ class AnalystAgent:
         return text[: MAX_RESPONSE_CHARS - 50].rstrip() + "\n\n[— Respuesta recortada por límite del mensaje.]"
 
     def _extraer_codigo(self, texto_ia: str) -> str:
-        """Extrae el bloque ```python ... ``` de la respuesta."""
         match = re.search(r"```python\s*(.*?)\s*```", texto_ia, re.DOTALL)
         if match:
             return match.group(1)
         return texto_ia.replace("```python", "").replace("```", "").strip()
 
     def _sanitize_code(self, codigo: str) -> str:
-        """Elimina BOM y caracteres que rompen exec."""
         if not codigo:
             return codigo
         return codigo.lstrip("\ufeff\u00a0").replace("\u00a1", "# ").replace("\u00bf", "# ")
 
     def _looks_like_python_code(self, codigo: str) -> bool:
-        """True si parece código de análisis (pandas/archivo) y no solo comentarios."""
         if not codigo or not codigo.strip():
             return False
         codigo = codigo.strip()
@@ -148,18 +212,35 @@ class AnalystAgent:
             print(f"DEBUG: búsqueda semántica fallida (chat_id={chat_id}): {e}")
             return ""
 
-    def _answer_without_data_file(self, user_query: str, document_context: str) -> str:
-        """Respuesta cuando no hay archivo de datos."""
-        if document_context:
-            prompt = (
-                f"{document_context}\n\nPREGUNTA DEL USUARIO: {user_query}\n\n"
-                "Responde como Analista Senior de InsightFlow, integrando si aplica la información de los documentos anteriores. "
-                + LENGTH_INSTRUCTION
+    # ── Respuestas sin archivo de datos (solo contexto documental) ────────
+
+    def _answer_document_only(self, user_query: str, document_context: str) -> str:
+        """Respuesta basada exclusivamente en el contexto vectorial de documentos (PDFs, DOCX, TXT)."""
+        if not document_context:
+            return self._cap(
+                "No encontré información relevante en los documentos indexados. "
+                "¿Podrías subir el PDF o documento que deseas consultar?"
             )
-        else:
-            prompt = user_query + "\n\n" + LENGTH_INSTRUCTION
+        prompt = (
+            f"{document_context}\n\n"
+            "PREGUNTA DEL USUARIO: " + user_query + "\n\n"
+            "INSTRUCCIONES: Responde ÚNICAMENTE con base en la información de los documentos proporcionados arriba. "
+            "No inventes datos. Si la información no está en los documentos, indícalo claramente. "
+            "Responde como Analista Senior de InsightFlow. "
+            + LENGTH_INSTRUCTION
+        )
         response = self._generate(prompt)
         return self._cap(response.text)
+
+    def _answer_without_data_file(self, user_query: str, document_context: str) -> str:
+        """Respuesta cuando no hay archivo de datos ni documentos relevantes."""
+        if document_context:
+            return self._answer_document_only(user_query, document_context)
+        prompt = user_query + "\n\n" + LENGTH_INSTRUCTION
+        response = self._generate(prompt)
+        return self._cap(response.text)
+
+    # ── Construcción de prompts para generación de código ────────────────
 
     def _build_read_instruction(self, clean_path: str, path_lower: str, csv_encoding: Optional[str]) -> str:
         if path_lower.endswith((".xlsx", ".xls")):
@@ -169,8 +250,14 @@ class AnalystAgent:
         return f"Usa pd.read_csv('{clean_path}') para cargar el archivo."
 
     def _build_code_prompt(
-        self, clean_path: str, read_instruction: str, schema_info: str,
-        document_context: str, user_query: str, plot_filename: str,
+        self,
+        clean_path: str,
+        read_instruction: str,
+        schema_info: str,
+        document_context: str,
+        user_query: str,
+        plot_filename: str,
+        report_pdf_path: str,
     ) -> str:
         system = (
             "Eres el cerebro analítico de InsightFlow basado en Gemini.\n"
@@ -181,33 +268,82 @@ class AnalystAgent:
             f"3. Si se pide una gráfica, usa matplotlib y guarda SIEMPRE como '{plot_filename}' (plt.savefig + plt.close()).\n"
             "4. Imprime con print() todos los números, años y resultados clave del análisis.\n"
             "5. Responde con análisis profesional y el código dentro de un bloque ```python.\n"
-            "6. Si el usuario solo saluda o dice que va a subir archivo (sin pedir análisis), responde en lenguaje natural SIN código."
+            "6. Si el usuario solo saluda o dice que va a subir archivo (sin pedir análisis), responde en lenguaje natural SIN código.\n"
+            "7. PROHIBIDO: NUNCA generes código con pd.read_csv(), pd.read_excel(), open() ni ninguna "
+            "función de lectura sobre archivos .pdf, .docx o .txt. Esos documentos ya están indexados y "
+            "su contenido se proporciona como CONTEXTO TEXTUAL en este prompt. Úsalo directamente.\n"
+            "8. REGLA CRÍTICA DE PDF: ESTÁ ESTRICTAMENTE PROHIBIDO importar FPDF o fpdf, o escribir clases "
+            "u otra lógica de diseño PDF. Si el usuario pide un 'informe' o 'reporte' en PDF, la creación del "
+            "archivo debe hacerse ÚNICAMENTE con la función ya inyectada en el entorno, exactamente así: "
+            f"generar_reporte_pdf(contexto_documentos, r'{report_pdf_path}'). "
+            "No añadas llamadas a FPDF, pdf.output manual ni layouts propios. Opcional: un print() breve "
+            "tras la llamada (ej. confirmación). El contexto de manuales va en la variable "
+            "`contexto_documentos` (no la transcribas en el código). "
+            f"Si generas gráfica (regla 3), guarda con '{plot_filename}': el backend la adjuntará al PDF si existe. "
+            "Para el análisis de datos (CSV, cálculos, gráficas) sigue las reglas 1-4; el PDF es solo esa llamada."
         )
-        doc_block = f"\n\n{document_context}\n\n" if document_context else ""
-        return f"{system}\n\nESTRUCTURA DEL ARCHIVO:\n{schema_info}{doc_block}PREGUNTA DEL USUARIO: {user_query}"
+        doc_block = ""
+        if document_context:
+            doc_block = (
+                f"\n\n{document_context}\n\n"
+                "IMPORTANTE: El texto anterior proviene de documentos del usuario (PDFs, reportes, etc.) "
+                "ya indexados. En el código NO copies este bloque: en ejecución está en `contexto_documentos`. "
+                "Para PDF solo usa generar_reporte_pdf(contexto_documentos, ruta) según la regla 8. "
+                "NO leas archivos .pdf con código."
+            )
+        return f"{system}\n\nESTRUCTURA DEL ARCHIVO:\n{schema_info}{doc_block}\n\nPREGUNTA DEL USUARIO: {user_query}"
 
-    def _run_code_and_summarize(self, codigo_python: str, clean_path: str, document_context: str) -> str:
-        """Ejecuta el código generado, captura stdout y pide al modelo un resumen."""
+    # ── Ejecución de código y resumen con cruce documental ───────────────
+
+    def _run_code_and_summarize(
+        self,
+        codigo_python: str,
+        clean_path: str,
+        document_context: str,
+        report_pdf_path: str,
+        plot_filename: str,
+    ) -> str:
+        """Ejecuta el código generado, captura stdout y pide al modelo un resumen cruzado."""
         output = io.StringIO()
-        namespace = {"pd": pd, "plt": plt, "os": os}
+        generar_pdf = functools.partial(generar_reporte_pdf, ruta_grafica=plot_filename or None)
+        namespace = {
+            "pd": pd,
+            "plt": plt,
+            "os": os,
+            "contexto_documentos": document_context or "",
+            "generar_reporte_pdf": generar_pdf,
+        }
         print(f"DEBUG: Ejecutando análisis local sobre {clean_path}...")
         with contextlib.redirect_stdout(output):
             exec(codigo_python, namespace)
         resultados = output.getvalue()
 
-        context_instruction = ""
+        abs_report = os.path.abspath(report_pdf_path)
+        if os.path.isfile(abs_report):
+            self._pending_pdf_report_path = abs_report
+
         if document_context:
-            context_instruction = (
-                f" Además, contexto de documentos del usuario:\n\n{document_context}\n\n"
-                "Cuando sea relevante, integra esta información para dar insights más profundos."
+            cross_reference = (
+                f"\n\nAdemás, el usuario tiene los siguientes documentos indexados (PDFs, reportes, reglas de negocio):\n\n"
+                f"{document_context}\n\n"
+                "INSTRUCCIÓN DE CRUCE: Realiza un cruce narrativo entre los RESULTADOS NUMÉRICOS del análisis "
+                "de datos (CSV/Excel) y la INFORMACIÓN TEXTUAL de los documentos (PDFs). "
+                "Ejemplo: si el CSV muestra una caída de ventas en marzo, y el PDF menciona una reestructuración "
+                "en ese período, conecta ambos hallazgos en tu respuesta. "
+                "Presenta las conclusiones de forma integrada, no como dos bloques separados."
             )
+        else:
+            cross_reference = ""
+
         prompt_final = (
-            f"El código se ejecutó con éxito. Resultados técnicos:\n{resultados}\n\n"
-            "Responde como Analista Senior de InsightFlow. No menciones el código, solo conclusiones y hallazgos en lenguaje natural. "
-            f"{context_instruction} {LENGTH_INSTRUCTION}"
+            f"El código se ejecutó con éxito. Resultados técnicos del análisis de datos:\n{resultados}\n\n"
+            "Responde como Analista Senior de InsightFlow. No menciones el código, solo conclusiones y "
+            f"hallazgos en lenguaje natural.{cross_reference} {LENGTH_INSTRUCTION}"
         )
         response = self._generate(prompt_final)
         return self._cap(response.text)
+
+    # ── Punto de entrada principal ───────────────────────────────────────
 
     async def analyze_data(
         self,
@@ -218,26 +354,50 @@ class AnalystAgent:
     ) -> str:
         """
         Analiza según la pregunta del usuario.
-        Cada chat_id tiene su propia base vectorial (data/{chat_id}/vector_db/).
+        - Si el archivo es un PDF/documento: responde exclusivamente con el contexto vectorial.
+        - Si es CSV/Excel: genera y ejecuta código, y cruza resultados con contexto documental si existe.
+        - Si el local_file_path es un PDF pero hay un CSV/Excel en la carpeta: analiza el CSV y cruza con el PDF.
         """
         document_context = self._get_document_context(user_query, chat_id=chat_id)
-        file_path = local_file_path or (user_data_folder and _get_latest_data_file_in_folder(user_data_folder))
+        self._pending_pdf_report_path = None
 
-        if not file_path or not os.path.exists(file_path):
+        # Separar documentos (PDF/DOCX/TXT) de archivos de datos (CSV/Excel)
+        data_file_path: Optional[str] = None
+        if local_file_path and not _is_document_file(local_file_path):
+            data_file_path = local_file_path
+        if not data_file_path and user_data_folder:
+            data_file_path = _get_latest_data_file_in_folder(user_data_folder)
+
+        # Sin archivo de datos → respuesta basada solo en documentos o conversacional
+        if not data_file_path or not os.path.exists(data_file_path):
+            if local_file_path and _is_document_file(local_file_path):
+                return self._answer_document_only(user_query, document_context)
             return self._answer_without_data_file(user_query, document_context)
 
+        # Archivo de datos (CSV/Excel) presente → generar código de análisis
         try:
-            df_sample, csv_encoding = _read_schema_sample(file_path)
+            df_sample, csv_encoding = _read_schema_sample(data_file_path)
             schema_info = f"Columnas: {list(df_sample.columns)}\nMuestra: {df_sample.to_dict('records')}"
         except Exception as e:
             return f"Error al leer la estructura del archivo local: {e}"
 
-        clean_path = file_path.replace("\\", "/")
+        clean_path = data_file_path.replace("\\", "/")
         path_lower = clean_path.lower()
         read_instruction = self._build_read_instruction(clean_path, path_lower, csv_encoding)
         plot_filename = f"output_plot_{chat_id}.png" if chat_id else "output_plot.png"
+        report_pdf_path = (
+            os.path.join(os.path.abspath(user_data_folder), "reporte_final.pdf")
+            if user_data_folder
+            else os.path.join(_PROJECT_ROOT, "reporte_final.pdf")
+        )
         prompt = self._build_code_prompt(
-            clean_path, read_instruction, schema_info, document_context, user_query, plot_filename
+            clean_path,
+            read_instruction,
+            schema_info,
+            document_context,
+            user_query,
+            plot_filename,
+            report_pdf_path.replace("\\", "/"),
         )
 
         try:
@@ -251,7 +411,13 @@ class AnalystAgent:
             return self._cap(respuesta_texto)
 
         try:
-            return self._run_code_and_summarize(codigo_python, clean_path, document_context)
+            return self._run_code_and_summarize(
+                codigo_python,
+                clean_path,
+                document_context,
+                report_pdf_path,
+                plot_filename,
+            )
         except Exception as e:
             print(f"Error ejecutando código local: {e}")
             return f"Error en ejecución: {e}\n\nCódigo generado: {codigo_python}"
