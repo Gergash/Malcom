@@ -138,6 +138,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             finally:
                 agent.clear_pending_pdf_report()
 
+        excel_report_path = agent.peek_pending_excel_report()
+        if excel_report_path and os.path.isfile(excel_report_path):
+            try:
+                with open(excel_report_path, "rb") as doc:
+                    await context.bot.send_document(
+                        chat_id=chat_id,
+                        document=doc,
+                        filename="reporte_final.xlsx",
+                        caption="📊 Informe Excel generado por InsightFlow.",
+                    )
+                os.remove(excel_report_path)
+            except Exception as xlsx_err:
+                logging.warning("No se pudo enviar reporte_final.xlsx: %s", xlsx_err)
+            finally:
+                agent.clear_pending_excel_report()
+
         plot_filename = f"output_plot_{chat_id}.png"
         print(f"DEBUG: ¿Existe el archivo de imagen? {os.path.exists(plot_filename)}")
         await asyncio.sleep(1)

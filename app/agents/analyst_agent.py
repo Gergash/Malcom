@@ -4,22 +4,25 @@ Genera código Python para analizar CSV/Excel, lo ejecuta y resume resultados en
 Cada usuario (chat_id) tiene su propia base vectorial; los embeddings nunca se mezclan.
 PDFs y documentos se manejan exclusivamente vía KnowledgeAgent (contexto vectorial).
 """
-import datetime
 import functools
 import io
 import contextlib
 import os
 import re
-from typing import Optional, List, Tuple, Dict
+from typing import Optional, List, Dict
 
 import google.generativeai as genai
 import pandas as pd
 import matplotlib.pyplot as plt
 from dotenv import load_dotenv
-from fpdf import FPDF
 
 from agents.model_manager import ModelManager
 from agents.knowledge_agent import KnowledgeAgent, DOC_EXTENSIONS
+from agents.report_generator import (
+    generar_reporte_excel_avanzado,
+    generar_reporte_pdf,
+    _read_schema_sample,
+)
 
 load_dotenv()
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
@@ -45,6 +48,7 @@ _CODE_INDICATORS = (
     "import pandas",
     "import pd",
     "generar_reporte_pdf",
+    "generar_reporte_excel_avanzado",
 )
 
 _PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -71,56 +75,6 @@ def _get_latest_data_file_in_folder(user_data_folder: str) -> Optional[str]:
     return max(candidates, key=lambda x: x[0])[1] if candidates else None
 
 
-def _read_schema_sample(path: str) -> Tuple[pd.DataFrame, Optional[str]]:
-    """Muestra de 2 filas para esquema. Soporta CSV (varios encodings) y Excel."""
-    path_lower = path.lower()
-    if path_lower.endswith((".xlsx", ".xls")):
-        return pd.read_excel(path, nrows=2), None
-    for encoding in ("utf-8", "latin-1", "cp1252", "iso-8859-1"):
-        try:
-            return pd.read_csv(path, nrows=2, encoding=encoding), encoding
-        except (UnicodeDecodeError, Exception):
-            continue
-    return pd.read_csv(path, nrows=2, encoding="latin-1"), "latin-1"
-
-
-def generar_reporte_pdf(
-    texto_contenido: str,
-    ruta_salida: str = "reporte_final.pdf",
-    ruta_grafica: Optional[str] = None,
-) -> None:
-    """
-    Backend: crea un PDF A4 con cabecera/pie; el modelo no debe usar FPDF directamente.
-    Si existe ruta_grafica, inserta la imagen centrada debajo del texto.
-    """
-    abs_out = os.path.abspath(ruta_salida)
-    parent = os.path.dirname(abs_out)
-    if parent:
-        os.makedirs(parent, exist_ok=True)
-
-    class ReportePDF(FPDF):
-        def header(self) -> None:
-            self.set_font("Arial", "B", 14)
-            self.cell(0, 10, "InsightFlow - Análisis de Inteligencia", ln=1, align="C")
-            self.ln(5)
-
-        def footer(self) -> None:
-            self.set_y(-15)
-            self.set_font("Arial", "I", 8)
-            self.cell(0, 10, f"Página {self.page_no()}", ln=0, align="C")
-
-    pdf = ReportePDF()
-    pdf.add_page()
-    pdf.set_font("Arial", "", 11)
-    raw = texto_contenido or ""
-    texto_limpio = raw.encode("latin-1", "replace").decode("latin-1")
-    pdf.multi_cell(0, 7, txt=f"Fecha: {datetime.date.today()}\n\n{texto_limpio}")
-
-    if ruta_grafica and os.path.isfile(ruta_grafica):
-        pdf.image(ruta_grafica, x=30, w=150)
-
-    pdf.output(abs_out)
-
 
 class AnalystAgent:
     """
@@ -135,8 +89,8 @@ class AnalystAgent:
             "Tu propósito es transformar datos complejos en insights de negocio claros.\n"
             "Siempre te presentas como el Analista Senior de InsightFlow.\n"
             "Cuando hay archivos CSV/Excel, generas código Python local para analizarlos.\n"
-            "Para informes PDF existe la función de backend `generar_reporte_pdf` inyectada en ejecución; "
-            "el contexto de manuales va en `contexto_documentos`. La plataforma envía reporte_final.pdf al chat.\n"
+            "Para informes PDF existe `generar_reporte_pdf` y para Excel `generar_reporte_excel_avanzado` inyectadas en ejecución; "
+            "el contexto de manuales va en `contexto_documentos`. La plataforma envía reporte_final.pdf y reporte_final.xlsx al chat cuando se generan.\n"
             "Cuando hay PDFs o documentos indexados, usas el contexto textual proporcionado (nunca código para leerlos).\n"
             f"Siempre que des una respuesta en texto, respétala máximo {MAX_RESPONSE_CHARS} caracteres (límite del canal): sé conciso, prioriza hallazgos clave."
         )
@@ -147,6 +101,7 @@ class AnalystAgent:
         )
         self._knowledge_agents: Dict[int, KnowledgeAgent] = {}
         self._pending_pdf_report_path: Optional[str] = None
+        self._pending_excel_report_path: Optional[str] = None
 
     def peek_pending_pdf_report(self) -> Optional[str]:
         """Ruta absoluta del último reporte_final.pdf registrado tras exec (si lo hubo)."""
@@ -155,6 +110,13 @@ class AnalystAgent:
     def clear_pending_pdf_report(self) -> None:
         """Limpia la referencia al PDF pendiente (p. ej. tras enviarlo al chat)."""
         self._pending_pdf_report_path = None
+
+    def peek_pending_excel_report(self) -> Optional[str]:
+        """Ruta absoluta del último reporte_final.xlsx registrado tras exec (si lo hubo)."""
+        return self._pending_excel_report_path
+
+    def clear_pending_excel_report(self) -> None:
+        self._pending_excel_report_path = None
 
     def get_knowledge_agent(self, chat_id: int) -> KnowledgeAgent:
         """Devuelve el KnowledgeAgent para un chat_id, creándolo si no existe."""
@@ -258,6 +220,7 @@ class AnalystAgent:
         user_query: str,
         plot_filename: str,
         report_pdf_path: str,
+        report_excel_path: str,
     ) -> str:
         system = (
             "Eres el cerebro analítico de InsightFlow basado en Gemini.\n"
@@ -280,7 +243,15 @@ class AnalystAgent:
             "tras la llamada (ej. confirmación). El contexto de manuales va en la variable "
             "`contexto_documentos` (no la transcribas en el código). "
             f"Si generas gráfica (regla 3), guarda con '{plot_filename}': el backend la adjuntará al PDF si existe. "
-            "Para el análisis de datos (CSV, cálculos, gráficas) sigue las reglas 1-4; el PDF es solo esa llamada."
+            "Para el análisis de datos (CSV, cálculos, gráficas) sigue las reglas 1-4; el PDF es solo esa llamada.\n"
+            "9. REGLA CRÍTICA DE EXCEL: ESTÁ ESTRICTAMENTE PROHIBIDO importar xlsxwriter o escribir lógica de "
+            "diseño de hojas, formatos o tablas a mano. Si el usuario pide un Excel con datos, texto o gráficas, "
+            "la generación del archivo debe hacerse ÚNICAMENTE con la función ya inyectada, exactamente así: "
+            f"generar_reporte_excel_avanzado(df, contexto_documentos, r'{report_excel_path}'). "
+            "`df` es el DataFrame que tú cargaste del CSV/Excel en tu propio código (reglas 1-2); no está "
+            "preinyectado. Opcional: print() del valor de retorno (mensaje LOG/ERROR). "
+            f"Si generas gráfica (regla 3), usa '{plot_filename}': el backend la insertará en el Excel si existe. "
+            "No añadas otra lógica de exportación Excel."
         )
         doc_block = ""
         if document_context:
@@ -288,7 +259,7 @@ class AnalystAgent:
                 f"\n\n{document_context}\n\n"
                 "IMPORTANTE: El texto anterior proviene de documentos del usuario (PDFs, reportes, etc.) "
                 "ya indexados. En el código NO copies este bloque: en ejecución está en `contexto_documentos`. "
-                "Para PDF solo usa generar_reporte_pdf(contexto_documentos, ruta) según la regla 8. "
+                "Para PDF usa generar_reporte_pdf (regla 8); para Excel generar_reporte_excel_avanzado (regla 9). "
                 "NO leas archivos .pdf con código."
             )
         return f"{system}\n\nESTRUCTURA DEL ARCHIVO:\n{schema_info}{doc_block}\n\nPREGUNTA DEL USUARIO: {user_query}"
@@ -301,17 +272,21 @@ class AnalystAgent:
         clean_path: str,
         document_context: str,
         report_pdf_path: str,
+        report_excel_path: str,
         plot_filename: str,
     ) -> str:
         """Ejecuta el código generado, captura stdout y pide al modelo un resumen cruzado."""
         output = io.StringIO()
-        generar_pdf = functools.partial(generar_reporte_pdf, ruta_grafica=plot_filename or None)
+        ruta_img = plot_filename or None
+        generar_pdf = functools.partial(generar_reporte_pdf, ruta_grafica=ruta_img)
+        generar_excel = functools.partial(generar_reporte_excel_avanzado, ruta_grafica=ruta_img)
         namespace = {
             "pd": pd,
             "plt": plt,
             "os": os,
             "contexto_documentos": document_context or "",
             "generar_reporte_pdf": generar_pdf,
+            "generar_reporte_excel_avanzado": generar_excel,
         }
         print(f"DEBUG: Ejecutando análisis local sobre {clean_path}...")
         with contextlib.redirect_stdout(output):
@@ -321,6 +296,10 @@ class AnalystAgent:
         abs_report = os.path.abspath(report_pdf_path)
         if os.path.isfile(abs_report):
             self._pending_pdf_report_path = abs_report
+
+        abs_xlsx = os.path.abspath(report_excel_path)
+        if os.path.isfile(abs_xlsx):
+            self._pending_excel_report_path = abs_xlsx
 
         if document_context:
             cross_reference = (
@@ -360,6 +339,7 @@ class AnalystAgent:
         """
         document_context = self._get_document_context(user_query, chat_id=chat_id)
         self._pending_pdf_report_path = None
+        self._pending_excel_report_path = None
 
         # Separar documentos (PDF/DOCX/TXT) de archivos de datos (CSV/Excel)
         data_file_path: Optional[str] = None
@@ -390,6 +370,11 @@ class AnalystAgent:
             if user_data_folder
             else os.path.join(_PROJECT_ROOT, "reporte_final.pdf")
         )
+        report_excel_path = (
+            os.path.join(os.path.abspath(user_data_folder), "reporte_final.xlsx")
+            if user_data_folder
+            else os.path.join(_PROJECT_ROOT, "reporte_final.xlsx")
+        )
         prompt = self._build_code_prompt(
             clean_path,
             read_instruction,
@@ -398,6 +383,7 @@ class AnalystAgent:
             user_query,
             plot_filename,
             report_pdf_path.replace("\\", "/"),
+            report_excel_path.replace("\\", "/"),
         )
 
         try:
@@ -416,6 +402,7 @@ class AnalystAgent:
                 clean_path,
                 document_context,
                 report_pdf_path,
+                report_excel_path,
                 plot_filename,
             )
         except Exception as e:

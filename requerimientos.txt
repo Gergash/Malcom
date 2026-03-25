@@ -4,6 +4,7 @@ python-telegram-bot  # Para la interfaz
 google-generativeai # Para Gemini
 pandas              # Para análisis de datos
 openpyxl            # Para leer Excel (.xlsx) en datos de usuario
+xlsxwriter          # Motor ExcelWriter para reportes .xlsx (report_generator)
 matplotlib          # Para las gráficas
 fpdf2               # Reportes PDF estilizados (AnalystAgent)
 python-dotenv       # Para las llaves secretas
