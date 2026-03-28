@@ -4,6 +4,13 @@ from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
 from agents.analyst_agent import AnalystAgent
+from agents.credits import check_and_bump
+try:
+    # `python -m app.main`
+    from app.database.quota_manager import QuotaManager
+except ModuleNotFoundError:
+    # `python main.py` desde `app/`
+    from database.quota_manager import QuotaManager
 from agents.predictor_agent import PredictorAgent
 from agents.knowledge_agent import DOC_EXTENSIONS
 import asyncio
@@ -29,6 +36,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 agent = AnalystAgent()
 predictor = PredictorAgent()
+quota = QuotaManager()
 
 async def _send_long_message(bot, chat_id: int, text: str):
     """Envía un texto que puede superar el límite de Telegram, partiéndolo en bloques."""
@@ -94,6 +102,20 @@ async def handle_document(update, context):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     chat_id = update.effective_chat.id
+
+    # Créditos / paywall (lógica comercial modular)
+    # - Si no es premium y supera el límite, cortamos antes de consumir análisis.
+    paywall = check_and_bump(quota, chat_id)
+    if paywall == "PAYWALL_TRIGGER":
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "Has alcanzado el límite gratuito de análisis.\n\n"
+                "Si deseas continuar, activa el plan premium para desbloquear análisis ilimitados "
+                "y reportes avanzados (PDF/Excel)."
+            ),
+        )
+        return
 
     user_data_folder = os.path.abspath(f"data/{chat_id}")
     file_path = context.user_data.get("current_file")

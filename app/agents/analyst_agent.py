@@ -6,7 +6,6 @@ PDFs y documentos se manejan exclusivamente vía KnowledgeAgent (contexto vector
 """
 import functools
 import io
-import contextlib
 import os
 import re
 from typing import Optional, List, Dict
@@ -23,6 +22,12 @@ from agents.report_generator import (
     generar_reporte_pdf,
     _read_schema_sample,
 )
+try:
+    # Cuando se ejecuta desde la raíz: `python -m app.main`
+    from app.executor import safe_exec
+except ModuleNotFoundError:
+    # Cuando se ejecuta dentro de `app/`: `python main.py`
+    from executor import safe_exec
 
 load_dotenv()
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
@@ -276,7 +281,6 @@ class AnalystAgent:
         plot_filename: str,
     ) -> str:
         """Ejecuta el código generado, captura stdout y pide al modelo un resumen cruzado."""
-        output = io.StringIO()
         ruta_img = plot_filename or None
         generar_pdf = functools.partial(generar_reporte_pdf, ruta_grafica=ruta_img)
         generar_excel = functools.partial(generar_reporte_excel_avanzado, ruta_grafica=ruta_img)
@@ -289,9 +293,10 @@ class AnalystAgent:
             "generar_reporte_excel_avanzado": generar_excel,
         }
         print(f"DEBUG: Ejecutando análisis local sobre {clean_path}...")
-        with contextlib.redirect_stdout(output):
-            exec(codigo_python, namespace)
-        resultados = output.getvalue()
+        result = safe_exec(codigo_python, namespace)
+        resultados = result.stdout
+        if not result.ok:
+            raise result.error  # manejado por analyze_data (mensaje incluye código)
 
         abs_report = os.path.abspath(report_pdf_path)
         if os.path.isfile(abs_report):
