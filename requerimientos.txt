@@ -1,15 +1,33 @@
+# ── Web framework ──────────────────────────────────────────────────────────────
 fastapi
-uvicorn
-python-telegram-bot  # Para la interfaz
-google-generativeai # Para Gemini
-pandas              # Para análisis de datos
-openpyxl            # Para leer Excel (.xlsx) en datos de usuario
-xlsxwriter          # Motor ExcelWriter para reportes .xlsx (report_generator)
-matplotlib          # Para las gráficas
-fpdf2               # Reportes PDF estilizados (AnalystAgent)
-python-dotenv       # Para las llaves secretas
-pypdf               # Para extraer texto de PDF (KnowledgeAgent)
-pymupdf             # Respaldo para PDFs complejos o cuando pypdf no extrae texto
-python-docx         # Para extraer texto de DOCX (KnowledgeAgent)
-numpy               # Para similitud coseno en búsqueda vectorial
+uvicorn[standard]
 
+# ── Base de datos (PostgreSQL async) ──────────────────────────────────────────
+sqlalchemy[asyncio]>=2.0
+asyncpg                  # driver async para PostgreSQL
+greenlet                 # requerido por SQLAlchemy async
+
+# ── Configuración ─────────────────────────────────────────────────────────────
+pydantic-settings        # BaseSettings para config centralizada
+python-dotenv            # carga .env
+
+# ── Telegram ──────────────────────────────────────────────────────────────────
+python-telegram-bot
+
+# ── Google Generative AI ──────────────────────────────────────────────────────
+google-generativeai
+
+# ── Análisis de datos ─────────────────────────────────────────────────────────
+pandas
+openpyxl                 # leer Excel (.xlsx) en datos de usuario
+xlsxwriter               # motor ExcelWriter para reportes .xlsx
+matplotlib               # gráficas
+numpy                    # similitud coseno en búsqueda vectorial
+
+# ── Generación de reportes ────────────────────────────────────────────────────
+fpdf2                    # reportes PDF estilizados
+
+# ── Extracción de documentos ──────────────────────────────────────────────────
+pypdf                    # extracción de texto de PDF
+pymupdf                  # respaldo para PDFs complejos
+python-docx              # extracción de texto de DOCX

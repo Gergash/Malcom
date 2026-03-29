@@ -1,0 +1,38 @@
+"""
+config.py: configuración centralizada de la aplicación con Pydantic Settings.
+Lee variables de entorno desde .env automáticamente.
+"""
+
+from __future__ import annotations
+
+from functools import lru_cache
+
+from pydantic_settings import BaseSettings
+
+
+class Settings(BaseSettings):
+    # Telegram
+    telegram_token: str = ""
+
+    # Google Generative AI
+    gemini_api_key: str = ""
+
+    # PostgreSQL — formato: postgresql+asyncpg://user:password@host:port/dbname
+    database_url: str = "postgresql+asyncpg://insightflow:insightflow@localhost:5432/insightflow"
+
+    # Paywall
+    free_message_limit: int = 7
+
+    # API
+    api_host: str = "0.0.0.0"
+    api_port: int = 8080
+
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+        extra = "ignore"
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
