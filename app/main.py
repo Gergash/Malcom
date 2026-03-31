@@ -8,14 +8,14 @@ from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, Messa
 try:
     from app.agents.analyst_agent import AnalystAgent
     from app.agents.predictor_agent import PredictorAgent
-    from app.agents.knowledge_agent import DOC_EXTENSIONS
+    from app.core.orchestrator import Orchestrator
     from app.database.connection import AsyncSessionLocal, create_tables
     from app.database.repositories.user_repo import UserRepository
     from app.database.repositories.conversation_repo import ConversationRepository
 except ModuleNotFoundError:
     from agents.analyst_agent import AnalystAgent
     from agents.predictor_agent import PredictorAgent
-    from agents.knowledge_agent import DOC_EXTENSIONS
+    from core.orchestrator import Orchestrator
     from database.connection import AsyncSessionLocal, create_tables
     from database.repositories.user_repo import UserRepository
     from database.repositories.conversation_repo import ConversationRepository
@@ -76,31 +76,13 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await file.download_to_drive(full_path)
     print(f"DEBUG: Archivo de {chat_id} guardado en: {full_path}")
-
-    _suffix = os.path.splitext(filename)[1].lower() if filename else ""
-    if _suffix in DOC_EXTENSIONS:
-        knowledge_agent = agent.get_knowledge_agent(chat_id)
-        try:
-            n_chunks, err = knowledge_agent.index_file(full_path, source_id=filename)
-            if err:
-                await update.message.reply_text(
-                    f"✅ Archivo '{filename}' recibido.\n⚠️ No se pudo indexar para búsqueda: {err}"
-                )
-            else:
-                await update.message.reply_text(
-                    f"✅ Archivo '{filename}' recibido e indexado ({n_chunks} fragmentos).\n"
-                    "Lo usaré para enriquecer el análisis de tus datos.\n"
-                    "Ya puedes pedirme el análisis o las gráficas que necesites."
-                )
-        except Exception as e:
-            print(f"DEBUG: Error indexando documento: {e}")
-            await update.message.reply_text(
-                f"✅ Archivo '{filename}' recibido.\n⚠️ Error al indexar: {str(e)}"
-            )
-    else:
+    try:
+        result = Orchestrator(chat_id).ingest_file(full_path, filename)
+        await update.message.reply_text(f"✅ {result['message']}\nYa puedes pedirme el análisis.")
+    except Exception as e:
+        print(f"DEBUG: Error ingestando documento: {e}")
         await update.message.reply_text(
-            f"✅ Archivo '{filename}' recibido.\n"
-            "Ya puedes pedirme el análisis o las gráficas que necesites."
+            f"✅ Archivo '{filename}' recibido.\n⚠️ Error al procesar: {str(e)}"
         )
 
 

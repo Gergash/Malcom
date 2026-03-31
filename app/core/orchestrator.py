@@ -16,13 +16,16 @@ from __future__ import annotations
 import asyncio
 import os
 from pathlib import Path
+import shutil
 
 try:
     from app.agents.analyst_agent import AnalystAgent
     from app.agents.predictor_agent import PredictorAgent
+    from app.agents.knowledge_agent import DOC_EXTENSIONS
 except ModuleNotFoundError:
     from agents.analyst_agent import AnalystAgent
     from agents.predictor_agent import PredictorAgent
+    from agents.knowledge_agent import DOC_EXTENSIONS
 
 
 PREDICTION_KEYWORDS = (
@@ -50,6 +53,56 @@ class Orchestrator:
     # ------------------------------------------------------------------
     # API pública
     # ------------------------------------------------------------------
+
+    def ingest_file(self, source_path: str, filename: str) -> dict:
+        """
+        Copia un archivo a data/{chat_id}/ y, si es documento, lo indexa.
+
+        Retorna:
+            {
+                "saved_path": str,
+                "indexed": bool,
+                "chunks": int,
+                "error": str | None,
+                "message": str,
+            }
+        """
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        filename = os.path.basename(filename or "archivo")
+        target_path = self.data_dir / filename
+        source_abs = os.path.abspath(source_path)
+        target_abs = os.path.abspath(str(target_path))
+        if source_abs != target_abs:
+            shutil.copy2(source_abs, target_abs)
+
+        suffix = target_path.suffix.lower()
+        if suffix in DOC_EXTENSIONS:
+            analyst = AnalystAgent()
+            knowledge_agent = analyst.get_knowledge_agent(int(self.chat_id))
+            n_chunks, err = knowledge_agent.index_file(str(target_path), source_id=filename)
+            if err:
+                return {
+                    "saved_path": str(target_path),
+                    "indexed": False,
+                    "chunks": 0,
+                    "error": err,
+                    "message": f"Archivo '{filename}' guardado, pero no se pudo indexar: {err}",
+                }
+            return {
+                "saved_path": str(target_path),
+                "indexed": True,
+                "chunks": int(n_chunks),
+                "error": None,
+                "message": f"Archivo '{filename}' guardado e indexado ({n_chunks} fragmentos).",
+            }
+
+        return {
+            "saved_path": str(target_path),
+            "indexed": False,
+            "chunks": 0,
+            "error": None,
+            "message": f"Archivo '{filename}' guardado.",
+        }
 
     async def process_message(self, message: str) -> dict:
         """
@@ -85,7 +138,7 @@ class Orchestrator:
         return any(kw in lower for kw in PREDICTION_KEYWORDS)
 
     def _run_predictor(self, message: str) -> str:
-        predictor = PredictorAgent(self.chat_id)
+        predictor = PredictorAgent()
         user_data_folder = str(self.data_dir.resolve())
         return predictor.answer_business_question(
             message,
@@ -94,7 +147,7 @@ class Orchestrator:
         ) or ""
 
     async def _run_analyst(self, message: str, loop: asyncio.AbstractEventLoop) -> str:
-        analyst = AnalystAgent(self.chat_id)
+        analyst = AnalystAgent()
         user_data_folder = str(self.data_dir.resolve())
 
         def _sync_call():

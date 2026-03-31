@@ -41,3 +41,13 @@ class CreditStateResponse(BaseModel):
     free_message_limit: int
     credits_remaining: int
     paywall: bool
+
+
+class UploadResponse(BaseModel):
+    chat_id: int
+    filename: str
+    saved_path: str
+    indexed: bool
+    chunks: int = 0
+    message: str
+    error: Optional[str] = None

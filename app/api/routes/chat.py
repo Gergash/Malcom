@@ -12,18 +12,20 @@ POST /api/v1/chat
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 try:
-    from app.api.schemas import ChatRequest, ChatResponse, CreditStateResponse
+    from app.api.schemas import ChatRequest, ChatResponse, CreditStateResponse, UploadResponse
     from app.core.orchestrator import Orchestrator
     from app.database.connection import get_db
     from app.database.repositories.conversation_repo import ConversationRepository
     from app.database.repositories.user_repo import UserRepository
 except ModuleNotFoundError:
-    from api.schemas import ChatRequest, ChatResponse, CreditStateResponse
+    from api.schemas import ChatRequest, ChatResponse, CreditStateResponse, UploadResponse
     from core.orchestrator import Orchestrator
     from database.connection import get_db
     from database.repositories.conversation_repo import ConversationRepository
@@ -92,6 +94,45 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
         has_chart=result["has_chart"],
         paywall=False,
         credits_remaining=credit_status["credits_remaining"],
+    )
+
+
+@router.post("/chat/upload", response_model=UploadResponse, summary="Subir archivo para análisis")
+async def upload_file(
+    chat_id: int = Form(...),
+    file: UploadFile = File(...),
+):
+    """
+    Sube archivo para un usuario/canal y lo deja en data/{chat_id}/.
+    Si el archivo es documental (PDF/DOCX/TXT), además lo indexa.
+    """
+    try:
+        suffix = os.path.splitext(file.filename or "archivo")[1]
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            content = await file.read()
+            tmp.write(content)
+            tmp_path = tmp.name
+        try:
+            orchestrator = Orchestrator(chat_id)
+            result = orchestrator.ingest_file(tmp_path, file.filename or "archivo")
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+    except Exception as exc:
+        logger.exception("Error subiendo archivo para chat_id=%s", chat_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"No se pudo subir/procesar el archivo: {exc}",
+        ) from exc
+
+    return UploadResponse(
+        chat_id=int(chat_id),
+        filename=file.filename or "archivo",
+        saved_path=result["saved_path"],
+        indexed=bool(result["indexed"]),
+        chunks=int(result["chunks"]),
+        message=result["message"],
+        error=result["error"],
     )
 
 
