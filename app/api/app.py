@@ -11,10 +11,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 try:
-    from app.api.routes import chat, health
+    from app.api.routes import billing, chat, health
     from app.database.connection import create_tables
 except ModuleNotFoundError:
-    from api.routes import chat, health
+    from api.routes import billing, chat, health
     from database.connection import create_tables
 
 logger = logging.getLogger(__name__)
@@ -53,3 +53,4 @@ app.add_middleware(
 # Rutas
 app.include_router(health.router)
 app.include_router(chat.router, prefix="/api/v1")
+app.include_router(billing.router, prefix="/api/v1")

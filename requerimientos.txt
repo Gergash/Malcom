@@ -10,6 +10,7 @@ greenlet                 # requerido por SQLAlchemy async
 
 # ── Configuración ─────────────────────────────────────────────────────────────
 pydantic-settings        # BaseSettings para config centralizada
+pydantic[email]          # validación EmailStr en schemas de billing
 python-dotenv            # carga .env
 
 # ── Telegram ──────────────────────────────────────────────────────────────────
