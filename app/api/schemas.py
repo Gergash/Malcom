@@ -24,6 +24,10 @@ class ChatResponse(BaseModel):
     has_chart: bool = Field(False, description="¿Se generó una imagen de gráfica?")
     paywall: bool = Field(False, description="True si el usuario alcanzó el límite gratuito")
     credits_remaining: int = Field(0, description="Mensajes gratuitos restantes (-1 = premium)")
+    image_url: Optional[str] = Field(
+        None,
+        description="URL pública para ver la gráfica generada (servida bajo /data/...), si existe el archivo",
+    )
 
 
 # ── Upload ────────────────────────────────────────────────────────────────────

@@ -183,14 +183,16 @@ class Orchestrator:
     def _build_result(self, response_text: str) -> dict:
         pdf_path = getattr(self, "_pending_pdf", None)
         excel_path = getattr(self, "_pending_excel", None)
-        chart_path = f"output_plot_{self.chat_id}.png"
+        chart_name = f"output_plot_{self.chat_id}.png"
+        chart_abs = self.data_dir / chart_name
+        has_chart = chart_abs.is_file()
 
         return {
             "response": response_text,
             "has_pdf": bool(pdf_path and os.path.isfile(pdf_path)),
             "has_excel": bool(excel_path and os.path.isfile(excel_path)),
-            "has_chart": os.path.isfile(chart_path),
+            "has_chart": has_chart,
             "pdf_path": pdf_path if (pdf_path and os.path.isfile(pdf_path)) else None,
             "excel_path": excel_path if (excel_path and os.path.isfile(excel_path)) else None,
-            "chart_path": chart_path if os.path.isfile(chart_path) else None,
+            "chart_path": str(chart_abs) if has_chart else None,
         }

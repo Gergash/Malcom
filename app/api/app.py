@@ -6,9 +6,11 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 try:
     from app.api.routes import billing, chat, health
@@ -19,11 +21,16 @@ except ModuleNotFoundError:
 
 logger = logging.getLogger(__name__)
 
+# Raíz del proyecto Malcom (app/api/app.py → subir tres niveles)
+MALCOM_ROOT = Path(__file__).resolve().parent.parent.parent
+DATA_DIR = MALCOM_ROOT / "data"
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Ejecutado al inicio y al cierre de la aplicación."""
     logger.info("InsightFlow API arrancando — creando tablas si no existen...")
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     await create_tables()
     logger.info("Base de datos lista.")
     yield
@@ -49,6 +56,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Archivos en data/{chat_id}/... servidos solo bajo /data (expuesto con cautela; no listado)
+app.mount("/data", StaticFiles(directory=str(DATA_DIR)), name="data")
 
 # Rutas
 app.include_router(health.router)

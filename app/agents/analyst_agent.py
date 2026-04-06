@@ -15,13 +15,22 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from dotenv import load_dotenv
 
-from agents.model_manager import ModelManager
-from agents.knowledge_agent import KnowledgeAgent, DOC_EXTENSIONS
-from agents.report_generator import (
-    generar_reporte_excel_avanzado,
-    generar_reporte_pdf,
-    _read_schema_sample,
-)
+try:
+    from app.agents.model_manager import ModelManager
+    from app.agents.knowledge_agent import KnowledgeAgent, DOC_EXTENSIONS
+    from app.agents.report_generator import (
+        generar_reporte_excel_avanzado,
+        generar_reporte_pdf,
+        _read_schema_sample,
+    )
+except ModuleNotFoundError:
+    from agents.model_manager import ModelManager
+    from agents.knowledge_agent import KnowledgeAgent, DOC_EXTENSIONS
+    from agents.report_generator import (
+        generar_reporte_excel_avanzado,
+        generar_reporte_pdf,
+        _read_schema_sample,
+    )
 try:
     # Cuando se ejecuta desde la raíz: `python -m app.main`
     from app.executor import safe_exec
@@ -293,7 +302,15 @@ class AnalystAgent:
             "generar_reporte_excel_avanzado": generar_excel,
         }
         print(f"DEBUG: Ejecutando análisis local sobre {clean_path}...")
-        result = safe_exec(codigo_python, namespace)
+        prev_cwd = os.getcwd()
+        try:
+            if clean_path:
+                data_dir = os.path.dirname(os.path.abspath(clean_path))
+                if data_dir and os.path.isdir(data_dir):
+                    os.chdir(data_dir)
+            result = safe_exec(codigo_python, namespace)
+        finally:
+            os.chdir(prev_cwd)
         resultados = result.stdout
         if not result.ok:
             raise result.error  # manejado por analyze_data (mensaje incluye código)

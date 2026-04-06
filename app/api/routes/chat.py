@@ -14,8 +14,9 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 try:
@@ -34,9 +35,16 @@ except ModuleNotFoundError:
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# Raíz Malcom (app/api/routes/chat.py → cuatro niveles arriba)
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+
 
 @router.post("/chat", response_model=ChatResponse, summary="Enviar mensaje al agente de análisis")
-async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
+async def chat(
+    payload: ChatRequest,
+    http_request: Request,
+    db: AsyncSession = Depends(get_db),
+):
     """
     Endpoint principal de conversación.
 
@@ -53,12 +61,12 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
 
     # 1 + 2 · Verificar créditos
     credit_status = await user_repo.bump_and_check(
-        chat_id=request.chat_id,
-        username=request.username,
+        chat_id=payload.chat_id,
+        username=payload.username,
     )
 
     if credit_status["paywall"]:
-        logger.info("Paywall alcanzado para chat_id=%s", request.chat_id)
+        logger.info("Paywall alcanzado para chat_id=%s", payload.chat_id)
         return ChatResponse(
             response=(
                 "Has alcanzado el límite gratuito de análisis.\n\n"
@@ -67,26 +75,40 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
             ),
             paywall=True,
             credits_remaining=0,
+            image_url=None,
         )
 
     # 3 · Persistir mensaje del usuario
-    await conv_repo.add_message(request.chat_id, "user", request.message)
+    await conv_repo.add_message(payload.chat_id, "user", payload.message)
 
     # 4 · Orquestar agentes
     try:
-        orchestrator = Orchestrator(request.chat_id)
-        result = await orchestrator.process_message(request.message)
+        orchestrator = Orchestrator(payload.chat_id)
+        result = await orchestrator.process_message(payload.message)
     except Exception as exc:
-        logger.exception("Error en Orchestrator para chat_id=%s", request.chat_id)
+        logger.exception("Error en Orchestrator para chat_id=%s", payload.chat_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error procesando la consulta: {str(exc)}",
         ) from exc
 
     # 5 · Persistir respuesta del asistente
-    await conv_repo.add_message(request.chat_id, "assistant", result["response"])
+    await conv_repo.add_message(payload.chat_id, "assistant", result["response"])
 
-    # 6 · Responder
+    # 6 · URL pública de la gráfica si existe (servida vía StaticFiles /data)
+    cid = str(payload.chat_id)
+    image_url = None
+    chart_disk = result.get("chart_path")
+    if chart_disk and os.path.isfile(chart_disk):
+        fname = os.path.basename(chart_disk)
+        image_url = f"{http_request.base_url}data/{cid}/{fname}"
+    else:
+        for fname in (f"output_plot_{cid}.png", "output_plot.png"):
+            candidate = _PROJECT_ROOT / "data" / cid / fname
+            if candidate.is_file():
+                image_url = f"{http_request.base_url}data/{cid}/{fname}"
+                break
+
     return ChatResponse(
         response=result["response"],
         has_pdf=result["has_pdf"],
@@ -94,6 +116,7 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
         has_chart=result["has_chart"],
         paywall=False,
         credits_remaining=credit_status["credits_remaining"],
+        image_url=image_url,
     )
 
 

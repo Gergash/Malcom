@@ -1,0 +1,546 @@
+<!--
+  PowerUps Edge BI — Widget de chat embebible (BeBuilder / HTML custom)
+  --------------------------------------------------------------------
+  1. Ajusta CONFIG (API_BASE y CHECKOUT_URL).
+  2. Pega este bloque completo en un módulo HTML de BeBuilder o plantilla.
+  3. Asegura que el backend expone /api/v1 con CORS si el sitio y el API no comparten dominio.
+-->
+<!-- Estilos inline mínimos: si WordPress/Betheme elimina la etiqueta <style>, el chat sigue siendo visible. -->
+<div id="powerups-edge-chat" class="powerups-edge" aria-live="polite" style="position:fixed;right:max(16px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));z-index:2147483647;box-sizing:border-box;">
+  <button type="button" class="powerups-edge__toggle" id="powerups-edge-toggle" aria-expanded="false" aria-controls="powerups-edge-panel" title="Abrir asistente Edge BI" style="box-sizing:border-box;display:inline-flex;align-items:center;gap:8px;padding:12px 16px;border-radius:999px;border:1px solid #2a3344;background:linear-gradient(145deg,#161b24,#0f141d);color:#e8edf5;cursor:pointer;font-weight:600;font-family:system-ui,sans-serif;">
+    <span class="powerups-edge__toggle-icon" aria-hidden="true">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3c5 0 9 3.6 9 8 0 2.4-1.2 4.6-3.2 6.1L17 21l-3.5-2.2c-.9.2-1.8.3-2.8.3-5 0-9-3.6-9-8s4-8 9-8z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="9" cy="11" r="1.2" fill="currentColor"/><circle cx="12.3" cy="11" r="1.2" fill="currentColor"/><circle cx="15.6" cy="11" r="1.2" fill="currentColor"/></svg>
+    </span>
+    <span class="powerups-edge__toggle-label">Edge BI</span>
+  </button>
+  <div class="powerups-edge__panel" id="powerups-edge-panel" hidden>
+    <header class="powerups-edge__head">
+      <div class="powerups-edge__brand">
+        <span class="powerups-edge__brand-mark"></span>
+        <div>
+          <strong class="powerups-edge__title">InsightFlow</strong>
+          <span class="powerups-edge__subtitle">Portal Edge BI</span>
+        </div>
+      </div>
+      <button type="button" class="powerups-edge__close" id="powerups-edge-close" aria-label="Cerrar">&times;</button>
+    </header>
+    <div class="powerups-edge__usage" id="powerups-edge-usage" role="status">
+      <span class="powerups-edge__usage-text" id="powerups-edge-usage-text">Mensajes usados: —/—</span>
+      <div class="powerups-edge__usage-bar" aria-hidden="true"><div class="powerups-edge__usage-fill" id="powerups-edge-usage-fill" style="width:0%"></div></div>
+    </div>
+    <div class="powerups-edge__paywall-banner" id="powerups-edge-paywall" hidden>
+      <strong>Desbloquea el análisis total por $40.000 COP</strong>
+      <button type="button" class="powerups-edge__cta" id="powerups-edge-paywall-pay">Continuar al pago seguro</button>
+    </div>
+    <div class="powerups-edge__premium-row">
+      <button type="button" class="powerups-edge__chip" id="powerups-edge-btn-pdf" title="Requiere plan premium">Generar Informe PDF Premium</button>
+      <button type="button" class="powerups-edge__chip" id="powerups-edge-btn-excel" title="Requiere plan premium">Exportar Excel con Gráficas</button>
+    </div>
+    <div class="powerups-edge__messages" id="powerups-edge-messages"></div>
+    <form class="powerups-edge__composer" id="powerups-edge-form" autocomplete="off">
+      <label class="powerups-edge__clip">
+        <input type="file" id="powerups-edge-file" accept=".csv,.pdf,.txt,.xlsx,.xls,.doc,.docx" hidden />
+        <span class="powerups-edge__clip-btn" title="Adjuntar archivo (CSV, PDF…)">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+      </label>
+      <input type="text" class="powerups-edge__input" id="powerups-edge-input" placeholder="Describe tu análisis o pregunta por tus datos…" maxlength="8000" />
+      <button type="submit" class="powerups-edge__send" id="powerups-edge-send">Enviar</button>
+    </form>
+    <p class="powerups-edge__legal">Análisis procesado localmente en Colombia bajo Ley 1581.</p>
+  </div>
+</div>
+
+<style>
+.powerups-edge {
+  --pu-bg: #0e1116;
+  --pu-surface: #161b24;
+  --pu-border: #2a3344;
+  --pu-text: #e8edf5;
+  --pu-muted: #8b98a8;
+  --pu-accent: #28468C;
+  --pu-accent-bright: #3a5fb8;
+  --pu-danger: #c94b4b;
+  --pu-radius: 12px;
+  --pu-shadow: 0 12px 40px rgba(0,0,0,.45);
+  font-family: system-ui, "Segoe UI", Roboto, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--pu-text);
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 999999;
+  box-sizing: border-box;
+}
+.powerups-edge *, .powerups-edge *::before, .powerups-edge *::after { box-sizing: border-box; }
+.powerups-edge__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--pu-border);
+  background: linear-gradient(145deg, var(--pu-surface), #0f141d);
+  color: var(--pu-text);
+  cursor: pointer;
+  box-shadow: var(--pu-shadow);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.powerups-edge__toggle:hover { border-color: var(--pu-accent); transform: translateY(-1px); }
+.powerups-edge__toggle:focus-visible { outline: 2px solid var(--pu-accent); outline-offset: 2px; }
+.powerups-edge__toggle-icon { color: var(--pu-accent-bright); display: flex; }
+.powerups-edge__panel {
+  position: absolute;
+  right: 0;
+  bottom: 56px;
+  width: min(400px, calc(100vw - 32px));
+  max-height: min(620px, calc(100vh - 100px));
+  display: flex;
+  flex-direction: column;
+  background: var(--pu-bg);
+  border: 1px solid var(--pu-border);
+  border-radius: var(--pu-radius);
+  box-shadow: var(--pu-shadow);
+  overflow: hidden;
+}
+.powerups-edge__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: var(--pu-surface);
+  border-bottom: 1px solid var(--pu-border);
+}
+.powerups-edge__brand { display: flex; align-items: center; gap: 10px; }
+.powerups-edge__brand-mark {
+  width: 10px; height: 36px;
+  border-radius: 4px;
+  background: linear-gradient(180deg, var(--pu-accent-bright), var(--pu-accent));
+}
+.powerups-edge__title { display: block; font-size: 15px; letter-spacing: 0.02em; }
+.powerups-edge__subtitle { font-size: 11px; color: var(--pu-muted); text-transform: uppercase; letter-spacing: 0.08em; }
+.powerups-edge__close {
+  background: transparent; border: none; color: var(--pu-muted);
+  font-size: 22px; line-height: 1; cursor: pointer; padding: 4px 8px;
+}
+.powerups-edge__close:hover { color: var(--pu-text); }
+.powerups-edge__usage { padding: 10px 14px 8px; border-bottom: 1px solid rgba(42,51,68,0.6); }
+.powerups-edge__usage-text { font-size: 12px; color: var(--pu-muted); }
+.powerups-edge__usage-bar { margin-top: 6px; height: 4px; border-radius: 4px; background: #1f2633; overflow: hidden; }
+.powerups-edge__usage-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--pu-accent), #5a7fcf);
+  transition: width 0.25s ease;
+}
+.powerups-edge__paywall-banner {
+  padding: 10px 14px;
+  background: rgba(201, 75, 75, 0.12);
+  border-bottom: 1px solid rgba(201, 75, 75, 0.35);
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.powerups-edge__paywall-banner strong { color: #f0d0d0; }
+.powerups-edge__cta {
+  align-self: flex-start;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--pu-accent);
+  background: var(--pu-accent);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 13px;
+}
+.powerups-edge__cta:hover { background: var(--pu-accent-bright); border-color: var(--pu-accent-bright); }
+.powerups-edge__premium-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(42,51,68,0.6);
+  background: rgba(40, 70, 140, 0.08);
+}
+.powerups-edge__chip {
+  flex: 1 1 44%;
+  min-width: 120px;
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  border-radius: 8px;
+  border: 1px solid var(--pu-border);
+  background: #121722;
+  color: var(--pu-text);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.powerups-edge__chip:hover { border-color: var(--pu-accent); background: rgba(40, 70, 140, 0.2); }
+.powerups-edge__messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 200px;
+}
+.powerups-edge__msg {
+  max-width: 92%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.powerups-edge__msg--user {
+  align-self: flex-end;
+  background: linear-gradient(135deg, var(--pu-accent), #1e3566);
+  color: #fff;
+}
+.powerups-edge__msg--bot {
+  align-self: flex-start;
+  background: var(--pu-surface);
+  border: 1px solid var(--pu-border);
+}
+.powerups-edge__msg--sys {
+  align-self: center;
+  font-size: 11px;
+  color: var(--pu-muted);
+  background: transparent;
+  border: 1px dashed var(--pu-border);
+}
+.powerups-edge__composer {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--pu-border);
+  background: var(--pu-surface);
+}
+.powerups-edge__clip { display: flex; align-items: center; margin: 0; }
+.powerups-edge__clip-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid var(--pu-border);
+  background: #121722;
+  color: var(--pu-muted);
+  cursor: pointer;
+}
+.powerups-edge__clip-btn:hover { color: var(--pu-accent-bright); border-color: var(--pu-accent); }
+.powerups-edge__input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--pu-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #0c1017;
+  color: var(--pu-text);
+  font-size: 13px;
+}
+.powerups-edge__input:disabled { opacity: 0.55; cursor: not-allowed; }
+.powerups-edge__send {
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--pu-accent);
+  background: var(--pu-accent);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 13px;
+}
+.powerups-edge__send:disabled { opacity: 0.5; cursor: not-allowed; }
+.powerups-edge__legal {
+  margin: 0;
+  padding: 8px 14px 10px;
+  font-size: 10px;
+  color: var(--pu-muted);
+  text-align: center;
+  border-top: 1px solid rgba(42,51,68,0.5);
+  background: var(--pu-bg);
+}
+@media (max-width: 480px) {
+  .powerups-edge__panel { right: 0; left: auto; width: calc(100vw - 24px); }
+}
+.powerups-edge.is-open .powerups-edge__toggle { display: none; }
+</style>
+
+<script>
+(function () {
+  var CONFIG = {
+    // URL del API FastAPI (sin barra final)
+    API_BASE: 'https://meroblastic-estefana-isoperimetrical.ngrok-free.dev',
+    // Pasarela Wompi / ePayco / página de producto WooCommerce. Puedes usar {chatId} en la cadena.
+    CHECKOUT_URL: 'https://tu-tienda.com/premium-edge-bi/?chat_id={chatId}',
+    // Opcional: nombre para registro en el backend
+    USERNAME: null,
+    STORAGE_KEY_CHAT: 'powerups_edge_chat_id_v1',
+    STORAGE_KEY_HISTORY: 'powerups_edge_history_v1',
+    // Mensajes enviados al agente cuando el usuario ya es premium y pulsa las acciones
+    PROMPT_PDF: 'Genera el informe PDF premium consolidado de este hilo de análisis, listo para presentación ejecutiva.',
+    PROMPT_EXCEL: 'Exporta un libro Excel con gráficas a partir del análisis actual (hojas claras y un gráfico por insight clave).',
+  };
+
+  function el(id) { return document.getElementById(id); }
+
+  function getOrCreateChatId() {
+    var raw = localStorage.getItem(CONFIG.STORAGE_KEY_CHAT);
+    var n = raw ? parseInt(raw, 10) : NaN;
+    if (!isFinite(n) || n <= 0) {
+      n = Math.floor(1e9 + Math.random() * 8.99e9);
+      localStorage.setItem(CONFIG.STORAGE_KEY_CHAT, String(n));
+    }
+    return n;
+  }
+
+  function checkoutUrl() {
+    var id = getOrCreateChatId();
+    return String(CONFIG.CHECKOUT_URL).replace(/\{chatId\}/g, String(id));
+  }
+
+  function loadHistory() {
+    try {
+      var raw = localStorage.getItem(CONFIG.STORAGE_KEY_HISTORY);
+      if (!raw) return [];
+      var arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) { return []; }
+  }
+
+  function saveHistory(items) {
+    try {
+      localStorage.setItem(CONFIG.STORAGE_KEY_HISTORY, JSON.stringify(items.slice(-200)));
+    } catch (e) { /* ignore quota */ }
+  }
+
+  function appendBubble(role, text) {
+    var box = el('powerups-edge-messages');
+    var d = document.createElement('div');
+    d.className = 'powerups-edge__msg powerups-edge__msg--' + (role === 'user' ? 'user' : role === 'sys' ? 'sys' : 'bot');
+    d.textContent = text;
+    box.appendChild(d);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function hydrateFromStorage() {
+    el('powerups-edge-messages').innerHTML = '';
+    loadHistory().forEach(function (m) {
+      appendBubble(m.role, m.text);
+    });
+  }
+
+  function pushHistory(role, text) {
+    var h = loadHistory();
+    h.push({ role: role, text: text, t: Date.now() });
+    saveHistory(h);
+  }
+
+  function setComposerLocked(locked) {
+    el('powerups-edge-input').disabled = locked;
+    el('powerups-edge-send').disabled = locked;
+    el('powerups-edge-file').disabled = locked;
+  }
+
+  function setUsageUI(state) {
+    var textEl = el('powerups-edge-usage-text');
+    var fill = el('powerups-edge-usage-fill');
+    var banner = el('powerups-edge-paywall');
+    if (!state) {
+      textEl.textContent = 'Mensajes usados: —/—';
+      fill.style.width = '0%';
+      return;
+    }
+    var limit = state.free_message_limit || 7;
+    if (state.is_premium) {
+      textEl.textContent = 'Plan premium activo · mensajes ilimitados';
+      fill.style.width = '100%';
+      banner.hidden = true;
+      setComposerLocked(false);
+      return;
+    }
+    var used = Math.min(state.message_count, limit);
+    textEl.textContent = 'Mensajes usados: ' + used + '/' + limit;
+    var pct = Math.min(100, Math.round((used / limit) * 100));
+    fill.style.width = pct + '%';
+    var wall = !!state.paywall;
+    banner.hidden = !wall;
+    setComposerLocked(wall);
+  }
+
+  async function fetchCredits() {
+    var id = getOrCreateChatId();
+    var url = CONFIG.API_BASE + '/api/v1/chat/' + encodeURIComponent(String(id)) + '/credits';
+    var res = await fetch(url, { method: 'GET', credentials: 'omit' });
+    if (!res.ok) throw new Error('No se pudo obtener créditos');
+    return res.json();
+  }
+
+  async function refreshCredits() {
+    try {
+      var j = await fetchCredits();
+      setUsageUI(j);
+      return j;
+    } catch (e) {
+      el('powerups-edge-usage-text').textContent = 'Estado de uso no disponible';
+      return null;
+    }
+  }
+
+  async function fetchBillingStatus() {
+    var id = getOrCreateChatId();
+    var url = CONFIG.API_BASE + '/api/v1/billing/status?chat_id=' + encodeURIComponent(String(id));
+    var res = await fetch(url, { credentials: 'omit' });
+    if (!res.ok) throw new Error('billing/status');
+    return res.json();
+  }
+
+  async function sendChatMessage(text) {
+    var id = getOrCreateChatId();
+    var body = { chat_id: id, message: text };
+    if (CONFIG.USERNAME) body.username = CONFIG.USERNAME;
+    var res = await fetch(CONFIG.API_BASE + '/api/v1/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      credentials: 'omit',
+    });
+    var j = await res.json().catch(function () { return {}; });
+    if (!res.ok) {
+      var det = j.detail || j.message || res.statusText;
+      throw new Error(typeof det === 'string' ? det : 'Error del servidor');
+    }
+    return j;
+  }
+
+  async function uploadFile(file) {
+    var id = getOrCreateChatId();
+    var fd = new FormData();
+    fd.append('chat_id', String(id));
+    fd.append('file', file, file.name);
+    var res = await fetch(CONFIG.API_BASE + '/api/v1/chat/upload', {
+      method: 'POST',
+      body: fd,
+      credentials: 'omit',
+    });
+    var j = await res.json().catch(function () { return {}; });
+    if (!res.ok) {
+      var det = j.detail || j.message || res.statusText;
+      throw new Error(typeof det === 'string' ? det : 'Fallo al subir');
+    }
+    return j;
+  }
+
+  async function premiumAction(prompt) {
+    try {
+      var bill = await fetchBillingStatus();
+      if (!bill.is_premium) {
+        window.location.href = checkoutUrl();
+        return;
+      }
+      appendBubble('user', '[Acción premium] ' + (prompt === CONFIG.PROMPT_PDF ? 'Generar Informe PDF Premium' : 'Exportar Excel con Gráficas'));
+      pushHistory('user', '[Acción premium] Solicitud de entregable');
+      var out = await sendChatMessage(prompt);
+      appendBubble('bot', out.response || '(Sin texto de respuesta)');
+      pushHistory('bot', out.response || '');
+      await refreshCredits();
+    } catch (e) {
+      appendBubble('sys', 'No se pudo completar la acción: ' + (e.message || e));
+    }
+  }
+
+  function wireUI() {
+    var root = el('powerups-edge-chat');
+    var panel = el('powerups-edge-panel');
+    var toggle = el('powerups-edge-toggle');
+    var closeBtn = el('powerups-edge-close');
+    var form = el('powerups-edge-form');
+    var input = el('powerups-edge-input');
+    var file = el('powerups-edge-file');
+
+    toggle.addEventListener('click', function () {
+      var open = !root.classList.contains('is-open');
+      root.classList.toggle('is-open', open);
+      panel.hidden = !open;
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (open) {
+        hydrateFromStorage();
+        refreshCredits();
+        setTimeout(function () { input.focus(); }, 50);
+      }
+    });
+    closeBtn.addEventListener('click', function () {
+      root.classList.remove('is-open');
+      panel.hidden = true;
+      toggle.setAttribute('aria-expanded', 'false');
+      toggle.style.display = '';
+    });
+
+    el('powerups-edge-paywall-pay').addEventListener('click', function () {
+      window.location.href = checkoutUrl();
+    });
+    el('powerups-edge-btn-pdf').addEventListener('click', function () { premiumAction(CONFIG.PROMPT_PDF); });
+    el('powerups-edge-btn-excel').addEventListener('click', function () { premiumAction(CONFIG.PROMPT_EXCEL); });
+
+    form.addEventListener('submit', async function (ev) {
+      ev.preventDefault();
+      var t = (input.value || '').trim();
+      if (!t) return;
+      var st = await refreshCredits();
+      if (st && st.paywall && !st.is_premium) return;
+
+      input.value = '';
+      appendBubble('user', t);
+      pushHistory('user', t);
+
+      try {
+        var out = await sendChatMessage(t);
+        if (out.paywall) {
+          appendBubble('bot', out.response || 'Límite alcanzado.');
+          pushHistory('bot', out.response || '');
+        } else {
+          appendBubble('bot', out.response || '(Sin respuesta)');
+          pushHistory('bot', out.response || '');
+        }
+      } catch (err) {
+        appendBubble('sys', 'Error: ' + (err.message || err));
+      } finally {
+        await refreshCredits();
+      }
+    });
+
+    file.addEventListener('change', async function () {
+      var f = file.files && file.files[0];
+      if (!f) return;
+      file.value = '';
+      var st = await refreshCredits();
+      if (st && st.paywall && !st.is_premium) {
+        appendBubble('sys', 'Primero desbloquea el análisis para adjuntar archivos.');
+        return;
+      }
+      appendBubble('sys', 'Subiendo: ' + f.name + '…');
+      try {
+        var up = await uploadFile(f);
+        var msg = up.message || ('Archivo recibido' + (up.indexed ? ' (indexado).' : '.'));
+        appendBubble('bot', msg);
+        pushHistory('bot', msg);
+      } catch (err) {
+        appendBubble('sys', 'No se pudo subir el archivo: ' + (err.message || err));
+      }
+    });
+  }
+
+  if (document.readyState === 'loading')
+    document.addEventListener('DOMContentLoaded', wireUI);
+  else
+    wireUI();
+})();
+</script>
