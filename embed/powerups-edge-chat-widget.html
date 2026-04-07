@@ -5,15 +5,26 @@
   2. Pega este bloque completo en un módulo HTML de BeBuilder o plantilla.
   3. Asegura que el backend expone /api/v1 con CORS si el sitio y el API no comparten dominio.
 -->
-<!-- Estilos inline mínimos: si WordPress/Betheme elimina la etiqueta <style>, el chat sigue siendo visible. -->
 <div id="powerups-edge-chat" class="powerups-edge" aria-live="polite" style="position:fixed;right:max(16px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));z-index:2147483647;box-sizing:border-box;">
-  <button type="button" class="powerups-edge__toggle" id="powerups-edge-toggle" aria-expanded="false" aria-controls="powerups-edge-panel" title="Abrir asistente Edge BI" style="box-sizing:border-box;display:inline-flex;align-items:center;gap:8px;padding:12px 16px;border-radius:999px;border:1px solid #2a3344;background:linear-gradient(145deg,#161b24,#0f141d);color:#e8edf5;cursor:pointer;font-weight:600;font-family:system-ui,sans-serif;">
-    <span class="powerups-edge__toggle-icon" aria-hidden="true">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3c5 0 9 3.6 9 8 0 2.4-1.2 4.6-3.2 6.1L17 21l-3.5-2.2c-.9.2-1.8.3-2.8.3-5 0-9-3.6-9-8s4-8 9-8z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="9" cy="11" r="1.2" fill="currentColor"/><circle cx="12.3" cy="11" r="1.2" fill="currentColor"/><circle cx="15.6" cy="11" r="1.2" fill="currentColor"/></svg>
+  <button type="button" class="powerups-edge__toggle" id="powerups-edge-toggle" aria-expanded="false" aria-controls="powerups-edge-panel" title="Abrir asistente Edge BI">
+    <span class="powerups-edge__sparkle-layer" aria-hidden="true">
+      <svg viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M93.781 51.578C95 50.969 96 49.359 96 48c0-1.375-1-2.969-2.219-3.578 0 0-22.868-1.514-31.781-10.422-8.915-8.91-10.438-31.781-10.438-31.781C50.969 1 49.375 0 48 0s-2.969 1-3.594 2.219c0 0-1.5 22.87-10.406 31.781-8.908 8.913-31.781 10.422-31.781 10.422C1 45.031 0 46.625 0 48c0 1.359 1 2.969 2.219 3.578 0 0 22.873 1.51 31.781 10.422 8.906 8.911 10.406 31.781 10.406 31.781C45.031 95 46.625 96 48 96s2.969-1 3.562-2.219c0 0 1.523-22.871 10.438-31.781 8.913-8.908 31.781-10.422 31.781-10.422Z" fill="currentColor"/></svg>
+      <svg viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M93.781 51.578C95 50.969 96 49.359 96 48c0-1.375-1-2.969-2.219-3.578 0 0-22.868-1.514-31.781-10.422-8.915-8.91-10.438-31.781-10.438-31.781C50.969 1 49.375 0 48 0s-2.969 1-3.594 2.219c0 0-1.5 22.87-10.406 31.781-8.908 8.913-31.781 10.422-31.781 10.422C1 45.031 0 46.625 0 48c0 1.359 1 2.969 2.219 3.578 0 0 22.873 1.51 31.781 10.422 8.906 8.911 10.406 31.781 10.406 31.781C45.031 95 46.625 96 48 96s2.969-1 3.562-2.219c0 0 1.523-22.871 10.438-31.781 8.913-8.908 31.781-10.422 31.781-10.422Z" fill="currentColor"/></svg>
+      <svg viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M93.781 51.578C95 50.969 96 49.359 96 48c0-1.375-1-2.969-2.219-3.578 0 0-22.868-1.514-31.781-10.422-8.915-8.91-10.438-31.781-10.438-31.781C50.969 1 49.375 0 48 0s-2.969 1-3.594 2.219c0 0-1.5 22.87-10.406 31.781-8.908 8.913-31.781 10.422-31.781 10.422C1 45.031 0 46.625 0 48c0 1.359 1 2.969 2.219 3.578 0 0 22.873 1.51 31.781 10.422 8.906 8.911 10.406 31.781 10.406 31.781C45.031 95 46.625 96 48 96s2.969-1 3.562-2.219c0 0 1.523-22.871 10.438-31.781 8.913-8.908 31.781-10.422 31.781-10.422Z" fill="currentColor"/></svg>
+      <svg viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M93.781 51.578C95 50.969 96 49.359 96 48c0-1.375-1-2.969-2.219-3.578 0 0-22.868-1.514-31.781-10.422-8.915-8.91-10.438-31.781-10.438-31.781C50.969 1 49.375 0 48 0s-2.969 1-3.594 2.219c0 0-1.5 22.87-10.406 31.781-8.908 8.913-31.781 10.422-31.781 10.422C1 45.031 0 46.625 0 48c0 1.359 1 2.969 2.219 3.578 0 0 22.873 1.51 31.781 10.422 8.906 8.911 10.406 31.781 10.406 31.781C45.031 95 46.625 96 48 96s2.969-1 3.562-2.219c0 0 1.523-22.871 10.438-31.781 8.913-8.908 31.781-10.422 31.781-10.422Z" fill="currentColor"/></svg>
+      <svg viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M93.781 51.578C95 50.969 96 49.359 96 48c0-1.375-1-2.969-2.219-3.578 0 0-22.868-1.514-31.781-10.422-8.915-8.91-10.438-31.781-10.438-31.781C50.969 1 49.375 0 48 0s-2.969 1-3.594 2.219c0 0-1.5 22.87-10.406 31.781-8.908 8.913-31.781 10.422-31.781 10.422C1 45.031 0 46.625 0 48c0 1.359 1 2.969 2.219 3.578 0 0 22.873 1.51 31.781 10.422 8.906 8.911 10.406 31.781 10.406 31.781C45.031 95 46.625 96 48 96s2.969-1 3.562-2.219c0 0 1.523-22.871 10.438-31.781 8.913-8.908 31.781-10.422 31.781-10.422Z" fill="currentColor"/></svg>
     </span>
-    <span class="powerups-edge__toggle-label">Edge BI</span>
+    <span class="powerups-edge__toggle-face">
+      <span class="powerups-edge__toggle-icon" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3c5 0 9 3.6 9 8 0 2.4-1.2 4.6-3.2 6.1L17 21l-3.5-2.2c-.9.2-1.8.3-2.8.3-5 0-9-3.6-9-8s4-8 9-8z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="9" cy="11" r="1.2" fill="currentColor"/><circle cx="12.3" cy="11" r="1.2" fill="currentColor"/><circle cx="15.6" cy="11" r="1.2" fill="currentColor"/></svg>
+      </span>
+      <span class="powerups-edge__toggle-brand">
+        <span class="powerups-edge__toggle-label">Edge BI</span>
+        <span class="powerups-edge__toggle-label powerups-edge__toggle-label--shine" aria-hidden="true">Edge BI</span>
+      </span>
+    </span>
   </button>
-  <div class="powerups-edge__panel" id="powerups-edge-panel" hidden>
+  <div class="powerups-edge__panel" id="powerups-edge-panel" aria-hidden="true">
     <header class="powerups-edge__head">
       <div class="powerups-edge__brand">
         <span class="powerups-edge__brand-mark"></span>
@@ -72,30 +83,132 @@
   bottom: max(16px, env(safe-area-inset-bottom));
   z-index: 999999;
   box-sizing: border-box;
+  overflow: visible;
 }
 .powerups-edge *, .powerups-edge *::before, .powerups-edge *::after { box-sizing: border-box; }
 .powerups-edge__toggle {
+  --sparkle-color: #9ec5ff;
+  --sparkle-shadow: #1a2f5c;
+  --sparkle-glare: hsl(0 0% 100% / 0.78);
+  --sparkle-font-size: clamp(0.8rem, 2.2vw, 0.95rem);
+  --sparkle-padding: 10px;
+  --hover: 0;
+  --pos: 0;
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 16px;
+  justify-content: center;
+  padding: 12px 18px;
   border-radius: 999px;
   border: 1px solid var(--pu-border);
   background: linear-gradient(145deg, var(--pu-surface), #0f141d);
   color: var(--pu-text);
   cursor: pointer;
   box-shadow: var(--pu-shadow);
+  font-family: inherit;
   font-weight: 600;
   letter-spacing: 0.02em;
-  transition: transform 0.15s ease, border-color 0.15s ease;
+  overflow: visible;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
 }
-.powerups-edge__toggle:hover { border-color: var(--pu-accent); transform: translateY(-1px); }
-.powerups-edge__toggle:focus-visible { outline: 2px solid var(--pu-accent); outline-offset: 2px; }
-.powerups-edge__toggle-icon { color: var(--pu-accent-bright); display: flex; }
+.powerups-edge__toggle:hover {
+  border-color: var(--pu-accent);
+  --hover: 1;
+  --pos: 1;
+  background: linear-gradient(145deg, #1a2230, #121824);
+}
+.powerups-edge__toggle:active { --hover: 0; }
+.powerups-edge__toggle:focus-visible { outline: 2px solid var(--pu-accent); outline-offset: 3px; }
+.powerups-edge__sparkle-layer {
+  position: absolute;
+  inset: -8px -14px -12px -14px;
+  pointer-events: none;
+  z-index: 1;
+}
+.powerups-edge__sparkle-layer svg {
+  position: absolute;
+  z-index: 3;
+  width: calc(var(--sparkle-font-size) * 0.48);
+  aspect-ratio: 1;
+  --delay-step: 0.15;
+  top: calc(var(--y, 50) * 1%);
+  left: calc(var(--x, 0) * 1%);
+  transform: translate(-50%, -50%) scale(0);
+}
+.powerups-edge__sparkle-layer svg path { fill: var(--sparkle-glare); }
+.powerups-edge__toggle:hover .powerups-edge__sparkle-layer svg {
+  animation: powerups-edge-sparkle 0.75s calc((var(--delay-step) * var(--d)) * 1s) both;
+}
+.powerups-edge__sparkle-layer svg:nth-of-type(1) { --x: 8; --y: 18; --s: 1.1; --d: 1; }
+.powerups-edge__sparkle-layer svg:nth-of-type(2) { --x: 22; --y: 82; --s: 1.22; --d: 2; }
+.powerups-edge__sparkle-layer svg:nth-of-type(3) { --x: 48; --y: 38; --s: 1.08; --d: 3; }
+.powerups-edge__sparkle-layer svg:nth-of-type(4) { --x: 72; --y: 68; --s: 0.92; --d: 2; }
+.powerups-edge__sparkle-layer svg:nth-of-type(5) { --x: 92; --y: 24; --s: 0.82; --d: 4; }
+@keyframes powerups-edge-sparkle {
+  0%, 100% { transform: translate(-50%, -50%) scale(0); opacity: 0.9; }
+  40%, 60% { transform: translate(-50%, -50%) scale(var(--s, 1)); opacity: 1; }
+}
+.powerups-edge__toggle-face {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 2;
+  padding: 0 var(--sparkle-padding);
+}
+.powerups-edge__toggle-icon { color: var(--pu-accent-bright); display: flex; flex-shrink: 0; }
+.powerups-edge__toggle-brand {
+  position: relative;
+  display: inline-block;
+  line-height: 1.15;
+}
+.powerups-edge__toggle-label {
+  display: inline-block;
+  font-size: calc(var(--sparkle-font-size) * 1.15);
+  font-weight: 700;
+  transition: transform 0.2s ease, text-shadow 0.2s ease;
+  text-shadow:
+    calc(var(--hover) * (var(--sparkle-font-size) * -0.02)) calc(var(--hover) * (var(--sparkle-font-size) * 0.02)) var(--sparkle-shadow),
+    calc(var(--hover) * (var(--sparkle-font-size) * -0.05)) calc(var(--hover) * (var(--sparkle-font-size) * 0.05)) var(--sparkle-shadow),
+    calc(var(--hover) * (var(--sparkle-font-size) * -0.08)) calc(var(--hover) * (var(--sparkle-font-size) * 0.08)) var(--sparkle-shadow);
+  transform: translate(
+    calc(var(--hover) * (var(--sparkle-font-size) * 0.1)),
+    calc(var(--hover) * (var(--sparkle-font-size) * -0.06))
+  );
+}
+.powerups-edge__toggle-label--shine {
+  position: absolute;
+  inset: 0;
+  display: inline-block;
+  font-size: calc(var(--sparkle-font-size) * 1.15);
+  font-weight: 700;
+  background: linear-gradient(
+    108deg,
+    transparent 0 52%,
+    var(--sparkle-glare) 52% 58%,
+    transparent 58% 72%,
+    var(--sparkle-glare) 72% 88%,
+    transparent 88%
+  ) calc(var(--pos) * -200%) 0% / 200% 100%, var(--sparkle-color);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: none;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(
+    calc(var(--hover) * (var(--sparkle-font-size) * 0.1)),
+    calc(var(--hover) * (var(--sparkle-font-size) * -0.06))
+  );
+  transition: transform 0.2s ease, background-position 0s ease;
+}
+.powerups-edge__toggle:hover .powerups-edge__toggle-label--shine {
+  transition: transform 0.2s ease, background-position calc(var(--hover) * 1.35s) calc(var(--hover) * 0.22s) ease;
+}
 .powerups-edge__panel {
   position: absolute;
   right: 0;
-  bottom: 56px;
+  bottom: calc(100% + 10px);
   width: min(400px, calc(100vw - 32px));
   max-height: min(620px, calc(100vh - 100px));
   display: flex;
@@ -105,6 +218,33 @@
   border-radius: var(--pu-radius);
   box-shadow: var(--pu-shadow);
   overflow: hidden;
+  transform-origin: 100% 100%;
+  opacity: 0;
+  transform: scale(0.88);
+  pointer-events: none;
+  visibility: hidden;
+  transition:
+    opacity 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.38s cubic-bezier(0.34, 1.15, 0.64, 1),
+    visibility 0s linear 0.38s;
+}
+.powerups-edge.is-open .powerups-edge__panel {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+  visibility: visible;
+  transition:
+    opacity 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.4s cubic-bezier(0.34, 1.15, 0.64, 1),
+    visibility 0s linear 0s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .powerups-edge__panel {
+    transition: opacity 0.15s ease, visibility 0s;
+    transform: none;
+  }
+  .powerups-edge.is-open .powerups-edge__panel { transform: none; }
+  .powerups-edge__toggle:hover .powerups-edge__sparkle-layer svg { animation: none; }
 }
 .powerups-edge__head {
   display: flex;
@@ -215,6 +355,20 @@
   background: transparent;
   border: 1px dashed var(--pu-border);
 }
+.powerups-edge__msg-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.powerups-edge__chart {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin-top: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--pu-border);
+  background: #0c1017;
+  object-fit: contain;
+}
 .powerups-edge__composer {
   display: flex;
   align-items: stretch;
@@ -271,7 +425,6 @@
 @media (max-width: 480px) {
   .powerups-edge__panel { right: 0; left: auto; width: calc(100vw - 24px); }
 }
-.powerups-edge.is-open .powerups-edge__toggle { display: none; }
 </style>
 
 <script>
@@ -322,11 +475,28 @@
     } catch (e) { /* ignore quota */ }
   }
 
-  function appendBubble(role, text) {
+  /**
+   * Añade un mensaje al hilo. Si role es "bot" y imageUrl está definido (respuesta JSON image_url),
+   * inserta un <img> debajo del texto (outcome visible para premium / análisis con gráfica).
+   */
+  function appendMessage(role, text, imageUrl) {
     var box = el('powerups-edge-messages');
     var d = document.createElement('div');
     d.className = 'powerups-edge__msg powerups-edge__msg--' + (role === 'user' ? 'user' : role === 'sys' ? 'sys' : 'bot');
-    d.textContent = text;
+    var textEl = document.createElement('div');
+    textEl.className = 'powerups-edge__msg-text';
+    textEl.textContent = text;
+    d.appendChild(textEl);
+    if (imageUrl && role === 'bot') {
+      var img = document.createElement('img');
+      img.className = 'powerups-edge__chart';
+      img.src = imageUrl;
+      img.alt = 'Gráfica del análisis (Edge BI)';
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.referrerPolicy = 'no-referrer-when-downgrade';
+      d.appendChild(img);
+    }
     box.appendChild(d);
     box.scrollTop = box.scrollHeight;
   }
@@ -334,13 +504,15 @@
   function hydrateFromStorage() {
     el('powerups-edge-messages').innerHTML = '';
     loadHistory().forEach(function (m) {
-      appendBubble(m.role, m.text);
+      appendMessage(m.role, m.text, m.imageUrl || null);
     });
   }
 
-  function pushHistory(role, text) {
+  function pushHistory(role, text, imageUrl) {
     var h = loadHistory();
-    h.push({ role: role, text: text, t: Date.now() });
+    var entry = { role: role, text: text, t: Date.now() };
+    if (imageUrl) entry.imageUrl = imageUrl;
+    h.push(entry);
     saveHistory(h);
   }
 
@@ -446,14 +618,15 @@
         window.location.href = checkoutUrl();
         return;
       }
-      appendBubble('user', '[Acción premium] ' + (prompt === CONFIG.PROMPT_PDF ? 'Generar Informe PDF Premium' : 'Exportar Excel con Gráficas'));
+      appendMessage('user', '[Acción premium] ' + (prompt === CONFIG.PROMPT_PDF ? 'Generar Informe PDF Premium' : 'Exportar Excel con Gráficas'), null);
       pushHistory('user', '[Acción premium] Solicitud de entregable');
       var out = await sendChatMessage(prompt);
-      appendBubble('bot', out.response || '(Sin texto de respuesta)');
-      pushHistory('bot', out.response || '');
+      var imgUrl = out.image_url || out.imageUrl || null;
+      appendMessage('bot', out.response || '(Sin texto de respuesta)', imgUrl);
+      pushHistory('bot', out.response || '', imgUrl);
       await refreshCredits();
     } catch (e) {
-      appendBubble('sys', 'No se pudo completar la acción: ' + (e.message || e));
+      appendMessage('sys', 'No se pudo completar la acción: ' + (e.message || e), null);
     }
   }
 
@@ -469,19 +642,18 @@
     toggle.addEventListener('click', function () {
       var open = !root.classList.contains('is-open');
       root.classList.toggle('is-open', open);
-      panel.hidden = !open;
       toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      panel.setAttribute('aria-hidden', open ? 'false' : 'true');
       if (open) {
         hydrateFromStorage();
         refreshCredits();
-        setTimeout(function () { input.focus(); }, 50);
+        setTimeout(function () { input.focus(); }, 280);
       }
     });
     closeBtn.addEventListener('click', function () {
       root.classList.remove('is-open');
-      panel.hidden = true;
       toggle.setAttribute('aria-expanded', 'false');
-      toggle.style.display = '';
+      panel.setAttribute('aria-hidden', 'true');
     });
 
     el('powerups-edge-paywall-pay').addEventListener('click', function () {
@@ -498,20 +670,21 @@
       if (st && st.paywall && !st.is_premium) return;
 
       input.value = '';
-      appendBubble('user', t);
+      appendMessage('user', t, null);
       pushHistory('user', t);
 
       try {
         var out = await sendChatMessage(t);
+        var imgU = out.image_url || out.imageUrl || null;
         if (out.paywall) {
-          appendBubble('bot', out.response || 'Límite alcanzado.');
+          appendMessage('bot', out.response || 'Límite alcanzado.', null);
           pushHistory('bot', out.response || '');
         } else {
-          appendBubble('bot', out.response || '(Sin respuesta)');
-          pushHistory('bot', out.response || '');
+          appendMessage('bot', out.response || '(Sin respuesta)', imgU);
+          pushHistory('bot', out.response || '', imgU);
         }
       } catch (err) {
-        appendBubble('sys', 'Error: ' + (err.message || err));
+        appendMessage('sys', 'Error: ' + (err.message || err), null);
       } finally {
         await refreshCredits();
       }
@@ -523,17 +696,17 @@
       file.value = '';
       var st = await refreshCredits();
       if (st && st.paywall && !st.is_premium) {
-        appendBubble('sys', 'Primero desbloquea el análisis para adjuntar archivos.');
+        appendMessage('sys', 'Primero desbloquea el análisis para adjuntar archivos.', null);
         return;
       }
-      appendBubble('sys', 'Subiendo: ' + f.name + '…');
+      appendMessage('sys', 'Subiendo: ' + f.name + '…', null);
       try {
         var up = await uploadFile(f);
         var msg = up.message || ('Archivo recibido' + (up.indexed ? ' (indexado).' : '.'));
-        appendBubble('bot', msg);
+        appendMessage('bot', msg, null);
         pushHistory('bot', msg);
       } catch (err) {
-        appendBubble('sys', 'No se pudo subir el archivo: ' + (err.message || err));
+        appendMessage('sys', 'No se pudo subir el archivo: ' + (err.message || err), null);
       }
     });
   }
