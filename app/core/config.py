@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     # API
     api_host: str = "0.0.0.0"
     api_port: int = 8080
+    # URL pública del API (ej. https://xxxx.ngrok-free.app — sin barra final).
+    # Obligatoria si el front (WordPress) no puede alcanzar 127.0.0.1 ni si ngrok no envía X-Forwarded-*.
+    public_base_url: str = ""
 
     class Config:
         env_file = ".env"
