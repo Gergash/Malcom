@@ -64,7 +64,11 @@ def _public_base_for_assets(request: Request) -> str:
 
 def _chart_image_url(request: Request, chat_id: str, filename: str) -> str:
     base = _public_base_for_assets(request)
-    return f"{base}/data/{chat_id}/{filename}"
+    url = f"{base}/data/{chat_id}/{filename}"
+    # BLINDAJE CONTRA MIXED CONTENT: forzar HTTPS en dominios públicos
+    if "ngrok" in url or "powerups.com" in url:
+        url = url.replace("http://", "https://")
+    return url
 
 
 @router.post("/chat", response_model=ChatResponse, summary="Enviar mensaje al agente de análisis")

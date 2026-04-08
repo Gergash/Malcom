@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://insightflow:insightflow@localhost:5432/insightflow"
 
     # Paywall
-    free_message_limit: int = 7
+    free_message_limit: int = 15
 
     # API
     api_host: str = "0.0.0.0"
