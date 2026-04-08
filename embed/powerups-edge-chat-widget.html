@@ -1,12 +1,12 @@
 <!--
-  PowerUps Edge BI — Widget de chat embebible (BeBuilder / HTML custom)
+  PowerUps InsightFlow — Widget de chat embebible (BeBuilder / HTML custom)
   --------------------------------------------------------------------
   1. Ajusta CONFIG (API_BASE y CHECKOUT_URL).
   2. Pega este bloque completo en un módulo HTML de BeBuilder o plantilla.
   3. Asegura que el backend expone /api/v1 con CORS si el sitio y el API no comparten dominio.
 -->
 <div id="powerups-edge-chat" class="powerups-edge" aria-live="polite" style="position:fixed;right:max(16px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));z-index:2147483647;box-sizing:border-box;">
-  <button type="button" class="powerups-edge__toggle" id="powerups-edge-toggle" aria-expanded="false" aria-controls="powerups-edge-panel" title="Abrir asistente Edge BI">
+  <button type="button" class="powerups-edge__toggle" id="powerups-edge-toggle" aria-expanded="false" aria-controls="powerups-edge-panel" title="Abrir asistente InsightFlow">
     <span class="powerups-edge__sparkle-layer" aria-hidden="true">
       <svg viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M93.781 51.578C95 50.969 96 49.359 96 48c0-1.375-1-2.969-2.219-3.578 0 0-22.868-1.514-31.781-10.422-8.915-8.91-10.438-31.781-10.438-31.781C50.969 1 49.375 0 48 0s-2.969 1-3.594 2.219c0 0-1.5 22.87-10.406 31.781-8.908 8.913-31.781 10.422-31.781 10.422C1 45.031 0 46.625 0 48c0 1.359 1 2.969 2.219 3.578 0 0 22.873 1.51 31.781 10.422 8.906 8.911 10.406 31.781 10.406 31.781C45.031 95 46.625 96 48 96s2.969-1 3.562-2.219c0 0 1.523-22.871 10.438-31.781 8.913-8.908 31.781-10.422 31.781-10.422Z" fill="currentColor"/></svg>
       <svg viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M93.781 51.578C95 50.969 96 49.359 96 48c0-1.375-1-2.969-2.219-3.578 0 0-22.868-1.514-31.781-10.422-8.915-8.91-10.438-31.781-10.438-31.781C50.969 1 49.375 0 48 0s-2.969 1-3.594 2.219c0 0-1.5 22.87-10.406 31.781-8.908 8.913-31.781 10.422-31.781 10.422C1 45.031 0 46.625 0 48c0 1.359 1 2.969 2.219 3.578 0 0 22.873 1.51 31.781 10.422 8.906 8.911 10.406 31.781 10.406 31.781C45.031 95 46.625 96 48 96s2.969-1 3.562-2.219c0 0 1.523-22.871 10.438-31.781 8.913-8.908 31.781-10.422 31.781-10.422Z" fill="currentColor"/></svg>
@@ -19,8 +19,8 @@
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3c5 0 9 3.6 9 8 0 2.4-1.2 4.6-3.2 6.1L17 21l-3.5-2.2c-.9.2-1.8.3-2.8.3-5 0-9-3.6-9-8s4-8 9-8z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="9" cy="11" r="1.2" fill="currentColor"/><circle cx="12.3" cy="11" r="1.2" fill="currentColor"/><circle cx="15.6" cy="11" r="1.2" fill="currentColor"/></svg>
       </span>
       <span class="powerups-edge__toggle-brand">
-        <span class="powerups-edge__toggle-label">Edge BI</span>
-        <span class="powerups-edge__toggle-label powerups-edge__toggle-label--shine" aria-hidden="true">Edge BI</span>
+        <span class="powerups-edge__toggle-label">InsightFlow</span>
+        <span class="powerups-edge__toggle-label powerups-edge__toggle-label--shine" aria-hidden="true">InsightFlow</span>
       </span>
     </span>
   </button>
@@ -56,7 +56,13 @@
         </span>
       </label>
       <input type="text" class="powerups-edge__input" id="powerups-edge-input" placeholder="Describe tu análisis o pregunta por tus datos…" maxlength="8000" />
-      <button type="submit" class="powerups-edge__send" id="powerups-edge-send">Enviar</button>
+      <button type="submit" class="powerups-edge__send" id="powerups-edge-send" aria-busy="false">
+        <span class="powerups-edge__send-label powerups-edge__send-label--idle">Enviar</span>
+        <span class="powerups-edge__send-label powerups-edge__send-label--busy">
+          <span class="powerups-edge__send-spinner" aria-hidden="true"></span>
+          Pensando…
+        </span>
+      </button>
     </form>
     <p class="powerups-edge__legal">Análisis procesado localmente en Colombia bajo Ley 1581.</p>
   </div>
@@ -403,16 +409,69 @@
 }
 .powerups-edge__input:disabled { opacity: 0.55; cursor: not-allowed; }
 .powerups-edge__send {
-  padding: 0 14px;
-  border-radius: 10px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  min-width: 96px;
+  padding: 12px 18px;
+  border-radius: 12px;
   border: 1px solid var(--pu-accent);
   background: var(--pu-accent);
   color: #fff;
   font-weight: 600;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 15px;
+  line-height: 1.2;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
-.powerups-edge__send:disabled { opacity: 0.5; cursor: not-allowed; }
+.powerups-edge__send:hover:not(:disabled):not(.is-processing) {
+  background: var(--pu-accent-bright);
+  border-color: var(--pu-accent-bright);
+}
+/* Un solo estado visible: el tema WP a veces rompe [hidden]; usamos .is-processing */
+.powerups-edge__send .powerups-edge__send-label--idle {
+  display: inline;
+}
+.powerups-edge__send .powerups-edge__send-label--busy {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.powerups-edge__send.is-processing .powerups-edge__send-label--idle {
+  display: none !important;
+}
+.powerups-edge__send.is-processing .powerups-edge__send-label--busy {
+  display: inline-flex !important;
+}
+.powerups-edge__send-spinner {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: none;
+}
+.powerups-edge__send.is-processing .powerups-edge__send-spinner {
+  animation: powerups-edge-spin 0.65s linear infinite;
+}
+@keyframes powerups-edge-spin {
+  to { transform: rotate(360deg); }
+}
+.powerups-edge__send:disabled {
+  opacity: 0.85;
+  cursor: not-allowed;
+}
+.powerups-edge__send[aria-busy="true"] {
+  opacity: 1;
+  pointer-events: none;
+}
 .powerups-edge__legal {
   margin: 0;
   padding: 8px 14px 10px;
@@ -424,6 +483,13 @@
 }
 @media (max-width: 480px) {
   .powerups-edge__panel { right: 0; left: auto; width: calc(100vw - 24px); }
+  .powerups-edge__send {
+    min-height: 52px;
+    min-width: 104px;
+    padding: 14px 20px;
+    font-size: 16px;
+  }
+  .powerups-edge__composer { gap: 8px; padding: 12px 10px 14px; }
 }
 </style>
 
@@ -510,7 +576,7 @@
     if (imageUrl && role === 'bot') {
       var img = document.createElement('img');
       img.className = 'powerups-edge__chart';
-      img.alt = 'Gráfica del análisis (Edge BI)';
+      img.alt = 'Gráfica del análisis (InsightFlow)';
       img.loading = 'lazy';
       img.decoding = 'async';
       img.referrerPolicy = 'no-referrer-when-downgrade';
@@ -540,6 +606,18 @@
     el('powerups-edge-input').disabled = locked;
     el('powerups-edge-send').disabled = locked;
     el('powerups-edge-file').disabled = locked;
+  }
+
+  /** Solo mientras fetch al API: reemplaza "Enviar" por "Pensando…" + spinner (clase .is-processing). */
+  function setComposerSending(sending) {
+    var sendBtn = el('powerups-edge-send');
+    var input = el('powerups-edge-input');
+    sendBtn.setAttribute('aria-busy', sending ? 'true' : 'false');
+    sendBtn.classList.toggle('is-processing', !!sending);
+    if (sending) {
+      sendBtn.disabled = true;
+      if (input) input.disabled = true;
+    }
   }
 
   function setUsageUI(state) {
@@ -657,6 +735,7 @@
     var closeBtn = el('powerups-edge-close');
     var form = el('powerups-edge-form');
     var input = el('powerups-edge-input');
+    var sendBtn = el('powerups-edge-send');
     var file = el('powerups-edge-file');
 
     toggle.addEventListener('click', function () {
@@ -686,8 +765,11 @@
       ev.preventDefault();
       var t = (input.value || '').trim();
       if (!t) return;
+      if (sendBtn && sendBtn.disabled) return;
       var st = await refreshCredits();
       if (st && st.paywall && !st.is_premium) return;
+
+      setComposerSending(true);
 
       input.value = '';
       appendMessage('user', t, null);
@@ -706,7 +788,11 @@
       } catch (err) {
         appendMessage('sys', 'Error: ' + (err.message || err), null);
       } finally {
-        await refreshCredits();
+        try {
+          await refreshCredits();
+        } finally {
+          setComposerSending(false);
+        }
       }
     });
 
