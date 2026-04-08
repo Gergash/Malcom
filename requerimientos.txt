@@ -24,6 +24,7 @@ pandas
 openpyxl                 # leer Excel (.xlsx) en datos de usuario
 xlsxwriter               # motor ExcelWriter para reportes .xlsx
 matplotlib               # gráficas
+seaborn                  # visualizaciones estadísticas avanzadas
 numpy                    # similitud coseno en búsqueda vectorial
 
 # ── Generación de reportes ────────────────────────────────────────────────────

@@ -475,6 +475,26 @@
     } catch (e) { /* ignore quota */ }
   }
 
+  async function setImageWithNgrokBypass(img, imageUrl) {
+    try {
+      var res = await fetch(imageUrl, {
+        method: 'GET',
+        headers: { 'ngrok-skip-browser-warning': 'true' },
+        credentials: 'omit',
+      });
+      if (!res.ok) throw new Error('No se pudo descargar la imagen');
+      var blob = await res.blob();
+      var objectUrl = URL.createObjectURL(blob);
+      img.onload = function () {
+        setTimeout(function () { URL.revokeObjectURL(objectUrl); }, 1000);
+      };
+      img.src = objectUrl;
+    } catch (e) {
+      // Fallback por si el proxy/cdn bloquea fetch custom headers
+      img.src = imageUrl;
+    }
+  }
+
   /**
    * Añade un mensaje al hilo. Si role es "bot" y imageUrl está definido (respuesta JSON image_url),
    * inserta un <img> debajo del texto (outcome visible para premium / análisis con gráfica).
@@ -490,12 +510,12 @@
     if (imageUrl && role === 'bot') {
       var img = document.createElement('img');
       img.className = 'powerups-edge__chart';
-      img.src = imageUrl;
       img.alt = 'Gráfica del análisis (Edge BI)';
       img.loading = 'lazy';
       img.decoding = 'async';
       img.referrerPolicy = 'no-referrer-when-downgrade';
       d.appendChild(img);
+      setImageWithNgrokBypass(img, imageUrl);
     }
     box.appendChild(d);
     box.scrollTop = box.scrollHeight;
