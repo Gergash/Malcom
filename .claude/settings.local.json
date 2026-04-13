@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(export POPPLER_PATH=\"C:/Users/57317/AppData/Local/Microsoft/WinGet/Packages/oschwartz10612.Poppler_Microsoft.Winget.Source_8wekyb3d8bbwe/poppler-25.07.0/Library/bin\" TESSDATA_PREFIX=\"C:/Program Files/Tesseract-OCR/tessdata\")",
+      "Bash(\"/c/Users/57317/anaconda3/envs/extractor_resultados_2026/python.exe\" run_e14_extractor.py --pdf-dir \"../SENADO/RISARALDA\" --csv-2023 \"../Datos/Resultados.csv\" --output-dir \"./salida\" --workers 4)"
+    ]
+  }
+}

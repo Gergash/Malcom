@@ -23,6 +23,8 @@ try:
         generar_reporte_pdf,
         _read_schema_sample,
     )
+    from app.agents.report_generator_agent import build_report_translator_instructions
+    from app.api.schemas import ReportConfig
 except ModuleNotFoundError:
     from agents.model_manager import ModelManager
     from agents.knowledge_agent import KnowledgeAgent, DOC_EXTENSIONS
@@ -31,6 +33,8 @@ except ModuleNotFoundError:
         generar_reporte_pdf,
         _read_schema_sample,
     )
+    from agents.report_generator_agent import build_report_translator_instructions
+    from api.schemas import ReportConfig
 try:
     # Cuando se ejecuta desde la raíz: `python -m app.main`
     from app.executor import safe_exec
@@ -235,6 +239,7 @@ class AnalystAgent:
         plot_filename: str,
         report_pdf_path: str,
         report_excel_path: str,
+        report_config: Optional[ReportConfig] = None,
     ) -> str:
         system = (
             "Eres el cerebro analítico de InsightFlow basado en Gemini.\n"
@@ -243,7 +248,8 @@ class AnalystAgent:
             "1. El archivo es muy grande. NO intentes leerlo tú. Genera código para que mi sistema lo lea.\n"
             f"2. Ruta exacta del archivo: '{clean_path}'. {read_instruction}\n"
             f"3. Si se pide una gráfica, usa matplotlib y guarda SIEMPRE como '{plot_filename}' (plt.savefig + plt.close()).\n"
-            "4. Imprime con print() todos los números, años y resultados clave del análisis.\n"
+            "4. Justo después de cargar el DataFrame, imprime print('Columnas detectadas:', df.columns.tolist()) "
+            "para diagnóstico. Luego imprime con print() todos los números, años y resultados clave del análisis.\n"
             "5. Responde con análisis profesional y el código dentro de un bloque ```python.\n"
             "6. Si el usuario solo saluda o dice que va a subir archivo (sin pedir análisis), responde en lenguaje natural SIN código.\n"
             "7. PROHIBIDO: NUNCA generes código con pd.read_csv(), pd.read_excel(), open() ni ninguna "
@@ -277,7 +283,11 @@ class AnalystAgent:
             "Si no hay números explícitos en ninguna de las dos fuentes, DETENTE y genera ÚNICAMENTE un "
             "print() con el mensaje: 'SOLICITUD_DATOS: No encontré números suficientes para graficar. "
             "Por favor proporciona los datos específicos que deseas visualizar.' "
-            "PROHIBIDO generar plt.plot() ni cualquier función de visualización con datos sintéticos no solicitados."
+            "PROHIBIDO generar plt.plot() ni cualquier función de visualización con datos sintéticos no solicitados.\n"
+            "12. INFORME CON CONTRATO DE ESTILO: Si existe un bloque REPORTE — COMUNICACIÓN CORPORATIVA más abajo, "
+            "redacta el contenido textual que irá a PDF/Excel (p. ej. vía contexto_documentos o resumen ejecutivo) "
+            "cumpliendo ese contrato: audiencia, tono y dialecto. Los colores y tamaños de fuente en el archivo "
+            "los aplica el sistema; no los codifiques en Python."
         )
         doc_block = ""
         if document_context:
@@ -288,7 +298,11 @@ class AnalystAgent:
                 "Para PDF usa generar_reporte_pdf (regla 8); para Excel generar_reporte_excel_avanzado (regla 9). "
                 "NO leas archivos .pdf con código."
             )
-        return f"{system}\n\nESTRUCTURA DEL ARCHIVO:\n{schema_info}{doc_block}\n\nPREGUNTA DEL USUARIO: {user_query}"
+        style_block = build_report_translator_instructions(report_config)
+        return (
+            f"{system}{style_block}\n\nESTRUCTURA DEL ARCHIVO:\n{schema_info}{doc_block}\n\n"
+            f"PREGUNTA DEL USUARIO: {user_query}"
+        )
 
     # ── Ejecución de código y resumen con cruce documental ───────────────
 
@@ -300,11 +314,16 @@ class AnalystAgent:
         report_pdf_path: str,
         report_excel_path: str,
         plot_filename: str,
+        report_config: Optional[ReportConfig] = None,
     ) -> str:
         """Ejecuta el código generado, captura stdout y pide al modelo un resumen cruzado."""
         ruta_img = plot_filename or None
-        generar_pdf = functools.partial(generar_reporte_pdf, ruta_grafica=ruta_img)
-        generar_excel = functools.partial(generar_reporte_excel_avanzado, ruta_grafica=ruta_img)
+        generar_pdf = functools.partial(
+            generar_reporte_pdf, ruta_grafica=ruta_img, report_config=report_config
+        )
+        generar_excel = functools.partial(
+            generar_reporte_excel_avanzado, ruta_grafica=ruta_img, report_config=report_config
+        )
         namespace = {
             "pd": pd,
             "plt": plt,
@@ -348,8 +367,10 @@ class AnalystAgent:
         else:
             cross_reference = ""
 
+        narrative_contract = build_report_translator_instructions(report_config)
         prompt_final = (
             f"El código se ejecutó con éxito. Resultados técnicos del análisis de datos:\n{resultados}\n\n"
+            f"{narrative_contract}"
             "Responde como Analista Senior de InsightFlow. No menciones el código, solo conclusiones y "
             f"hallazgos en lenguaje natural.{cross_reference} {LENGTH_INSTRUCTION}"
         )
@@ -364,6 +385,7 @@ class AnalystAgent:
         local_file_path: Optional[str] = None,
         user_data_folder: Optional[str] = None,
         chat_id: Optional[int] = None,
+        report_config: Optional[ReportConfig] = None,
     ) -> str:
         """
         Analiza según la pregunta del usuario.
@@ -418,6 +440,7 @@ class AnalystAgent:
             plot_filename,
             report_pdf_path.replace("\\", "/"),
             report_excel_path.replace("\\", "/"),
+            report_config=report_config,
         )
 
         try:
@@ -438,7 +461,33 @@ class AnalystAgent:
                 report_pdf_path,
                 report_excel_path,
                 plot_filename,
+                report_config=report_config,
             )
         except Exception as e:
             print(f"Error ejecutando código local: {e}")
-            return f"Error en ejecución: {e}\n\nCódigo generado: {codigo_python}"
+            # Pedir al modelo que corrija el error usando el esquema real del archivo
+            try:
+                fix_prompt = (
+                    f"El siguiente código Python falló con el error: {e}\n\n"
+                    f"Esquema REAL del archivo (usa EXACTAMENTE estos nombres de columna):\n{schema_info}\n\n"
+                    "Corrige el código para que use exclusivamente los nombres de columna del esquema real. "
+                    "Responde SOLO con el bloque ```python corregido."
+                )
+                fix_response = self._generate(fix_prompt)
+                codigo_corregido = self._sanitize_code(self._extraer_codigo(fix_response.text))
+                if self._looks_like_python_code(codigo_corregido):
+                    return self._run_code_and_summarize(
+                        codigo_corregido,
+                        clean_path,
+                        document_context,
+                        report_pdf_path,
+                        report_excel_path,
+                        plot_filename,
+                        report_config=report_config,
+                    )
+            except Exception as e2:
+                print(f"Error en reintento de corrección: {e2}")
+            return self._cap(
+                f"Encontré un problema al analizar el archivo: {e}. "
+                "Por favor verifica que el archivo CSV esté bien formado o intenta con otra pregunta."
+            )

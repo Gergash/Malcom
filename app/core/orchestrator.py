@@ -104,7 +104,7 @@ class Orchestrator:
             "message": f"Archivo '{filename}' guardado.",
         }
 
-    async def process_message(self, message: str) -> dict:
+    async def process_message(self, message: str, report_config=None) -> dict:
         """
         Procesa un mensaje de texto y devuelve:
 
@@ -125,7 +125,7 @@ class Orchestrator:
                 None, self._run_predictor, message
             )
         else:
-            response_text = await self._run_analyst(message, loop)
+            response_text = await self._run_analyst(message, loop, report_config)
 
         return self._build_result(response_text)
 
@@ -146,7 +146,7 @@ class Orchestrator:
             user_data_folder=user_data_folder,
         ) or ""
 
-    async def _run_analyst(self, message: str, loop: asyncio.AbstractEventLoop) -> str:
+    async def _run_analyst(self, message: str, loop: asyncio.AbstractEventLoop, report_config=None) -> str:
         analyst = AnalystAgent()
         user_data_folder = str(self.data_dir.resolve())
 
@@ -160,6 +160,7 @@ class Orchestrator:
                 local_file_path=None,
                 user_data_folder=user_data_folder,
                 chat_id=self.chat_id,
+                report_config=report_config,
             )
             # Si el agente devuelve una coroutine (análisis async nativo), la ejecutamos
             if inspect.isawaitable(result):

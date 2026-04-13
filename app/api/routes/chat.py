@@ -116,7 +116,10 @@ async def chat(
     # 4 · Orquestar agentes
     try:
         orchestrator = Orchestrator(payload.chat_id)
-        result = await orchestrator.process_message(payload.message)
+        result = await orchestrator.process_message(
+            payload.message,
+            report_config=payload.report_config,
+        )
     except Exception as exc:
         logger.exception("Error en Orchestrator para chat_id=%s", payload.chat_id)
         raise HTTPException(

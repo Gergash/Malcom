@@ -11,10 +11,37 @@ from pydantic import BaseModel, EmailStr, Field
 
 # ── Chat ──────────────────────────────────────────────────────────────────────
 
+class ReportConfig(BaseModel):
+    """
+    Contrato de estilo definido en la interfaz PowerUps antes de generar el informe.
+    Guía narrativa (Thick Data) y parámetros visuales para PDF/Excel.
+    """
+    primary_color: str = Field("#28468C", description="Color corporativo principal (hex)")
+    secondary_color: str = Field("#F8F9FA", description="Color de fondo / acentos suaves (hex)")
+    font_size_body: int = Field(11, ge=6, le=24, description="Tamaño de fuente cuerpo (pt)")
+    font_size_titles: int = Field(16, ge=8, le=36, description="Tamaño de fuente títulos (pt)")
+    stakeholder_profile: str = Field(
+        "Ejecutivo C-Suite",
+        description="Perfil del lector: Ejecutivo, Técnico MLOps, Marketing, etc.",
+    )
+    language_style: str = Field(
+        "Formal",
+        description="Tono: Formal, Persuasivo, Directo, etc.",
+    )
+    dialect: str = Field(
+        "es-CO",
+        description="Variante cultural del español (ej. es-CO, es-MX)",
+    )
+
+
 class ChatRequest(BaseModel):
     chat_id: int = Field(..., description="ID único del usuario (Telegram chat_id u otro canal)")
     message: str = Field(..., min_length=1, description="Texto del mensaje del usuario")
     username: Optional[str] = Field(None, description="Nombre de usuario (opcional, para registro)")
+    report_config: Optional[ReportConfig] = Field(
+        None,
+        description="Estilo y audiencia del informe; si se omite se usan valores por defecto",
+    )
 
 
 class ChatResponse(BaseModel):
