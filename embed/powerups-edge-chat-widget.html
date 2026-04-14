@@ -614,10 +614,10 @@
     var input = el('powerups-edge-input');
     sendBtn.setAttribute('aria-busy', sending ? 'true' : 'false');
     sendBtn.classList.toggle('is-processing', !!sending);
-    if (sending) {
-      sendBtn.disabled = true;
-      if (input) input.disabled = true;
-    }
+    // BUG FIX: la rama else faltaba; sin ella, disabled quedaba true para siempre
+    // y el chat se bloqueaba tras el primer mensaje hasta recargar la página.
+    sendBtn.disabled = !!sending;
+    if (input) input.disabled = !!sending;
   }
 
   function setUsageUI(state) {
@@ -788,11 +788,13 @@
       } catch (err) {
         appendMessage('sys', 'Error: ' + (err.message || err), null);
       } finally {
-        try {
-          await refreshCredits();
-        } finally {
-          setComposerSending(false);
-        }
+        // BUG FIX: setComposerSending(false) va primero para garantizar que el
+        // compositor se re-habilite incluso si refreshCredits() falla o devuelve
+        // null (cuando retorna null, setUsageUI hace return temprano sin llamar
+        // setComposerLocked, dejando los inputs bloqueados indefinidamente).
+        // refreshCredits() aplica después el bloqueo de paywall si corresponde.
+        setComposerSending(false);
+        await refreshCredits();
       }
     });
 
