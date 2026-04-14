@@ -19,6 +19,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/powerups/insightflow-malcom/internal/api/types"
 	"github.com/powerups/insightflow-malcom/internal/db/repositories"
+	"github.com/powerups/insightflow-malcom/internal/filesystem"
 	"github.com/powerups/insightflow-malcom/internal/worker"
 )
 
@@ -96,8 +97,9 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		return
 	}
 
-	// 4 · Llamar al Worker Python (Orchestrator)
-	result, err := h.worker.ProcessMessage(ctx, req.ChatID, req.Message, req.ReportConfig)
+	// 4 · Worker: strict data si ya hay archivos del usuario en data/{chat_id}/
+	requireStrict := filesystem.HasUploadedDataFiles(h.dataDir, req.ChatID)
+	result, err := h.worker.ProcessMessage(ctx, req.ChatID, req.Message, req.ReportConfig, requireStrict)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, types.ErrorResponse{
 			Detail: fmt.Sprintf("Error procesando la consulta: %v", err),

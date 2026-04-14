@@ -194,15 +194,23 @@ class AnalystAgent:
 
     # ── Respuestas sin archivo de datos (solo contexto documental) ────────
 
-    def _answer_document_only(self, user_query: str, document_context: str) -> str:
+    def _answer_document_only(
+        self, user_query: str, document_context: str, require_strict_data: bool = False
+    ) -> str:
         """Respuesta basada exclusivamente en el contexto vectorial de documentos (PDFs, DOCX, TXT)."""
         if not document_context:
             return self._cap(
                 "No encontré información relevante en los documentos indexados. "
                 "¿Podrías subir el PDF o documento que deseas consultar?"
             )
+        strict_prefix = ""
+        if require_strict_data:
+            strict_prefix = (
+                "MODO ESTRICTO (backend): Esta conversación tiene archivos asociados. "
+                "No inventes cifras ni hechos que no aparezcan en el contexto siguiente.\n\n"
+            )
         prompt = (
-            f"{document_context}\n\n"
+            f"{strict_prefix}{document_context}\n\n"
             "PREGUNTA DEL USUARIO: " + user_query + "\n\n"
             "INSTRUCCIONES: Responde ÚNICAMENTE con base en la información de los documentos proporcionados arriba. "
             "No inventes datos. Si la información no está en los documentos, indícalo claramente. "
@@ -212,15 +220,21 @@ class AnalystAgent:
         response = self._generate(prompt)
         return self._cap(response.text)
 
-    def _answer_without_data_file(self, user_query: str, document_context: str) -> str:
+    def _answer_without_data_file(
+        self, user_query: str, document_context: str, require_strict_data: bool = False
+    ) -> str:
         """Respuesta cuando no hay archivo de datos ni documentos relevantes."""
         if document_context:
-            return self._answer_document_only(user_query, document_context)
+            return self._answer_document_only(user_query, document_context, require_strict_data)
+        if require_strict_data:
+            return self._cap(
+                "El backend indica que hay archivos asociados a esta conversación, pero no detecté un CSV/Excel "
+                "analizable ni contexto indexado de documentos para esta consulta. Sube un CSV o Excel, "
+                "o reformula la pregunta para apoyarte en los documentos ya indexados."
+            )
         prompt = user_query + "\n\n" + LENGTH_INSTRUCTION
         response = self._generate(prompt)
         return self._cap(response.text)
-
-    # ── Construcción de prompts para generación de código ────────────────
 
     def _build_read_instruction(self, clean_path: str, path_lower: str, csv_encoding: Optional[str]) -> str:
         if path_lower.endswith((".xlsx", ".xls")):
@@ -240,8 +254,17 @@ class AnalystAgent:
         report_pdf_path: str,
         report_excel_path: str,
         report_config: Optional[ReportConfig] = None,
+        require_strict_data: bool = False,
     ) -> str:
-        system = (
+        strict_prefix = ""
+        if require_strict_data:
+            strict_prefix = (
+                "MODO ESTRICTO (confirmado por el backend): Esta conversación tiene archivos del usuario "
+                "en su carpeta de datos. Está PROHIBIDO inventar cifras, tablas o series que no provengan "
+                "del archivo indicado abajo o de contexto_documentos. Si no alcanza, detente y explica qué falta; "
+                "no rellenes con datos supuestos.\n\n"
+            )
+        system = strict_prefix + (
             "Eres el cerebro analítico de InsightFlow basado en Gemini.\n"
             "TU OBJETIVO: Generar código Python para analizar archivos locales masivos.\n"
             "REGLAS CRÍTICAS:\n"
@@ -386,6 +409,7 @@ class AnalystAgent:
         user_data_folder: Optional[str] = None,
         chat_id: Optional[int] = None,
         report_config: Optional[ReportConfig] = None,
+        require_strict_data: bool = False,
     ) -> str:
         """
         Analiza según la pregunta del usuario.
@@ -407,8 +431,12 @@ class AnalystAgent:
         # Sin archivo de datos → respuesta basada solo en documentos o conversacional
         if not data_file_path or not os.path.exists(data_file_path):
             if local_file_path and _is_document_file(local_file_path):
-                return self._answer_document_only(user_query, document_context)
-            return self._answer_without_data_file(user_query, document_context)
+                return self._answer_document_only(
+                    user_query, document_context, require_strict_data
+                )
+            return self._answer_without_data_file(
+                user_query, document_context, require_strict_data
+            )
 
         # Archivo de datos (CSV/Excel) presente → generar código de análisis
         try:
@@ -441,6 +469,7 @@ class AnalystAgent:
             report_pdf_path.replace("\\", "/"),
             report_excel_path.replace("\\", "/"),
             report_config=report_config,
+            require_strict_data=require_strict_data,
         )
 
         try:

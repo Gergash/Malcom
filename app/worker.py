@@ -37,6 +37,8 @@ class ProcessMessageRequest(BaseModel):
     chat_id: int = Field(..., description="ID de conversación / Telegram")
     message: str = Field(..., min_length=1)
     report_config: ReportConfig | None = None
+    # True cuando la API Go detecta archivos en data/{chat_id}/ — no inventar datos.
+    require_strict_data: bool = False
 
 
 class IngestFileRequest(BaseModel):
@@ -54,7 +56,11 @@ async def health():
 async def internal_process_message(body: ProcessMessageRequest):
     try:
         orch = Orchestrator(body.chat_id)
-        result = await orch.process_message(body.message, report_config=body.report_config)
+        result = await orch.process_message(
+            body.message,
+            report_config=body.report_config,
+            require_strict_data=body.require_strict_data,
+        )
         return {
             "response":   result.get("response", ""),
             "has_pdf":    bool(result.get("has_pdf")),

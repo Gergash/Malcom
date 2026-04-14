@@ -6,6 +6,7 @@ package worker
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/powerups/insightflow-malcom/internal/api/types"
@@ -36,9 +37,10 @@ type IngestResult struct {
 // ── Payloads de petición al Worker ────────────────────────────────────────────
 
 type processRequest struct {
-	ChatID       int64                `json:"chat_id"`
-	Message      string               `json:"message"`
-	ReportConfig *types.ReportConfig  `json:"report_config,omitempty"`
+	ChatID            int64               `json:"chat_id"`
+	Message           string              `json:"message"`
+	ReportConfig      *types.ReportConfig `json:"report_config,omitempty"`
+	RequireStrictData bool                `json:"require_strict_data"`
 }
 
 type ingestRequest struct {
@@ -51,9 +53,9 @@ type ingestRequest struct {
 
 // Client define las operaciones que Go delega al Worker Python.
 type Client interface {
-	// ProcessMessage envía el mensaje del usuario al Orchestrator Python
-	// y devuelve la respuesta estructurada del agente.
-	ProcessMessage(ctx context.Context, chatID int64, message string, reportConfig *types.ReportConfig) (*ProcessResult, error)
+	// ProcessMessage envía el mensaje al worker. requireStrictData indica si el chat
+	// tiene archivos subidos (Go lo infiere desde data/); el analista no debe inventar datos.
+	ProcessMessage(ctx context.Context, chatID int64, message string, reportConfig *types.ReportConfig, requireStrictData bool) (*ProcessResult, error)
 
 	// IngestFile envía la ruta de un archivo temporal al Worker para que lo
 	// indexe/almacene y devuelve el resultado de la ingestión.
@@ -71,7 +73,9 @@ type HTTPClient struct {
 // NewHTTPClient crea un cliente apuntando al Worker Python.
 // baseURL ejemplo: "http://localhost:8001"
 func NewHTTPClient(baseURL string) *HTTPClient {
-	r := resty.New().SetBaseURL(baseURL)
+	r := resty.New().
+		SetBaseURL(baseURL).
+		SetTimeout(2 * time.Minute)
 	return &HTTPClient{resty: r, baseURL: baseURL}
 }
 
@@ -80,13 +84,19 @@ func (c *HTTPClient) ProcessMessage(
 	chatID int64,
 	message string,
 	reportConfig *types.ReportConfig,
+	requireStrictData bool,
 ) (*ProcessResult, error) {
 	var result ProcessResult
 	var apiErr map[string]any
 
 	resp, err := c.resty.R().
 		SetContext(ctx).
-		SetBody(processRequest{ChatID: chatID, Message: message, ReportConfig: reportConfig}).
+		SetBody(processRequest{
+			ChatID:            chatID,
+			Message:           message,
+			ReportConfig:      reportConfig,
+			RequireStrictData: requireStrictData,
+		}).
 		SetResult(&result).
 		SetError(&apiErr).
 		Post("/internal/process-message")
