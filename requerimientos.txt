@@ -18,6 +18,7 @@ python-dotenv            # carga .env
 
 # ── Telegram ──────────────────────────────────────────────────────────────────
 python-telegram-bot
+httpx                    # cliente HTTP async: bot → worker (process-message / ingest-file)
 
 # ── Google Generative AI ──────────────────────────────────────────────────────
 google-generativeai

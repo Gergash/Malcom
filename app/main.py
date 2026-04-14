@@ -1,97 +1,140 @@
+"""
+main.py: bot de Telegram de InsightFlow.
+
+Cambios respecto a la versión anterior:
+- Ya NO instancia Orchestrator / AnalystAgent / PredictorAgent directamente.
+- Delega el procesamiento de mensajes e ingestión de archivos al Worker
+  interno (app/worker.py) mediante llamadas HTTP a /internal/*.
+- Mantiene la gestión de créditos/paywall vía SQLAlchemy (PostgreSQL).
+- Bug corregido: las gráficas se leen desde chart_path devuelto por el
+  worker (data/{chat_id}/output_plot_{chat_id}.png), no desde el CWD.
+"""
+
+from __future__ import annotations
+
 import logging
 import os
-import asyncio
+
+import httpx
 from dotenv import load_dotenv
 from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
 
 try:
-    from app.agents.analyst_agent import AnalystAgent
-    from app.agents.predictor_agent import PredictorAgent
-    from app.core.orchestrator import Orchestrator
     from app.database.connection import AsyncSessionLocal, create_tables
-    from app.database.repositories.user_repo import UserRepository
     from app.database.repositories.conversation_repo import ConversationRepository
+    from app.database.repositories.user_repo import UserRepository
 except ModuleNotFoundError:
-    from agents.analyst_agent import AnalystAgent
-    from agents.predictor_agent import PredictorAgent
-    from core.orchestrator import Orchestrator
     from database.connection import AsyncSessionLocal, create_tables
-    from database.repositories.user_repo import UserRepository
     from database.repositories.conversation_repo import ConversationRepository
+    from database.repositories.user_repo import UserRepository
+
+load_dotenv()
+
+TOKEN = os.getenv("TELEGRAM_TOKEN")
+WORKER_URL = os.getenv("WORKER_URL", "http://localhost:8001").rstrip("/")
+DATA_DIR = os.getenv("DATA_DIR", "data")
 
 TELEGRAM_MAX_CHARS = 4096
 SEND_CHUNK_SIZE = TELEGRAM_MAX_CHARS - 30
 
-load_dotenv()
-TOKEN = os.getenv("TELEGRAM_TOKEN")
-
 logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
+    level=logging.INFO,
 )
-
-agent = AnalystAgent()
-predictor = PredictorAgent()
+logger = logging.getLogger(__name__)
 
 
-async def _send_long_message(bot, chat_id: int, text: str):
-    """Envía un texto que puede superar el límite de Telegram, partiéndolo en bloques."""
-    if not text:
-        return
-    text = text.strip()
+# ── Cliente HTTP → Worker ─────────────────────────────────────────────────────
+
+async def _worker_process(chat_id: int, message: str) -> dict:
+    """POST /internal/process-message → devuelve response + artefactos."""
+    async with httpx.AsyncClient(timeout=180.0) as client:
+        resp = await client.post(
+            f"{WORKER_URL}/internal/process-message",
+            json={"chat_id": chat_id, "message": message},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def _worker_ingest(chat_id: int, file_path: str, filename: str) -> dict:
+    """POST /internal/ingest-file → indexa el archivo ya guardado en disco."""
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.post(
+            f"{WORKER_URL}/internal/ingest-file",
+            json={"chat_id": chat_id, "tmp_path": file_path, "filename": filename},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+async def _send_long(bot, chat_id: int, text: str) -> None:
+    """Parte texto en bloques si supera el límite de Telegram (4096 chars)."""
+    text = (text or "").strip()
     while text:
-        chunk = text[:SEND_CHUNK_SIZE] if len(text) > SEND_CHUNK_SIZE else text
+        chunk = text[:SEND_CHUNK_SIZE]
         if len(text) > SEND_CHUNK_SIZE:
-            last_nl = chunk.rfind("\n")
-            if last_nl > SEND_CHUNK_SIZE // 2:
-                chunk = chunk[: last_nl + 1]
+            cut = chunk.rfind("\n")
+            if cut > SEND_CHUNK_SIZE // 2:
+                chunk = chunk[: cut + 1]
         await bot.send_message(chat_id=chat_id, text=chunk)
         text = text[len(chunk):].lstrip()
 
 
-PREDICTION_KEYWORDS = (
-    "stock", "comprar", "buy", "cuánto", "how much", "pronóstico", "forecast",
-    "recomendación", "recommend", "inventory", "inventario", "pedido", "order",
-    "esta semana", "this week", "semanas", "weeks"
-)
+# ── Handlers de Telegram ──────────────────────────────────────────────────────
 
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_name = update.effective_user.first_name
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    name = update.effective_user.first_name
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text=f"¡Hola {user_name}! Bienvenido a InsightFlow. Envíame un mensaje o un archivo para comenzar el análisis."
+        text=(
+            f"¡Hola {name}! Bienvenido a InsightFlow.\n"
+            "Envíame un mensaje o un archivo para comenzar el análisis."
+        ),
     )
 
 
-async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    file = await update.message.document.get_file()
-    filename = update.message.document.file_name
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
+    filename = update.message.document.file_name or "archivo"
 
-    relative_path = f"data/{chat_id}/{filename}"
-    full_path = os.path.abspath(relative_path)
-    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+    # Guardar el archivo en data/{chat_id}/ (mismo volumen que el worker en Docker)
+    user_dir = os.path.join(DATA_DIR, str(chat_id))
+    os.makedirs(user_dir, exist_ok=True)
+    save_path = os.path.abspath(os.path.join(user_dir, filename))
 
-    await file.download_to_drive(full_path)
-    print(f"DEBUG: Archivo de {chat_id} guardado en: {full_path}")
+    tg_file = await update.message.document.get_file()
+    await tg_file.download_to_drive(save_path)
+    logger.info("Archivo chat_id=%s guardado en: %s", chat_id, save_path)
+
     try:
-        result = Orchestrator(chat_id).ingest_file(full_path, filename)
-        await update.message.reply_text(f"✅ {result['message']}\nYa puedes pedirme el análisis.")
-    except Exception as e:
-        print(f"DEBUG: Error ingestando documento: {e}")
+        result = await _worker_ingest(chat_id, save_path, filename)
         await update.message.reply_text(
-            f"✅ Archivo '{filename}' recibido.\n⚠️ Error al procesar: {str(e)}"
+            f"✅ {result.get('message', 'Archivo recibido.')}\n"
+            "Ya puedes pedirme el análisis."
+        )
+    except Exception as exc:
+        logger.exception("Error ingesting file chat_id=%s", chat_id)
+        await update.message.reply_text(
+            f"✅ Archivo '{filename}' recibido.\n⚠️ Error al procesar: {exc}"
         )
 
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_text = update.message.text
     chat_id = update.effective_chat.id
     username = update.effective_user.username or update.effective_user.first_name
 
-    # ── Créditos / paywall via PostgreSQL ──────────────────────────────────
+    # ── Créditos / paywall (SQLAlchemy — igual que antes) ─────────────────────
     async with AsyncSessionLocal() as db:
         user_repo = UserRepository(db)
         conv_repo = ConversationRepository(db)
@@ -108,112 +151,95 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # Persistir mensaje del usuario
         await conv_repo.add_message(chat_id, "user", user_text)
 
-    user_data_folder = os.path.abspath(f"data/{chat_id}")
-
-    print(f"\n--- NUEVA CONSULTA ---")
-    print(f"Usuario {chat_id} ({username}) dice: {user_text}")
-    print(f"Carpeta usuario: {user_data_folder}")
-
+    logger.info("Consulta chat_id=%s: %.80s", chat_id, user_text)
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
+    # ── Llamar al Worker (Orchestrator en proceso separado) ────────────────────
     try:
-        is_prediction = any(kw in user_text.lower() for kw in PREDICTION_KEYWORDS)
-        if is_prediction:
-            respuesta_ia = predictor.answer_business_question(
-                user_text,
-                local_file_path=None,
-                user_data_folder=user_data_folder,
-            )
-        else:
-            respuesta_ia = await agent.analyze_data(
-                user_text,
-                local_file_path=None,
-                user_data_folder=user_data_folder,
-                chat_id=chat_id,
-            )
+        result = await _worker_process(chat_id, user_text)
+    except Exception as exc:
+        logger.exception("Worker error chat_id=%s", chat_id)
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"⚠️ Tuvimos un problema técnico: {exc}",
+        )
+        return
 
-        await _send_long_message(context.bot, chat_id, respuesta_ia)
+    response_text = result.get("response", "")
 
-        # ── Persistir respuesta del asistente ─────────────────────────────
-        async with AsyncSessionLocal() as db:
-            conv_repo = ConversationRepository(db)
-            await conv_repo.add_message(chat_id, "assistant", respuesta_ia or "")
+    # ── Persistir respuesta del asistente ──────────────────────────────────────
+    async with AsyncSessionLocal() as db:
+        conv_repo = ConversationRepository(db)
+        await conv_repo.add_message(chat_id, "assistant", response_text or "")
 
-        # ── Enviar artefactos generados ────────────────────────────────────
-        pdf_report_path = agent.peek_pending_pdf_report()
-        if pdf_report_path and os.path.isfile(pdf_report_path):
-            try:
-                with open(pdf_report_path, "rb") as doc:
-                    await context.bot.send_document(
-                        chat_id=chat_id,
-                        document=doc,
-                        filename="reporte_final.pdf",
-                        caption="📄 Informe PDF generado por InsightFlow.",
-                    )
-                os.remove(pdf_report_path)
-            except Exception as pdf_err:
-                logging.warning("No se pudo enviar reporte_final.pdf: %s", pdf_err)
-            finally:
-                agent.clear_pending_pdf_report()
+    await _send_long(context.bot, chat_id, response_text)
 
-        excel_report_path = agent.peek_pending_excel_report()
-        if excel_report_path and os.path.isfile(excel_report_path):
-            try:
-                with open(excel_report_path, "rb") as doc:
-                    await context.bot.send_document(
-                        chat_id=chat_id,
-                        document=doc,
-                        filename="reporte_final.xlsx",
-                        caption="📊 Informe Excel generado por InsightFlow.",
-                    )
-                os.remove(excel_report_path)
-            except Exception as xlsx_err:
-                logging.warning("No se pudo enviar reporte_final.xlsx: %s", xlsx_err)
-            finally:
-                agent.clear_pending_excel_report()
+    # ── Artefacto: PDF ─────────────────────────────────────────────────────────
+    pdf_path = result.get("pdf_path") or ""
+    if result.get("has_pdf") and pdf_path and os.path.isfile(pdf_path):
+        try:
+            with open(pdf_path, "rb") as doc:
+                await context.bot.send_document(
+                    chat_id=chat_id,
+                    document=doc,
+                    filename="reporte_final.pdf",
+                    caption="📄 Informe PDF generado por InsightFlow.",
+                )
+            os.remove(pdf_path)
+        except Exception as exc:
+            logger.warning("No se pudo enviar PDF: %s", exc)
 
-        plot_filename = f"output_plot_{chat_id}.png"
-        await asyncio.sleep(1)
+    # ── Artefacto: Excel ───────────────────────────────────────────────────────
+    excel_path = result.get("excel_path") or ""
+    if result.get("has_excel") and excel_path and os.path.isfile(excel_path):
+        try:
+            with open(excel_path, "rb") as doc:
+                await context.bot.send_document(
+                    chat_id=chat_id,
+                    document=doc,
+                    filename="reporte_final.xlsx",
+                    caption="📊 Informe Excel generado por InsightFlow.",
+                )
+            os.remove(excel_path)
+        except Exception as exc:
+            logger.warning("No se pudo enviar Excel: %s", exc)
 
-        if os.path.exists(plot_filename):
-            print(f"LOG: ¡Gráfica encontrada! Enviando a Telegram ({plot_filename})...")
-            with open(plot_filename, "rb") as photo:
+    # ── Artefacto: Gráfica ─────────────────────────────────────────────────────
+    # BUG FIX: se usaba os.path.exists(f"output_plot_{chat_id}.png") que buscaba
+    # en el CWD raíz. Ahora se usa chart_path del worker, que apunta correctamente
+    # a data/{chat_id}/output_plot_{chat_id}.png.
+    chart_path = result.get("chart_path") or ""
+    if result.get("has_chart") and chart_path and os.path.isfile(chart_path):
+        try:
+            with open(chart_path, "rb") as photo:
                 await context.bot.send_photo(
                     chat_id=chat_id,
                     photo=photo,
-                    caption="📊 Análisis visual generado por InsightFlow."
+                    caption="📊 Análisis visual generado por InsightFlow.",
                 )
-            os.remove(plot_filename)
-        else:
-            if "grafic" in user_text.lower() or "dibuj" in user_text.lower():
-                print(f"LOG: El usuario pidió gráfica pero '{plot_filename}' no fue creado.")
-
-    except Exception as e:
-        print(f"ERROR en handle_message: {e}")
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=f"⚠️ Tuvimos un problema técnico: {str(e)}"
-        )
+            os.remove(chart_path)
+        except Exception as exc:
+            logger.warning("No se pudo enviar gráfica: %s", exc)
 
 
-async def post_init(application):
-    """Inicializa las tablas de PostgreSQL al arrancar el bot."""
+# ── Arranque ──────────────────────────────────────────────────────────────────
+
+async def post_init(application) -> None:
     await create_tables()
-    logging.info("Tablas PostgreSQL listas.")
+    logger.info("Tablas PostgreSQL listas.")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     application = (
         ApplicationBuilder()
         .token(TOKEN)
         .post_init(post_init)
         .build()
     )
-    application.add_handler(CommandHandler('start', start))
+    application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
-    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
-    print("InsightFlow Bot corriendo y escuchando archivos...")
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    logger.info("InsightFlow Bot arrancando — WORKER_URL=%s", WORKER_URL)
     application.run_polling()

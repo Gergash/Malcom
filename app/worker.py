@@ -56,11 +56,15 @@ async def internal_process_message(body: ProcessMessageRequest):
         orch = Orchestrator(body.chat_id)
         result = await orch.process_message(body.message, report_config=body.report_config)
         return {
-            "response": result.get("response", ""),
-            "has_pdf": bool(result.get("has_pdf")),
-            "has_excel": bool(result.get("has_excel")),
-            "has_chart": bool(result.get("has_chart")),
+            "response":   result.get("response", ""),
+            "has_pdf":    bool(result.get("has_pdf")),
+            "has_excel":  bool(result.get("has_excel")),
+            "has_chart":  bool(result.get("has_chart")),
             "chart_path": result.get("chart_path") or "",
+            # Rutas absolutas para que el bot de Telegram pueda leer y enviar
+            # los archivos directamente (volumen compartido en Docker).
+            "pdf_path":   result.get("pdf_path") or "",
+            "excel_path": result.get("excel_path") or "",
         }
     except Exception as exc:
         logger.exception("process-message chat_id=%s", body.chat_id)

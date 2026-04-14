@@ -15,11 +15,13 @@ import (
 
 // ProcessResult — resultado que el Worker Python retorna tras procesar un mensaje.
 type ProcessResult struct {
-	Response  string  `json:"response"`
-	HasPDF    bool    `json:"has_pdf"`
-	HasExcel  bool    `json:"has_excel"`
-	HasChart  bool    `json:"has_chart"`
-	ChartPath string  `json:"chart_path"` // ruta en disco, si existe
+	Response  string `json:"response"`
+	HasPDF    bool   `json:"has_pdf"`
+	HasExcel  bool   `json:"has_excel"`
+	HasChart  bool   `json:"has_chart"`
+	ChartPath string `json:"chart_path"` // ruta en disco, si existe
+	PDFPath   string `json:"pdf_path"`   // ruta al PDF generado (usado por el bot)
+	ExcelPath string `json:"excel_path"` // ruta al Excel generado (usado por el bot)
 }
 
 // IngestResult — resultado que el Worker Python retorna tras ingestar un archivo.
