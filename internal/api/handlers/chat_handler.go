@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/powerups/insightflow-malcom/internal/api/types"
@@ -167,33 +168,46 @@ func (h *ChatHandler) UploadFile(c *gin.Context) {
 		return
 	}
 
-	// Escribir en archivo temporal conservando la extensión
-	ext := filepath.Ext(fh.Filename)
+	// Archivo en data/.upload-tmp/ para que el worker Python (mismo volumen Docker) pueda leerlo.
+	uploadDir := filepath.Join(h.dataDir, ".upload-tmp")
+	if err := os.MkdirAll(uploadDir, 0o755); err != nil {
+		c.JSON(http.StatusInternalServerError, types.ErrorResponse{Detail: "No se pudo crear directorio de subidas"})
+		return
+	}
+	baseName := filepath.Base(fh.Filename)
+	if baseName == "" || baseName == "." {
+		baseName = "archivo"
+	}
+	ext := filepath.Ext(baseName)
 	if ext == "" {
 		ext = ".bin"
 	}
-	tmpFile, err := os.CreateTemp("", "insightflow-upload-*"+ext)
+	tmpName := fmt.Sprintf("%d_%d%s", chatID, time.Now().UnixNano(), ext)
+	tmpPath := filepath.Join(uploadDir, tmpName)
+	defer os.Remove(tmpPath)
+
+	out, err := os.Create(tmpPath)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, types.ErrorResponse{
 			Detail: "No se pudo crear archivo temporal",
 		})
 		return
 	}
-	tmpPath := tmpFile.Name()
-	defer os.Remove(tmpPath) // limpieza garantizada
 
 	src, err := fh.Open()
 	if err != nil {
+		out.Close()
 		c.JSON(http.StatusInternalServerError, types.ErrorResponse{Detail: err.Error()})
 		return
 	}
 	defer src.Close()
 
-	if _, err := io.Copy(tmpFile, src); err != nil {
+	if _, err := io.Copy(out, src); err != nil {
+		out.Close()
 		c.JSON(http.StatusInternalServerError, types.ErrorResponse{Detail: err.Error()})
 		return
 	}
-	tmpFile.Close()
+	out.Close()
 
 	// Delegar ingestión al Worker Python
 	ctx := c.Request.Context()

@@ -1,0 +1,221 @@
+// billing_handler.go: endpoints de facturación e integración con WordPress.
+// Reemplaza app/api/routes/billing.py
+//
+// GET  /api/v1/billing/status      → estado para botones del frontend
+// POST /api/v1/billing/webhook     → confirmación de pago (Wompi/PSE)
+// POST /api/v1/billing/link-email  → vincula email a chat_id de Telegram
+package handlers
+
+import (
+	"fmt"
+	"net/http"
+	"strings"
+
+	"github.com/gin-gonic/gin"
+	"github.com/powerups/insightflow-malcom/internal/api/types"
+	"github.com/powerups/insightflow-malcom/internal/db/repositories"
+)
+
+// BillingHandler agrupa las dependencias de los endpoints de facturación.
+type BillingHandler struct {
+	userRepo    repositories.UserRepository
+	paymentRepo repositories.PaymentRepository
+}
+
+// NewBillingHandler construye el handler con sus dependencias.
+func NewBillingHandler(
+	userRepo repositories.UserRepository,
+	paymentRepo repositories.PaymentRepository,
+) *BillingHandler {
+	return &BillingHandler{
+		userRepo:    userRepo,
+		paymentRepo: paymentRepo,
+	}
+}
+
+// ── GET /api/v1/billing/status ────────────────────────────────────────────────
+
+// BillingStatus devuelve el estado del plan del usuario para que WordPress
+// decida qué botones mostrar (Upgrade / Generar PDF / Paywall).
+//
+// Requiere al menos uno: ?chat_id= o ?email=
+func (h *BillingHandler) BillingStatus(c *gin.Context) {
+	chatIDParam := c.Query("chat_id")
+	emailParam := c.Query("email")
+
+	if chatIDParam == "" && emailParam == "" {
+		c.JSON(http.StatusUnprocessableEntity, types.ErrorResponse{
+			Detail: "Se requiere al menos uno de: chat_id, email",
+		})
+		return
+	}
+
+	var chatID *int64
+	if chatIDParam != "" {
+		var id int64
+		if _, err := fmt.Sscanf(chatIDParam, "%d", &id); err != nil {
+			c.JSON(http.StatusUnprocessableEntity, types.ErrorResponse{
+				Detail: "chat_id debe ser un entero válido",
+			})
+			return
+		}
+		chatID = &id
+	}
+
+	var email *string
+	if emailParam != "" {
+		email = &emailParam
+	}
+
+	ctx := c.Request.Context()
+	state, err := h.userRepo.GetState(ctx, chatID, email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, types.ErrorResponse{
+			Detail: fmt.Sprintf("Error consultando estado: %v", err),
+		})
+		return
+	}
+
+	plan := "free"
+	if state.IsPremium {
+		plan = "premium"
+	}
+
+	c.JSON(http.StatusOK, types.BillingStatusResponse{
+		ChatID:            state.ChatID,
+		Email:             state.Email,
+		IsPremium:         state.IsPremium,
+		Plan:              plan,
+		MessageCount:      state.MessageCount,
+		CreditsRemaining:  state.CreditsRemaining,
+		ShowUpgradeButton: !state.IsPremium,
+		ShowPDFButton:     state.IsPremium,
+		PaywallActive:     state.Paywall,
+		PremiumSince:      state.PremiumSince,
+	})
+}
+
+// ── POST /api/v1/billing/webhook ──────────────────────────────────────────────
+
+// PaymentWebhook recibe la notificación de pago del PSP (Wompi, PSE u otro).
+//
+// Flujo (espeja billing.py):
+//   APPROVED → registra el pago como pagado + activa is_premium en el usuario.
+//   DECLINED / ERROR / VOIDED → registra el pago como fallido.
+//
+// Es idempotente: si la referencia ya fue procesada responde AlreadyProcessed=true.
+func (h *BillingHandler) PaymentWebhook(c *gin.Context) {
+	var req types.PaymentWebhookRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusUnprocessableEntity, types.ErrorResponse{Detail: err.Error()})
+		return
+	}
+
+	// Proveedor por defecto
+	if req.Provider == "" {
+		req.Provider = "wompi"
+	}
+
+	ctx := c.Request.Context()
+
+	approvedStatuses := map[string]bool{
+		"APPROVED":  true,
+		"COMPLETED": true,
+	}
+
+	if !approvedStatuses[strings.ToUpper(req.Status)] {
+		// Pago fallido — registrar sin activar premium
+		if err := h.paymentRepo.MarkFailed(ctx, req.Reference, req.Provider, req.AmountInCents); err != nil {
+			c.JSON(http.StatusInternalServerError, types.ErrorResponse{
+				Detail: fmt.Sprintf("Error registrando pago fallido: %v", err),
+			})
+			return
+		}
+		c.JSON(http.StatusOK, types.PaymentWebhookResponse{
+			Success:   false,
+			Message:   fmt.Sprintf("Pago con estado '%s' registrado.", req.Status),
+			Reference: req.Reference,
+		})
+		return
+	}
+
+	// Pago aprobado
+	result, err := h.paymentRepo.ConfirmPayment(
+		ctx,
+		req.Reference,
+		req.AmountInCents,
+		req.Provider,
+		req.PayerEmail,
+		req.PayerChatID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, types.ErrorResponse{
+			Detail: fmt.Sprintf("Error confirmando pago: %v", err),
+		})
+		return
+	}
+
+	msg := "Premium activado."
+	if result.AlreadyProcessed {
+		msg = "Pago ya procesado anteriormente."
+	}
+
+	resp := types.PaymentWebhookResponse{
+		Success:          true,
+		AlreadyProcessed: result.AlreadyProcessed,
+		Message:          msg,
+		Reference:        req.Reference,
+	}
+	if result.User != nil {
+		resp.UserEmail = result.User.Email
+		resp.UserChatID = result.User.ChatID
+		resp.IsPremium = result.User.IsPremium
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// ── POST /api/v1/billing/link-email ──────────────────────────────────────────
+
+// LinkEmail asocia el email del usuario a su chat_id de Telegram.
+// Necesario para que el webhook de pago pueda activar el premium
+// aunque no llegue el chat_id en el payload de Wompi.
+func (h *BillingHandler) LinkEmail(c *gin.Context) {
+	var body struct {
+		ChatID int64  `json:"chat_id" validate:"required"`
+		Email  string `json:"email"   validate:"required,email"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusUnprocessableEntity, types.ErrorResponse{Detail: err.Error()})
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	if err := h.userRepo.LinkEmail(ctx, body.ChatID, body.Email); err != nil {
+		c.JSON(http.StatusBadRequest, types.ErrorResponse{
+			Detail: fmt.Sprintf("No se pudo vincular el email: %v", err),
+		})
+		return
+	}
+
+	state, err := h.userRepo.GetState(ctx, &body.ChatID, nil)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, types.ErrorResponse{
+			Detail: fmt.Sprintf("Error consultando estado tras vincular: %v", err),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, types.CreditStateResponse{
+		ChatID:           state.ChatID,
+		Email:            state.Email,
+		Username:         state.Username,
+		MessageCount:     state.MessageCount,
+		IsPremium:        state.IsPremium,
+		FreeMessageLimit: state.FreeMessageLimit,
+		CreditsRemaining: state.CreditsRemaining,
+		Paywall:          state.Paywall,
+		PremiumSince:     state.PremiumSince,
+	})
+}

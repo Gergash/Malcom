@@ -1,5 +1,5 @@
 // interfaces.go: contratos de repositorio que los handlers consumen.
-// Las implementaciones GORM/pgx van en archivos separados (próximo paso).
+// Implementaciones: internal/db/repos (GORM).
 package repositories
 
 import "context"
@@ -50,6 +50,10 @@ type UserRepository interface {
 	// LinkEmail asocia un email permanente al chat_id de Telegram del usuario.
 	// Equivale a user_repo.link_email().
 	LinkEmail(ctx context.Context, chatID int64, email string) error
+
+	// ActivatePremium activa is_premium (y premium_since) si aún no lo está.
+	// Usado por el webhook de pago. Equivale a user_repo.activate_premium().
+	ActivatePremium(ctx context.Context, chatID *int64, email *string) (*PaymentUser, error)
 }
 
 // ConversationRepository — operaciones sobre el historial de conversación.

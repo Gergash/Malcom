@@ -1,0 +1,21 @@
+# Imagen mínima para la API Go (InsightFlow Malcom).
+FROM golang:1.22-bookworm AS build
+
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/api ./cmd/api
+
+FROM alpine:3.19
+RUN apk add --no-cache ca-certificates tzdata
+WORKDIR /app
+
+COPY --from=build /out/api /app/api
+
+ENV API_PORT=8080
+ENV DATA_DIR=/app/data
+
+EXPOSE 8080
+CMD ["/app/api"]
