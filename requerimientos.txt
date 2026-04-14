@@ -1,7 +1,10 @@
-# ── Web framework ──────────────────────────────────────────────────────────────
+# ── Worker interno (InsightFlow Brain) ────────────────────────────────────────
+# FastAPI + uvicorn se mantienen: app/worker.py los usa como servidor interno.
+# Go (Dockerfile.api) maneja la API pública; Python solo es el "cerebro" de IA.
 fastapi
 uvicorn[standard]
-python-multipart        # requerido para upload de archivos en FastAPI
+# python-multipart eliminado: el worker no tiene endpoints de subida de archivos;
+# Go maneja multipart y pasa la ruta del temporal al brain vía JSON.
 
 # ── Base de datos (PostgreSQL async) ──────────────────────────────────────────
 sqlalchemy[asyncio]>=2.0
