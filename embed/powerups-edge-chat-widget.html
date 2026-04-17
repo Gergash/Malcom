@@ -511,6 +511,17 @@
 
   function el(id) { return document.getElementById(id); }
 
+  /** Evita la página intersticial de ngrok (tunnel gratuito) en peticiones al API. */
+  function apiHeaders(extra) {
+    var h = { 'ngrok-skip-browser-warning': 'true' };
+    if (extra) {
+      for (var k in extra) {
+        if (Object.prototype.hasOwnProperty.call(extra, k)) h[k] = extra[k];
+      }
+    }
+    return h;
+  }
+
   function getOrCreateChatId() {
     var raw = localStorage.getItem(CONFIG.STORAGE_KEY_CHAT);
     var n = raw ? parseInt(raw, 10) : NaN;
@@ -649,7 +660,7 @@
   async function fetchCredits() {
     var id = getOrCreateChatId();
     var url = CONFIG.API_BASE + '/api/v1/chat/' + encodeURIComponent(String(id)) + '/credits';
-    var res = await fetch(url, { method: 'GET', credentials: 'omit' });
+    var res = await fetch(url, { method: 'GET', headers: apiHeaders(), credentials: 'omit' });
     if (!res.ok) throw new Error('No se pudo obtener créditos');
     return res.json();
   }
@@ -668,7 +679,7 @@
   async function fetchBillingStatus() {
     var id = getOrCreateChatId();
     var url = CONFIG.API_BASE + '/api/v1/billing/status?chat_id=' + encodeURIComponent(String(id));
-    var res = await fetch(url, { credentials: 'omit' });
+    var res = await fetch(url, { headers: apiHeaders(), credentials: 'omit' });
     if (!res.ok) throw new Error('billing/status');
     return res.json();
   }
@@ -679,7 +690,7 @@
     if (CONFIG.USERNAME) body.username = CONFIG.USERNAME;
     var res = await fetch(CONFIG.API_BASE + '/api/v1/chat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: apiHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(body),
       credentials: 'omit',
     });
@@ -698,6 +709,7 @@
     fd.append('file', file, file.name);
     var res = await fetch(CONFIG.API_BASE + '/api/v1/chat/upload', {
       method: 'POST',
+      headers: apiHeaders(),
       body: fd,
       credentials: 'omit',
     });

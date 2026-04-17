@@ -61,12 +61,15 @@ func main() {
 
 	router := gin.Default()
 
-	router.Use(cors.New(cors.Config{
-		AllowAllOrigins:  true,
-		AllowCredentials: true,
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"*"},
-	}))
+	// CORS: el widget en WordPress y ngrok usan otro origen; credenciales omitidas en fetch del widget.
+	corsCfg := cors.DefaultConfig()
+	corsCfg.AllowAllOrigins = true
+	corsCfg.AllowCredentials = false
+	corsCfg.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
+	corsCfg.AllowHeaders = []string{
+		"Origin", "Content-Type", "Accept", "Authorization", "ngrok-skip-browser-warning",
+	}
+	router.Use(cors.New(corsCfg))
 
 	router.Static("/data", cfg.DataDir)
 

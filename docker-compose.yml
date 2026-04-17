@@ -30,7 +30,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # API Go: borde público (puerto 8080).
+  # API Go (Malcom): borde público. Ngrok en el host debe apuntar a localhost:8080 → contenedor :8080.
   api:
     build:
       context: .
