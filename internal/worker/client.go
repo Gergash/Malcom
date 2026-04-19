@@ -64,6 +64,27 @@ type Client interface {
 
 // ── Implementación HTTP (Resty) ───────────────────────────────────────────────
 
+const maxWorkerPatience = 5 * time.Minute
+
+// calculateProcessTimeout ajusta el tiempo de espera al Brain según carga esperada
+// (prompt largo, informe con ReportConfig, chat con archivos / datos estrictos).
+func calculateProcessTimeout(message string, reportConfig *types.ReportConfig, requireStrictData bool) time.Duration {
+	timeout := 30 * time.Second
+	if len(message) > 500 {
+		timeout += 30 * time.Second
+	}
+	if reportConfig != nil {
+		timeout += 2 * time.Minute
+	}
+	if requireStrictData {
+		timeout += 2 * time.Minute
+	}
+	if timeout > maxWorkerPatience {
+		return maxWorkerPatience
+	}
+	return timeout
+}
+
 // HTTPClient implementa Client llamando al Worker Python vía HTTP.
 type HTTPClient struct {
 	resty   *resty.Client
@@ -72,10 +93,23 @@ type HTTPClient struct {
 
 // NewHTTPClient crea un cliente apuntando al Worker Python.
 // baseURL ejemplo: "http://localhost:8001"
+// El timeout por petición lo fija el contexto en ProcessMessage/IngestFile; el techo
+// de Resty debe ser ≥ el máximo de esos contextos. Reintentos solo en 502–504.
 func NewHTTPClient(baseURL string) *HTTPClient {
 	r := resty.New().
 		SetBaseURL(baseURL).
-		SetTimeout(2 * time.Minute)
+		SetTimeout(6 * time.Minute).
+		SetRetryCount(2).
+		SetRetryWaitTime(5 * time.Second).
+		SetRetryMaxWaitTime(20 * time.Second).
+		AddRetryCondition(func(resp *resty.Response, err error) bool {
+			if resp == nil {
+				return false
+			}
+			sc := resp.StatusCode()
+			return sc >= 502 && sc <= 504
+		})
+
 	return &HTTPClient{resty: r, baseURL: baseURL}
 }
 
@@ -86,11 +120,15 @@ func (c *HTTPClient) ProcessMessage(
 	reportConfig *types.ReportConfig,
 	requireStrictData bool,
 ) (*ProcessResult, error) {
+	patience := calculateProcessTimeout(message, reportConfig, requireStrictData)
+	dynamicCtx, cancel := context.WithTimeout(ctx, patience)
+	defer cancel()
+
 	var result ProcessResult
 	var apiErr map[string]any
 
 	resp, err := c.resty.R().
-		SetContext(ctx).
+		SetContext(dynamicCtx).
 		SetBody(processRequest{
 			ChatID:            chatID,
 			Message:           message,
@@ -115,11 +153,14 @@ func (c *HTTPClient) IngestFile(
 	chatID int64,
 	tmpPath, filename string,
 ) (*IngestResult, error) {
+	ingestCtx, cancel := context.WithTimeout(ctx, maxWorkerPatience)
+	defer cancel()
+
 	var result IngestResult
 	var apiErr map[string]any
 
 	resp, err := c.resty.R().
-		SetContext(ctx).
+		SetContext(ingestCtx).
 		SetBody(ingestRequest{ChatID: chatID, TmpPath: tmpPath, Filename: filename}).
 		SetResult(&result).
 		SetError(&apiErr).
