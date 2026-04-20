@@ -21,9 +21,9 @@ try:
     from app.agents.report_generator import (
         generar_reporte_excel_avanzado,
         generar_reporte_pdf,
-        _read_schema_sample,
     )
     from app.agents.report_generator_agent import build_report_translator_instructions
+    from app.agents.data_cleaner import smart_read_schema
     from app.api.schemas import ReportConfig
 except ModuleNotFoundError:
     from agents.model_manager import ModelManager
@@ -31,9 +31,9 @@ except ModuleNotFoundError:
     from agents.report_generator import (
         generar_reporte_excel_avanzado,
         generar_reporte_pdf,
-        _read_schema_sample,
     )
     from agents.report_generator_agent import build_report_translator_instructions
+    from agents.data_cleaner import smart_read_schema  # type: ignore
     from api.schemas import ReportConfig
 try:
     # Cuando se ejecuta desde la raíz: `python -m app.main`
@@ -236,12 +236,47 @@ class AnalystAgent:
         response = self._generate(prompt)
         return self._cap(response.text)
 
-    def _build_read_instruction(self, clean_path: str, path_lower: str, csv_encoding: Optional[str]) -> str:
+    def _build_read_instruction(
+        self,
+        clean_path: str,
+        path_lower: str,
+        csv_encoding: Optional[str],
+        header_row: int = 0,
+        pipe_columns: Optional[List[str]] = None,
+    ) -> str:
+        pipe_cols = pipe_columns or []
+        # Instrucción base de lectura con header real
         if path_lower.endswith((".xlsx", ".xls")):
-            return f"Usa pd.read_excel('{clean_path}') para cargar el archivo."
-        if csv_encoding and csv_encoding != "utf-8":
-            return f"Usa pd.read_csv('{clean_path}', encoding='{csv_encoding}') para cargar el archivo (este CSV no es UTF-8)."
-        return f"Usa pd.read_csv('{clean_path}') para cargar el archivo."
+            if header_row > 0:
+                base = (
+                    f"Usa pd.read_excel('{clean_path}', header={header_row}) para cargar el archivo "
+                    f"(el preprocesador detectó que el header real está en la fila {header_row}; "
+                    "las filas anteriores son metadata/título del reporte — no las incluyas)."
+                )
+            else:
+                base = f"Usa pd.read_excel('{clean_path}') para cargar el archivo."
+        else:
+            enc_part = f", encoding='{csv_encoding}'" if csv_encoding and csv_encoding != "utf-8" else ""
+            if header_row > 0:
+                base = (
+                    f"Usa pd.read_csv('{clean_path}'{enc_part}, header={header_row}) para cargar el archivo "
+                    f"(el preprocesador detectó el header real en la fila {header_row}; "
+                    "las filas anteriores son metadata/título del reporte — no las incluyas)."
+                )
+            else:
+                base = f"Usa pd.read_csv('{clean_path}'{enc_part}) para cargar el archivo."
+        # Instrucción de expansión pipe si aplica
+        if not pipe_cols:
+            return base
+        pipe_list = ", ".join(f"'{c}'" for c in pipe_cols)
+        pipe_instruction = (
+            f" Inmediatamente después de cargar df, expande las columnas con separador '|' así: "
+            f"for _col in [{pipe_list}]:\n"
+            "    _exp = df[_col].astype(str).str.split('|', expand=True).apply(lambda s: s.str.strip())\n"
+            "    _exp.columns = [f'{_col}_p{i}' for i in range(len(_exp.columns))]\n"
+            "    df = pd.concat([df.drop(_col, axis=1), _exp], axis=1)"
+        )
+        return base + pipe_instruction
 
     def _build_code_prompt(
         self,
@@ -310,7 +345,18 @@ class AnalystAgent:
             "12. INFORME CON CONTRATO DE ESTILO: Si existe un bloque REPORTE — COMUNICACIÓN CORPORATIVA más abajo, "
             "redacta el contenido textual que irá a PDF/Excel (p. ej. vía contexto_documentos o resumen ejecutivo) "
             "cumpliendo ese contrato: audiencia, tono y dialecto. Los colores y tamaños de fuente en el archivo "
-            "los aplica el sistema; no los codifiques en Python."
+            "los aplica el sistema; no los codifiques en Python.\n"
+            "13. CONTEXTO DE DOMINIO — COLOMBIA / DIAN: Si el schema del archivo contiene columnas como FOB, CIF, "
+            "Aduana, NIT, Subpartida, NANDINA, Declaración, o si el schema_info menciona 'NOTA DE LIMPIEZA "
+            "AUTOMÁTICA', aplica estas reglas sin pedir permiso al usuario: "
+            "(a) Usa exactamente el header_row y las opciones de lectura que están en la instrucción de carga "
+            "    (regla 2); nunca redefinás header=0 si ya se especificó otro valor. "
+            "(b) Las columnas con sufijos _p0, _p1, _p2... son el resultado de expandir un separador '|'; "
+            "    son columnas de datos reales — úsalas directamente en el análisis. "
+            "(c) Las columnas llamadas 'Unnamed: N' en reportes DIAN suelen contener valores reales; "
+            "    renómbralas según el contexto de las columnas vecinas antes de graficar. "
+            "(d) Nunca solicites al usuario que especifique la fila del header ni el separador; "
+            "    el preprocesador ya lo resolvió. Limpia en silencio y reporta los hallazgos."
         )
         doc_block = ""
         if document_context:
@@ -438,16 +484,33 @@ class AnalystAgent:
                 user_query, document_context, require_strict_data
             )
 
-        # Archivo de datos (CSV/Excel) presente → generar código de análisis
+        # Archivo de datos (CSV/Excel) presente → limpieza heurística + generar código de análisis
         try:
-            df_sample, csv_encoding = _read_schema_sample(data_file_path)
+            read_result = smart_read_schema(data_file_path)
+            df_sample = read_result.df
+            csv_encoding = read_result.encoding
+            header_row = read_result.header_row
+            pipe_columns = read_result.pipe_columns
             schema_info = f"Columnas: {list(df_sample.columns)}\nMuestra: {df_sample.to_dict('records')}"
+            if read_result.was_cleaned:
+                cleaning_parts = []
+                if header_row > 0:
+                    cleaning_parts.append(f"header real detectado en fila {header_row}")
+                if pipe_columns:
+                    cleaning_parts.append(f"columnas con separador '|' expandidas: {pipe_columns}")
+                schema_info += (
+                    "\n\nNOTA DE LIMPIEZA AUTOMÁTICA: El preprocesador aplicó correcciones silenciosas "
+                    f"({'; '.join(cleaning_parts)}). Informa brevemente al usuario al inicio de tu "
+                    "respuesta que limpiaste el archivo automáticamente antes de analizar."
+                )
         except Exception as e:
             return f"Error al leer la estructura del archivo local: {e}"
 
         clean_path = data_file_path.replace("\\", "/")
         path_lower = clean_path.lower()
-        read_instruction = self._build_read_instruction(clean_path, path_lower, csv_encoding)
+        read_instruction = self._build_read_instruction(
+            clean_path, path_lower, csv_encoding, header_row, pipe_columns
+        )
         plot_filename = f"output_plot_{chat_id}.png" if chat_id else "output_plot.png"
         report_pdf_path = (
             os.path.join(os.path.abspath(user_data_folder), "reporte_final.pdf")
