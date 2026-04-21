@@ -4,7 +4,7 @@ schemas.py: modelos Pydantic para request/response del API.
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -15,6 +15,7 @@ class ReportConfig(BaseModel):
     """
     Contrato de estilo definido en la interfaz PowerUps antes de generar el informe.
     Guía narrativa (Thick Data) y parámetros visuales para PDF/Excel.
+    Los campos tier y chart_types los inyecta Go desde la DB; el frontend no los envía.
     """
     primary_color: str = Field("#28468C", description="Color corporativo principal (hex)")
     secondary_color: str = Field("#F8F9FA", description="Color de fondo / acentos suaves (hex)")
@@ -31,6 +32,12 @@ class ReportConfig(BaseModel):
     dialect: str = Field(
         "es-CO",
         description="Variante cultural del español (ej. es-CO, es-MX)",
+    )
+    # Inyectados por Go (Gatekeeper) — determinan los "poderes" del agente de Python.
+    tier: str = Field("free", description="Plan del usuario: 'free' | 'premium'")
+    chart_types: List[str] = Field(
+        default_factory=lambda: ["bars"],
+        description="Tipos de gráficas permitidos: bars | heatmap | pie | treemap",
     )
 
 

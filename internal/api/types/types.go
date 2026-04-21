@@ -7,13 +7,16 @@ package types
 // ReportConfig — estilo del informe definido por PowerUps antes de generarlo.
 // Guía narrativa (Thick Data) y parámetros visuales para PDF/Excel.
 type ReportConfig struct {
-	PrimaryColor       string `json:"primary_color"`
-	SecondaryColor     string `json:"secondary_color"`
-	FontSizeBody       int    `json:"font_size_body"  validate:"min=6,max=24"`
-	FontSizeTitles     int    `json:"font_size_titles" validate:"min=8,max=36"`
-	StakeholderProfile string `json:"stakeholder_profile"`
-	LanguageStyle      string `json:"language_style"`
-	Dialect            string `json:"dialect"`
+	PrimaryColor       string   `json:"primary_color"`
+	SecondaryColor     string   `json:"secondary_color"`
+	FontSizeBody       int      `json:"font_size_body"   validate:"min=6,max=24"`
+	FontSizeTitles     int      `json:"font_size_titles" validate:"min=8,max=36"`
+	StakeholderProfile string   `json:"stakeholder_profile"`
+	LanguageStyle      string   `json:"language_style"`
+	Dialect            string   `json:"dialect"`
+	// Campos de tier — Go los inyecta desde la DB; el frontend NO debe enviarlos.
+	Tier       string   `json:"tier"`        // "free" | "premium"
+	ChartTypes []string `json:"chart_types"` // ej. ["bars"] | ["bars","heatmap","pie","treemap"]
 }
 
 // ChatRequest — payload de POST /api/v1/chat.
@@ -33,6 +36,9 @@ type ChatResponse struct {
 	Paywall          bool    `json:"paywall"`
 	CreditsRemaining int     `json:"credits_remaining"`
 	ImageURL         *string `json:"image_url"`
+	// Descarga de reporte: URL temporal con token (válida 30 min) y etiqueta para el botón.
+	DownloadURL   *string `json:"download_url,omitempty"`
+	DownloadLabel string  `json:"download_label,omitempty"`
 }
 
 // ── Upload ────────────────────────────────────────────────────────────────────

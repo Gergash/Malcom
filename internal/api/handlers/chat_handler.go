@@ -28,7 +28,8 @@ type ChatHandler struct {
 	userRepo repositories.UserRepository
 	convRepo repositories.ConversationRepository
 	worker   worker.Client
-	dataDir  string // ruta absoluta al directorio data/ del proyecto
+	dataDir  string      // ruta absoluta al directorio data/ del proyecto
+	tokens   *TokenStore // almacén de tokens de descarga efímeros
 }
 
 // NewChatHandler construye el handler con sus dependencias.
@@ -37,12 +38,14 @@ func NewChatHandler(
 	convRepo repositories.ConversationRepository,
 	workerClient worker.Client,
 	dataDir string,
+	tokens *TokenStore,
 ) *ChatHandler {
 	return &ChatHandler{
 		userRepo: userRepo,
 		convRepo: convRepo,
 		worker:   workerClient,
 		dataDir:  dataDir,
+		tokens:   tokens,
 	}
 }
 
@@ -97,9 +100,13 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		return
 	}
 
-	// 4 · Worker: strict data si ya hay archivos del usuario en data/{chat_id}/
+	// 4 · Gatekeeper: construir ReportConfig desde el tier real del usuario (DB es la autoridad).
+	// El frontend NO puede auto-upgradear enviando tier="premium" en el JSON.
+	rc := buildTierConfig(req.ReportConfig, creditStatus.IsPremium)
+
+	// 5 · Worker: strict data si ya hay archivos del usuario en data/{chat_id}/
 	requireStrict := filesystem.HasUploadedDataFiles(h.dataDir, req.ChatID)
-	result, err := h.worker.ProcessMessage(ctx, req.ChatID, req.Message, req.ReportConfig, requireStrict)
+	result, err := h.worker.ProcessMessage(ctx, req.ChatID, req.Message, rc, requireStrict)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, types.ErrorResponse{
 			Detail: fmt.Sprintf("Error procesando la consulta: %v", err),
@@ -107,13 +114,12 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		return
 	}
 
-	// 5 · Persistir respuesta del asistente
+	// 6 · Persistir respuesta del asistente
 	if err := h.convRepo.AddMessage(ctx, req.ChatID, "assistant", result.Response); err != nil {
-		// No bloqueamos la respuesta por un fallo de persistencia de historial
-		_ = err
+		_ = err // No bloqueamos la respuesta por un fallo de persistencia de historial
 	}
 
-	// 6 · Resolver URL pública de la gráfica
+	// 7 · Resolver URL pública de la gráfica
 	var imageURL *string
 	cid := strconv.FormatInt(req.ChatID, 10)
 
@@ -134,7 +140,27 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		}
 	}
 
-	// 7 · Respuesta
+	// 8 · Generar token de descarga si se produjo un PDF o Excel
+	var downloadURL *string
+	var downloadLabel string
+	reportPath := result.PDFPath
+	if reportPath == "" {
+		reportPath = result.ExcelPath
+	}
+	if reportPath != "" {
+		if _, statErr := os.Stat(reportPath); statErr == nil {
+			token := h.tokens.Store(reportPath)
+			u := publicBaseURL(c) + "/download/" + token
+			downloadURL = &u
+			if creditStatus.IsPremium {
+				downloadLabel = "Descargar Dashboard Corporativo ✦"
+			} else {
+				downloadLabel = "Descargar Reporte Básico"
+			}
+		}
+	}
+
+	// 9 · Respuesta
 	c.JSON(http.StatusOK, types.ChatResponse{
 		Response:         result.Response,
 		HasPDF:           result.HasPDF,
@@ -143,6 +169,8 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		Paywall:          false,
 		CreditsRemaining: creditStatus.CreditsRemaining,
 		ImageURL:         imageURL,
+		DownloadURL:      downloadURL,
+		DownloadLabel:    downloadLabel,
 	})
 }
 
@@ -269,15 +297,11 @@ func (h *ChatHandler) GetCredits(c *gin.Context) {
 
 // ── Helpers internos ──────────────────────────────────────────────────────────
 
-// chartImageURL construye la URL pública de una gráfica.
-// Lógica (espeja _public_base_for_assets + _chart_image_url de chat.py):
-//  1. PUBLIC_BASE_URL de entorno.
-//  2. X-Forwarded-Proto + X-Forwarded-Host (ngrok / reverse proxy).
-//  3. Fallback al Host del request.
-//  4. Fuerza HTTPS en dominios ngrok / powerups.com para evitar mixed-content.
-func chartImageURL(c *gin.Context, chatID, filename string) string {
+// publicBaseURL devuelve la base pública del servidor (sin barra final).
+// Prioridad: PUBLIC_BASE_URL env → X-Forwarded headers (ngrok/proxy) → Host del request.
+// Fuerza HTTPS en dominios ngrok / powerups.com para evitar mixed-content.
+func publicBaseURL(c *gin.Context) string {
 	base := strings.TrimRight(os.Getenv("PUBLIC_BASE_URL"), "/")
-
 	if base == "" {
 		xProto := c.GetHeader("X-Forwarded-Proto")
 		xHost := c.GetHeader("X-Forwarded-Host")
@@ -293,12 +317,36 @@ func chartImageURL(c *gin.Context, chatID, filename string) string {
 			base = fmt.Sprintf("%s://%s", scheme, c.Request.Host)
 		}
 	}
-
-	url := fmt.Sprintf("%s/data/%s/%s", base, chatID, filename)
-
-	// Blindaje contra mixed-content en dominios públicos
-	if strings.Contains(url, "ngrok") || strings.Contains(url, "powerups.com") {
-		url = strings.ReplaceAll(url, "http://", "https://")
+	if strings.Contains(base, "ngrok") || strings.Contains(base, "powerups.com") {
+		base = strings.ReplaceAll(base, "http://", "https://")
 	}
-	return url
+	return base
+}
+
+// chartImageURL construye la URL pública de una gráfica bajo /data/{chatID}/{filename}.
+func chartImageURL(c *gin.Context, chatID, filename string) string {
+	return fmt.Sprintf("%s/data/%s/%s", publicBaseURL(c), chatID, filename)
+}
+
+// buildTierConfig — Gatekeeper: construye el ReportConfig con el tier real del usuario.
+// Go es la autoridad; el tier enviado por el frontend se ignora.
+// Los campos de estilo del request (colores, fuentes) se preservan si el usuario es premium;
+// para free se fuerzan valores predeterminados grises.
+func buildTierConfig(req *types.ReportConfig, isPremium bool) *types.ReportConfig {
+	rc := &types.ReportConfig{}
+	if req != nil {
+		*rc = *req // copiar preferencias de estilo del frontend
+	}
+	if isPremium {
+		rc.Tier = "premium"
+		rc.ChartTypes = []string{"bars", "heatmap", "pie", "treemap"}
+		if rc.PrimaryColor == "" {
+			rc.PrimaryColor = "#28468C"
+		}
+	} else {
+		rc.Tier = "free"
+		rc.ChartTypes = []string{"bars"}
+		rc.PrimaryColor = "#808080" // gris estándar — no personalizable en free
+	}
+	return rc
 }

@@ -481,6 +481,36 @@
   border-top: 1px solid rgba(42,51,68,0.5);
   background: var(--pu-bg);
 }
+.powerups-edge__download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid #b8922a;
+  background: linear-gradient(135deg, #2a1f08, #1a1305);
+  color: #f0c060;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  letter-spacing: 0.02em;
+  transition: border-color 0.15s, background 0.15s;
+}
+.powerups-edge__download-btn:hover {
+  border-color: #f0c060;
+  background: linear-gradient(135deg, #3a2a0c, #271c07);
+}
+.powerups-edge__download-btn--basic {
+  border-color: #4a5568;
+  background: linear-gradient(135deg, #1a1f2e, #111522);
+  color: #a0aec0;
+}
+.powerups-edge__download-btn--basic:hover {
+  border-color: #718096;
+  background: linear-gradient(135deg, #222840, #181d30);
+}
 @media (max-width: 480px) {
   .powerups-edge__panel { right: 0; left: auto; width: calc(100vw - 24px); }
   .powerups-edge__send {
@@ -573,10 +603,11 @@
   }
 
   /**
-   * Añade un mensaje al hilo. Si role es "bot" y imageUrl está definido (respuesta JSON image_url),
-   * inserta un <img> debajo del texto (outcome visible para premium / análisis con gráfica).
+   * Añade un mensaje al hilo.
+   * - imageUrl: inserta <img> debajo del texto si es mensaje de bot.
+   * - downloadInfo: { url, label } → inserta un botón de descarga del reporte.
    */
-  function appendMessage(role, text, imageUrl) {
+  function appendMessage(role, text, imageUrl, downloadInfo) {
     var box = el('powerups-edge-messages');
     var d = document.createElement('div');
     d.className = 'powerups-edge__msg powerups-edge__msg--' + (role === 'user' ? 'user' : role === 'sys' ? 'sys' : 'bot');
@@ -593,6 +624,16 @@
       img.referrerPolicy = 'no-referrer-when-downgrade';
       d.appendChild(img);
       setImageWithNgrokBypass(img, imageUrl);
+    }
+    if (downloadInfo && downloadInfo.url && role === 'bot') {
+      var isPremium = downloadInfo.label && downloadInfo.label.indexOf('Corporativo') !== -1;
+      var btn = document.createElement('a');
+      btn.href = downloadInfo.url;
+      btn.target = '_blank';
+      btn.rel = 'noopener noreferrer';
+      btn.className = 'powerups-edge__download-btn' + (isPremium ? '' : ' powerups-edge__download-btn--basic');
+      btn.textContent = (isPremium ? '⬇ ' : '↓ ') + (downloadInfo.label || 'Descargar Reporte');
+      d.appendChild(btn);
     }
     box.appendChild(d);
     box.scrollTop = box.scrollHeight;
@@ -728,11 +769,12 @@
         window.location.href = checkoutUrl();
         return;
       }
-      appendMessage('user', '[Acción premium] ' + (prompt === CONFIG.PROMPT_PDF ? 'Generar Informe PDF Premium' : 'Exportar Excel con Gráficas'), null);
+      appendMessage('user', '[Acción premium] ' + (prompt === CONFIG.PROMPT_PDF ? 'Generar Informe PDF Premium' : 'Exportar Excel con Gráficas'), null, null);
       pushHistory('user', '[Acción premium] Solicitud de entregable');
       var out = await sendChatMessage(prompt);
       var imgUrl = out.image_url || out.imageUrl || null;
-      appendMessage('bot', out.response || '(Sin texto de respuesta)', imgUrl);
+      var dlInfo = (out.download_url) ? { url: out.download_url, label: out.download_label || 'Descargar Reporte' } : null;
+      appendMessage('bot', out.response || '(Sin texto de respuesta)', imgUrl, dlInfo);
       pushHistory('bot', out.response || '', imgUrl);
       await refreshCredits();
     } catch (e) {
@@ -790,15 +832,16 @@
       try {
         var out = await sendChatMessage(t);
         var imgU = out.image_url || out.imageUrl || null;
+        var dlInfo = (out.download_url) ? { url: out.download_url, label: out.download_label || 'Descargar Reporte' } : null;
         if (out.paywall) {
-          appendMessage('bot', out.response || 'Límite alcanzado.', null);
+          appendMessage('bot', out.response || 'Límite alcanzado.', null, null);
           pushHistory('bot', out.response || '');
         } else {
-          appendMessage('bot', out.response || '(Sin respuesta)', imgU);
+          appendMessage('bot', out.response || '(Sin respuesta)', imgU, dlInfo);
           pushHistory('bot', out.response || '', imgU);
         }
       } catch (err) {
-        appendMessage('sys', 'Error: ' + (err.message || err), null);
+        appendMessage('sys', 'Error: ' + (err.message || err), null, null);
       } finally {
         // BUG FIX: setComposerSending(false) va primero para garantizar que el
         // compositor se re-habilite incluso si refreshCredits() falla o devuelve

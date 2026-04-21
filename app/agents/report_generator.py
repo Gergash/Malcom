@@ -102,6 +102,86 @@ def generar_reporte_pdf(
     pdf.output(abs_out)
 
 
+def generar_reporte_premium_pdf(
+    texto_contenido: str,
+    ruta_salida: str = "reporte_final.pdf",
+    rutas_graficas: Optional[list] = None,
+    report_config: Optional["ReportConfig"] = None,
+) -> None:
+    """
+    Genera un PDF multi-página de calidad corporativa (plan premium).
+    Estructura: portada → análisis ejecutivo → gráficas (una por página).
+    Solo debe llamarse desde código generado por el LLM vía la función inyectada;
+    nunca importar fpdf directamente.
+    """
+    cfg = _load_report_config(report_config)
+    abs_out = os.path.abspath(ruta_salida)
+    parent = os.path.dirname(abs_out)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+
+    title_size = cfg.font_size_titles if cfg else 16
+    body_size = cfg.font_size_body if cfg else 11
+    primary = _hex_to_rgb(cfg.primary_color) if cfg else (40, 70, 140)
+    charts = [r for r in (rutas_graficas or []) if r and os.path.isfile(r)]
+
+    class PremiumPDF(FPDF):
+        def header(self) -> None:
+            self.set_fill_color(*primary)
+            self.rect(0, 0, 210, 10, "F")
+            self.set_text_color(255, 255, 255)
+            self.set_font("Arial", "B", 9)
+            self.set_xy(0, 1)
+            self.cell(0, 8, "InsightFlow — Dashboard Corporativo Premium", align="C")
+            self.set_text_color(0, 0, 0)
+            self.ln(8)
+
+        def footer(self) -> None:
+            self.set_y(-15)
+            self.set_font("Arial", "I", max(7, body_size - 4))
+            self.set_text_color(120, 120, 120)
+            self.cell(0, 10, f"Pág. {self.page_no()}  |  PowerUps InsightFlow  |  {datetime.date.today()}", align="C")
+            self.set_text_color(0, 0, 0)
+
+    pdf = PremiumPDF()
+
+    # ── Portada ──────────────────────────────────────────────────────────────
+    pdf.add_page()
+    pdf.ln(30)
+    pdf.set_text_color(*primary)
+    pdf.set_font("Arial", "B", title_size + 6)
+    pdf.multi_cell(0, 12, "Dashboard Corporativo\nInsightFlow Analytics", align="C")
+    pdf.ln(8)
+    pdf.set_text_color(80, 80, 80)
+    pdf.set_font("Arial", "", body_size)
+    pdf.cell(0, 8, f"Generado el {datetime.date.today()}", align="C", ln=1)
+    pdf.ln(6)
+    pdf.set_draw_color(*primary)
+    pdf.set_line_width(0.8)
+    pdf.line(30, pdf.get_y(), 180, pdf.get_y())
+
+    # ── Análisis ejecutivo ────────────────────────────────────────────────────
+    pdf.add_page()
+    pdf.set_text_color(*primary)
+    pdf.set_font("Arial", "B", title_size)
+    pdf.cell(0, 10, "Análisis Ejecutivo", ln=1)
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Arial", "", body_size)
+    raw = (texto_contenido or "").encode("latin-1", "replace").decode("latin-1")
+    pdf.multi_cell(0, max(5, int(body_size * 0.65)), txt=raw)
+
+    # ── Gráficas (una por página) ─────────────────────────────────────────────
+    for i, ruta in enumerate(charts, start=1):
+        pdf.add_page()
+        pdf.set_text_color(*primary)
+        pdf.set_font("Arial", "B", body_size + 1)
+        pdf.cell(0, 10, f"Gráfica {i}", ln=1)
+        pdf.set_text_color(0, 0, 0)
+        pdf.image(ruta, x=15, w=180)
+
+    pdf.output(abs_out)
+
+
 def generar_reporte_excel_avanzado(
     df_datos: pd.DataFrame,
     texto_analisis: str,

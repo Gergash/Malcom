@@ -21,6 +21,7 @@ try:
     from app.agents.report_generator import (
         generar_reporte_excel_avanzado,
         generar_reporte_pdf,
+        generar_reporte_premium_pdf,
     )
     from app.agents.report_generator_agent import build_report_translator_instructions
     from app.agents.data_cleaner import smart_read_schema
@@ -31,6 +32,7 @@ except ModuleNotFoundError:
     from agents.report_generator import (
         generar_reporte_excel_avanzado,
         generar_reporte_pdf,
+        generar_reporte_premium_pdf,
     )
     from agents.report_generator_agent import build_report_translator_instructions
     from agents.data_cleaner import smart_read_schema  # type: ignore
@@ -367,9 +369,44 @@ class AnalystAgent:
                 "Para PDF usa generar_reporte_pdf (regla 8); para Excel generar_reporte_excel_avanzado (regla 9). "
                 "NO leas archivos .pdf con código."
             )
+
+        # ── Bloque de tier (licencia de construcción) ────────────────────────
+        tier = getattr(report_config, "tier", "free") if report_config else "free"
+        chart_types = getattr(report_config, "chart_types", ["bars"]) if report_config else ["bars"]
+
+        if tier == "premium":
+            tier_block = (
+                "\n\nCONFIGURACIÓN DE TIER — PREMIUM (poderes desbloqueados):\n"
+                f"El usuario tiene plan premium. Tipos de gráficas disponibles: {chart_types}.\n"
+                "- Para heatmap usa seaborn.heatmap() (import seaborn as sns).\n"
+                "- Para pie/donut usa plt.pie() con wedgeprops={'width': 0.5} para donut.\n"
+                "- Para treemap: import squarify; squarify.plot(...).\n"
+                f"- Gráfica principal: '{plot_filename}'. Gráficas adicionales: "
+                f"'{plot_filename.replace('.png', '_2.png')}', '{plot_filename.replace('.png', '_3.png')}', etc. "
+                "Usa plt.savefig() + plt.close() para cada una.\n"
+                "- Para el reporte PDF premium usa ÚNICAMENTE la función inyectada:\n"
+                f"  generar_reporte_premium_pdf(contexto_documentos, r'{report_pdf_path}', "
+                f"rutas_graficas=['{plot_filename}'])\n"
+                "- El análisis debe incluir múltiples KPIs, tendencias y comparativas.\n"
+                "- PROHIBIDO usar fpdf, FPDF, xlsxwriter ni cualquier otra librería de reportes."
+            )
+        else:
+            tier_block = (
+                "\n\nCONFIGURACIÓN DE TIER — GRATUITO (plan básico):\n"
+                "- Solo puedes generar UNA gráfica de barras (plt.bar o plt.barh). "
+                "PROHIBIDO: heatmap, treemap, pie, scatter, boxplot, seaborn, squarify ni cualquier otro tipo.\n"
+                "- Para reporte PDF usa: "
+                f"generar_reporte_pdf(contexto_documentos, r'{report_pdf_path}')\n"
+                "- Al final de tu análisis en texto, incluye EXACTAMENTE esta frase de upsell "
+                "(no la pongas en el código, solo en la narrativa final):\n"
+                "  'He identificado [N] KPIs adicionales y tendencias clave. "
+                "Desbloquea el Dashboard Corporativo con gráficas avanzadas, múltiples páginas "
+                "y tu logo corporativo por $40.000 COP.'"
+            )
+
         style_block = build_report_translator_instructions(report_config)
         return (
-            f"{system}{style_block}\n\nESTRUCTURA DEL ARCHIVO:\n{schema_info}{doc_block}\n\n"
+            f"{system}{tier_block}{style_block}\n\nESTRUCTURA DEL ARCHIVO:\n{schema_info}{doc_block}\n\n"
             f"PREGUNTA DEL USUARIO: {user_query}"
         )
 
@@ -387,8 +424,12 @@ class AnalystAgent:
     ) -> str:
         """Ejecuta el código generado, captura stdout y pide al modelo un resumen cruzado."""
         ruta_img = plot_filename or None
+        tier = getattr(report_config, "tier", "free") if report_config else "free"
         generar_pdf = functools.partial(
             generar_reporte_pdf, ruta_grafica=ruta_img, report_config=report_config
+        )
+        generar_premium_pdf = functools.partial(
+            generar_reporte_premium_pdf, report_config=report_config
         )
         generar_excel = functools.partial(
             generar_reporte_excel_avanzado, ruta_grafica=ruta_img, report_config=report_config
@@ -401,6 +442,8 @@ class AnalystAgent:
             "generar_reporte_pdf": generar_pdf,
             "generar_reporte_excel_avanzado": generar_excel,
         }
+        if tier == "premium":
+            namespace["generar_reporte_premium_pdf"] = generar_premium_pdf
         print(f"DEBUG: Ejecutando análisis local sobre {clean_path}...")
         prev_cwd = os.getcwd()
         try:

@@ -55,9 +55,12 @@ func main() {
 
 	workerClient := worker.NewHTTPClient(cfg.WorkerURL)
 
+	tokenStore := handlers.NewTokenStore()
+
 	healthHandler := handlers.NewHealthHandler()
-	chatHandler := handlers.NewChatHandler(userRepo, convRepo, workerClient, cfg.DataDir)
+	chatHandler := handlers.NewChatHandler(userRepo, convRepo, workerClient, cfg.DataDir, tokenStore)
 	billingHandler := handlers.NewBillingHandler(userRepo, paymentRepo)
+	downloadHandler := handlers.NewDownloadHandler(tokenStore)
 
 	router := gin.Default()
 
@@ -72,6 +75,9 @@ func main() {
 	router.Use(cors.New(corsCfg))
 
 	router.Static("/data", cfg.DataDir)
+
+	// Descarga de reportes con token efímero (válido 30 min, generado por el agente).
+	router.GET("/download/:token", downloadHandler.Download)
 
 	router.GET("/health", healthHandler.HealthCheck)
 
