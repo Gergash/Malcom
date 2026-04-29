@@ -20,6 +20,7 @@ type Config struct {
 	DataDir          string
 	PublicBaseURL    string
 	FreeMessageLimit int
+	EnablePublicData bool // cuando true, sirve /data/* sin restricción (solo DEV)
 }
 
 // Load reads .env (if present) and environment variables.
@@ -64,6 +65,8 @@ func Load() (*Config, error) {
 		}
 	}
 
+	enablePublicData := strings.ToLower(strings.TrimSpace(os.Getenv("ENABLE_PUBLIC_DATA"))) == "true"
+
 	return &Config{
 		DatabaseURL:      NormalizeDatabaseURL(rawURL),
 		Port:             port,
@@ -71,6 +74,7 @@ func Load() (*Config, error) {
 		DataDir:          dataDir,
 		PublicBaseURL:    strings.TrimSpace(os.Getenv("PUBLIC_BASE_URL")),
 		FreeMessageLimit: freeLimit,
+		EnablePublicData: enablePublicData,
 	}, nil
 }
 

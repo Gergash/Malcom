@@ -44,6 +44,7 @@ func main() {
 		&malcomdb.Conversation{},
 		&malcomdb.UserFile{},
 		&malcomdb.Payment{},
+		&malcomdb.DownloadToken{},
 	); err != nil {
 		log.Fatalf("AutoMigrate: %v", err)
 	}
@@ -55,10 +56,10 @@ func main() {
 
 	workerClient := worker.NewHTTPClient(cfg.WorkerURL)
 
-	tokenStore := handlers.NewTokenStore()
+	tokenStore := handlers.NewPersistentTokenStore(gdb)
 
 	healthHandler := handlers.NewHealthHandler()
-	chatHandler := handlers.NewChatHandler(userRepo, convRepo, workerClient, cfg.DataDir, tokenStore)
+	chatHandler := handlers.NewChatHandler(userRepo, convRepo, workerClient, cfg.DataDir, tokenStore, cfg.EnablePublicData)
 	billingHandler := handlers.NewBillingHandler(userRepo, paymentRepo)
 	downloadHandler := handlers.NewDownloadHandler(tokenStore)
 
@@ -74,9 +75,12 @@ func main() {
 	}
 	router.Use(cors.New(corsCfg))
 
-	router.Static("/data", cfg.DataDir)
+	if cfg.EnablePublicData {
+		router.Static("/data", cfg.DataDir)
+		log.Println("ENABLE_PUBLIC_DATA=true: /data expuesto sin token (solo desarrollo).")
+	}
 
-	// Descarga de reportes con token efímero (válido 30 min, generado por el agente).
+	// Descarga (reportes) y vista de gráficas cuando /data está cerrado: token efímero (TTL 30 min).
 	router.GET("/download/:token", downloadHandler.Download)
 
 	router.GET("/health", healthHandler.HealthCheck)

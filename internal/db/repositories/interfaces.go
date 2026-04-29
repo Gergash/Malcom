@@ -9,15 +9,20 @@ import "context"
 // UserState representa el estado completo de un usuario (créditos, plan, etc.).
 // Espeja el dict que devuelve user_repo.get_state() / bump_and_check() en Python.
 type UserState struct {
-	ChatID           *int64
-	Email            *string
-	Username         *string
-	MessageCount     int
-	IsPremium        bool
-	FreeMessageLimit int
-	CreditsRemaining int
-	Paywall          bool
-	PremiumSince     *string
+	ChatID            *int64
+	Email             *string
+	Username          *string
+	MessageCount      int
+	IsPremium         bool
+	FreeMessageLimit  int
+	CreditsRemaining  int
+	Paywall           bool
+	PremiumSince      *string
+	BrandingColor     *string
+	BrandingColorSec  *string
+	BrandingFontBody  *int
+	BrandingFontTitle *int
+	BrandingCharts    *string // JSON string: ["bars","heatmap"]
 }
 
 // PaymentUser — información mínima del usuario retornada tras confirmar un pago.

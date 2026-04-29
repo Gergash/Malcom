@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/powerups/insightflow-malcom/internal/api/types"
@@ -32,7 +33,7 @@ func (h *DownloadHandler) Download(c *gin.Context) {
 		return
 	}
 
-	filePath, ok := h.tokens.Resolve(token)
+	filePath, resType, ok := h.tokens.Resolve(token)
 	if !ok {
 		c.JSON(http.StatusNotFound, types.ErrorResponse{
 			Detail: "Enlace de descarga expirado o inválido. Genera un nuevo reporte.",
@@ -46,6 +47,21 @@ func (h *DownloadHandler) Download(c *gin.Context) {
 		})
 		return
 	}
+	// Seguridad: solo servir archivos dentro de DATA_DIR.
+	dataRoot := strings.TrimSpace(os.Getenv("DATA_DIR"))
+	if dataRoot != "" {
+		absRoot, _ := filepath.Abs(dataRoot)
+		absFile, _ := filepath.Abs(filePath)
+		if absRoot != "" && absFile != "" {
+			prefix := absRoot + string(os.PathSeparator)
+			if absFile != absRoot && !strings.HasPrefix(absFile, prefix) {
+				c.JSON(http.StatusForbidden, types.ErrorResponse{
+					Detail: "Archivo fuera del directorio permitido.",
+				})
+				return
+			}
+		}
+	}
 
 	ext := filepath.Ext(filePath)
 	mimeType := mime.TypeByExtension(ext)
@@ -54,7 +70,11 @@ func (h *DownloadHandler) Download(c *gin.Context) {
 	}
 
 	filename := filepath.Base(filePath)
-	c.Header("Content-Disposition", `attachment; filename="`+filename+`"`)
+	if strings.EqualFold(resType, "chart") {
+		c.Header("Content-Disposition", `inline; filename="`+filename+`"`)
+	} else {
+		c.Header("Content-Disposition", `attachment; filename="`+filename+`"`)
+	}
 	c.Header("Content-Type", mimeType)
 	c.Header("Cache-Control", "no-store")
 	c.File(filePath)

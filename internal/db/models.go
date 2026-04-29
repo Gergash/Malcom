@@ -3,7 +3,7 @@ package db
 
 import "time"
 
-// User — identidad (email + chat_id), plan premium y contador (paywall).
+// User — identidad (email + chat_id), plan premium, contador (paywall) y branding premium.
 type User struct {
 	ID               uint `gorm:"primaryKey"`
 	ChatID           *int64 `gorm:"uniqueIndex"`
@@ -15,6 +15,12 @@ type User struct {
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 	PremiumSince     *time.Time
+	// Branding premium — null = usar defaults del tier; solo aplica cuando is_premium = true.
+	BrandingColor    *string `gorm:"column:branding_color;size:7"`
+	BrandingColorSec *string `gorm:"column:branding_color_sec;size:7"`
+	BrandingFontBody *int    `gorm:"column:branding_font_body"`
+	BrandingFontTitle *int   `gorm:"column:branding_font_title"`
+	BrandingCharts   *string `gorm:"column:branding_charts;size:256"` // JSON: ["bars","heatmap"]
 }
 
 // Conversation — historial de mensajes por chat_id.
@@ -38,6 +44,19 @@ type UserFile struct {
 	Indexed       bool `gorm:"not null;default:false"`
 	IndexedChunks int  `gorm:"not null;default:0"`
 	CreatedAt     time.Time
+}
+
+// DownloadToken — token de descarga persistido en PostgreSQL (P2: reemplaza memoria).
+// Válido hasta expires_at; used_at registra primera descarga (auditoría).
+type DownloadToken struct {
+	ID           uint      `gorm:"primaryKey"`
+	Token        string    `gorm:"uniqueIndex;size:64;not null"`
+	FilePath     string    `gorm:"size:1024;not null"`
+	ChatID       int64     `gorm:"index;not null"`
+	ResourceType string    `gorm:"size:20;not null;default:report"` // "pdf" | "excel"
+	ExpiresAt    time.Time `gorm:"not null;index"`
+	UsedAt       *time.Time
+	CreatedAt    time.Time
 }
 
 // Payment — registro de webhooks de pago.

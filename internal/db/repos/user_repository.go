@@ -103,13 +103,18 @@ func userToState(u *db.User) *repositories.UserState {
 		chat = u.ChatID
 	}
 	st := &repositories.UserState{
-		ChatID:           chat,
-		Email:            u.Email,
-		Username:         u.Username,
-		MessageCount:     u.MessageCount,
-		IsPremium:        u.IsPremium,
-		FreeMessageLimit: u.FreeMessageLimit,
-		PremiumSince:     formatPremiumSince(u.PremiumSince),
+		ChatID:            chat,
+		Email:             u.Email,
+		Username:          u.Username,
+		MessageCount:      u.MessageCount,
+		IsPremium:         u.IsPremium,
+		FreeMessageLimit:  u.FreeMessageLimit,
+		PremiumSince:      formatPremiumSince(u.PremiumSince),
+		BrandingColor:     u.BrandingColor,
+		BrandingColorSec:  u.BrandingColorSec,
+		BrandingFontBody:  u.BrandingFontBody,
+		BrandingFontTitle: u.BrandingFontTitle,
+		BrandingCharts:    u.BrandingCharts,
 	}
 	remaining := u.FreeMessageLimit - u.MessageCount
 	if remaining < 0 {

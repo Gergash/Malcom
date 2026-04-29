@@ -27,6 +27,13 @@ type ChatRequest struct {
 	ReportConfig *ReportConfig `json:"report_config,omitempty"`
 }
 
+// ArtifactInfo — entregable premium (gráfica, PDF o Excel) con URL tokenizada y etiqueta.
+type ArtifactInfo struct {
+	Type  string `json:"type"`  // "chart" | "pdf" | "excel"
+	URL   string `json:"url"`
+	Label string `json:"label"`
+}
+
 // ChatResponse — respuesta de POST /api/v1/chat.
 type ChatResponse struct {
 	Response         string  `json:"response"`
@@ -39,6 +46,9 @@ type ChatResponse struct {
 	// Descarga de reporte: URL temporal con token (válida 30 min) y etiqueta para el botón.
 	DownloadURL   *string `json:"download_url,omitempty"`
 	DownloadLabel string  `json:"download_label,omitempty"`
+	// P5: colección multi-artefacto para premium (gráficas adicionales + descargas).
+	ChartURLs []string       `json:"chart_urls,omitempty"` // todas las URLs de gráficas, incluye la primaria
+	Artifacts []ArtifactInfo `json:"artifacts,omitempty"`  // colección completa para el widget
 }
 
 // ── Upload ────────────────────────────────────────────────────────────────────

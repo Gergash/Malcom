@@ -7,6 +7,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -25,11 +26,12 @@ import (
 
 // ChatHandler agrupa las dependencias de los endpoints de chat.
 type ChatHandler struct {
-	userRepo repositories.UserRepository
-	convRepo repositories.ConversationRepository
-	worker   worker.Client
-	dataDir  string      // ruta absoluta al directorio data/ del proyecto
-	tokens   *TokenStore // almacén de tokens de descarga efímeros
+	userRepo         repositories.UserRepository
+	convRepo         repositories.ConversationRepository
+	worker           worker.Client
+	dataDir          string // ruta absoluta al directorio data/ del proyecto
+	tokens           *TokenStore
+	enablePublicData bool // si true, URLs de gráficas vía /data/...; si false, vía /download/:token
 }
 
 // NewChatHandler construye el handler con sus dependencias.
@@ -39,13 +41,15 @@ func NewChatHandler(
 	workerClient worker.Client,
 	dataDir string,
 	tokens *TokenStore,
+	enablePublicData bool,
 ) *ChatHandler {
 	return &ChatHandler{
-		userRepo: userRepo,
-		convRepo: convRepo,
-		worker:   workerClient,
-		dataDir:  dataDir,
-		tokens:   tokens,
+		userRepo:         userRepo,
+		convRepo:         convRepo,
+		worker:           workerClient,
+		dataDir:          dataDir,
+		tokens:           tokens,
+		enablePublicData: enablePublicData,
 	}
 }
 
@@ -100,9 +104,9 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		return
 	}
 
-	// 4 · Gatekeeper: construir ReportConfig desde el tier real del usuario (DB es la autoridad).
+	// 4 · Gatekeeper: construir ReportConfig desde el tier/perfil real del usuario (DB es la autoridad).
 	// El frontend NO puede auto-upgradear enviando tier="premium" en el JSON.
-	rc := buildTierConfig(req.ReportConfig, creditStatus.IsPremium)
+	rc := buildTierConfig(req.ReportConfig, creditStatus)
 
 	// 5 · Worker: strict data si ya hay archivos del usuario en data/{chat_id}/
 	requireStrict := filesystem.HasUploadedDataFiles(h.dataDir, req.ChatID)
@@ -119,37 +123,41 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		_ = err // No bloqueamos la respuesta por un fallo de persistencia de historial
 	}
 
-	// 7 · Resolver URL pública de la gráfica
-	var imageURL *string
+	// 7 · Enforcement duro (tier) + colección de gráficas para UI.
 	cid := strconv.FormatInt(req.ChatID, 10)
-
-	if result.ChartPath != "" {
-		if _, statErr := os.Stat(result.ChartPath); statErr == nil {
-			u := chartImageURL(c, cid, filepath.Base(result.ChartPath))
-			imageURL = &u
+	enforcedCharts := enforceChartPolicy(result.ChartPaths, result.ChartPath, rc, creditStatus.IsPremium)
+	chartURLs := make([]string, 0, len(enforcedCharts))
+	base := publicBaseURL(c)
+	for _, p := range enforcedCharts {
+		if h.enablePublicData {
+			chartURLs = append(chartURLs, chartImageURL(c, cid, filepath.Base(p)))
+		} else {
+			tok := h.tokens.Store(req.ChatID, "chart", p)
+			chartURLs = append(chartURLs, base+"/download/"+tok)
 		}
 	}
-	if imageURL == nil {
-		for _, fname := range []string{fmt.Sprintf("output_plot_%s.png", cid), "output_plot.png"} {
-			candidate := filepath.Join(h.dataDir, cid, fname)
-			if _, statErr := os.Stat(candidate); statErr == nil {
-				u := chartImageURL(c, cid, fname)
-				imageURL = &u
-				break
-			}
-		}
+	var imageURL *string
+	if len(chartURLs) > 0 {
+		imageURL = &chartURLs[0]
 	}
 
-	// 8 · Generar token de descarga si se produjo un PDF o Excel
+	// 8 · Enlaces de descarga tokenizados + artefactos
 	var downloadURL *string
 	var downloadLabel string
+	artifacts := make([]types.ArtifactInfo, 0, len(chartURLs)+2)
+	for i, u := range chartURLs {
+		label := fmt.Sprintf("Ver Gráfica %d", i+1)
+		artifacts = append(artifacts, types.ArtifactInfo{Type: "chart", URL: u, Label: label})
+	}
 	reportPath := result.PDFPath
+	reportType := "pdf"
 	if reportPath == "" {
 		reportPath = result.ExcelPath
+		reportType = "excel"
 	}
 	if reportPath != "" {
 		if _, statErr := os.Stat(reportPath); statErr == nil {
-			token := h.tokens.Store(reportPath)
+			token := h.tokens.Store(req.ChatID, reportType, reportPath)
 			u := publicBaseURL(c) + "/download/" + token
 			downloadURL = &u
 			if creditStatus.IsPremium {
@@ -157,6 +165,11 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 			} else {
 				downloadLabel = "Descargar Reporte Básico"
 			}
+			artifacts = append(artifacts, types.ArtifactInfo{
+				Type:  reportType,
+				URL:   u,
+				Label: downloadLabel,
+			})
 		}
 	}
 
@@ -171,6 +184,8 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		ImageURL:         imageURL,
 		DownloadURL:      downloadURL,
 		DownloadLabel:    downloadLabel,
+		ChartURLs:        chartURLs,
+		Artifacts:        artifacts,
 	})
 }
 
@@ -332,14 +347,35 @@ func chartImageURL(c *gin.Context, chatID, filename string) string {
 // Go es la autoridad; el tier enviado por el frontend se ignora.
 // Los campos de estilo del request (colores, fuentes) se preservan si el usuario es premium;
 // para free se fuerzan valores predeterminados grises.
-func buildTierConfig(req *types.ReportConfig, isPremium bool) *types.ReportConfig {
+func buildTierConfig(req *types.ReportConfig, state *repositories.UserState) *types.ReportConfig {
 	rc := &types.ReportConfig{}
 	if req != nil {
 		*rc = *req // copiar preferencias de estilo del frontend
 	}
-	if isPremium {
+	if state != nil && state.IsPremium {
 		rc.Tier = "premium"
 		rc.ChartTypes = []string{"bars", "heatmap", "pie", "treemap"}
+		if state.BrandingCharts != nil && strings.TrimSpace(*state.BrandingCharts) != "" {
+			var charts []string
+			if err := json.Unmarshal([]byte(*state.BrandingCharts), &charts); err == nil {
+				allowed := filterAllowedCharts(charts)
+				if len(allowed) > 0 {
+					rc.ChartTypes = allowed
+				}
+			}
+		}
+		if state.BrandingColor != nil && strings.TrimSpace(*state.BrandingColor) != "" {
+			rc.PrimaryColor = *state.BrandingColor
+		}
+		if state.BrandingColorSec != nil && strings.TrimSpace(*state.BrandingColorSec) != "" {
+			rc.SecondaryColor = *state.BrandingColorSec
+		}
+		if state.BrandingFontBody != nil {
+			rc.FontSizeBody = *state.BrandingFontBody
+		}
+		if state.BrandingFontTitle != nil {
+			rc.FontSizeTitles = *state.BrandingFontTitle
+		}
 		if rc.PrimaryColor == "" {
 			rc.PrimaryColor = "#28468C"
 		}
@@ -349,4 +385,69 @@ func buildTierConfig(req *types.ReportConfig, isPremium bool) *types.ReportConfi
 		rc.PrimaryColor = "#808080" // gris estándar — no personalizable en free
 	}
 	return rc
+}
+
+func filterAllowedCharts(input []string) []string {
+	allow := map[string]struct{}{
+		"bars": {}, "heatmap": {}, "pie": {}, "treemap": {},
+	}
+	out := make([]string, 0, len(input))
+	seen := map[string]struct{}{}
+	for _, v := range input {
+		v = strings.ToLower(strings.TrimSpace(v))
+		if _, ok := allow[v]; !ok {
+			continue
+		}
+		if _, dup := seen[v]; dup {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+	return out
+}
+
+func enforceChartPolicy(chartPaths []string, primary string, cfg *types.ReportConfig, isPremium bool) []string {
+	merged := make([]string, 0, len(chartPaths)+1)
+	if primary != "" {
+		merged = append(merged, primary)
+	}
+	merged = append(merged, chartPaths...)
+
+	existing := make([]string, 0, len(merged))
+	seen := map[string]struct{}{}
+	for _, p := range merged {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		if _, err := os.Stat(p); err == nil {
+			seen[p] = struct{}{}
+			existing = append(existing, p)
+		}
+	}
+	if len(existing) == 0 {
+		return existing
+	}
+	if !isPremium {
+		return existing[:1]
+	}
+	// Premium: devolver máximo tantas rutas como tipos permitidos (mínimo 1, máximo 6).
+	limit := 4
+	if cfg != nil && len(cfg.ChartTypes) > 0 {
+		limit = len(cfg.ChartTypes)
+	}
+	if limit < 1 {
+		limit = 1
+	}
+	if limit > 6 {
+		limit = 6
+	}
+	if len(existing) > limit {
+		return existing[:limit]
+	}
+	return existing
 }
