@@ -2,6 +2,8 @@
 // Reemplaza app/api/schemas.py (modelos Pydantic).
 package types
 
+import "encoding/json"
+
 // ── Chat ──────────────────────────────────────────────────────────────────────
 
 // ReportConfig — estilo del informe definido por PowerUps antes de generarlo.
@@ -49,6 +51,9 @@ type ChatResponse struct {
 	// P5: colección multi-artefacto para premium (gráficas adicionales + descargas).
 	ChartURLs []string       `json:"chart_urls,omitempty"` // todas las URLs de gráficas, incluye la primaria
 	Artifacts []ArtifactInfo `json:"artifacts,omitempty"`  // colección completa para el widget
+	// Dashboard premium (Apache ECharts): opción JSON + URL con token (mismo origen que el API).
+	EChartsOption json.RawMessage `json:"echarts_option,omitempty"`
+	DashboardURL  *string         `json:"dashboard_url,omitempty"`
 }
 
 // ── Upload ────────────────────────────────────────────────────────────────────

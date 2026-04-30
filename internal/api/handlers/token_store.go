@@ -19,6 +19,7 @@ type tokenEntry struct {
 	chatID    int64
 	resType   string
 	filePath  string
+	payload   *string
 	expiresAt time.Time
 }
 
@@ -58,6 +59,7 @@ func (ts *TokenStore) Store(chatID int64, resourceType, filePath string) string 
 		entry := &malcomdb.DownloadToken{
 			Token:        token,
 			FilePath:     filePath,
+			PayloadJSON:  nil,
 			ChatID:       chatID,
 			ResourceType: resourceType,
 			ExpiresAt:    expiresAt,
@@ -72,32 +74,69 @@ func (ts *TokenStore) Store(chatID int64, resourceType, filePath string) string 
 	ts.store[token] = tokenEntry{
 		chatID:   chatID,
 		resType:  resourceType,
-		filePath: filePath, expiresAt: expiresAt,
+		filePath: filePath,
+		payload:  nil,
+		expiresAt: expiresAt,
 	}
 	ts.mu.Unlock()
 	return token
 }
 
-// Resolve devuelve la ruta y el tipo de recurso si el token sigue vigente.
-// resourceType: "pdf" | "excel" | "chart" | "" (memoria legacy).
-// Las gráficas no marcan used_at para permitir varias cargas en <img>.
-func (ts *TokenStore) Resolve(token string) (filePath string, resourceType string, ok bool) {
+// StorePayload guarda JSON efímero (p. ej. sesión ECharts dashboard) bajo resourceType "dashboard".
+func (ts *TokenStore) StorePayload(chatID int64, resourceType, jsonBody string) string {
+	token := newTokenValue()
+	expiresAt := time.Now().Add(tokenTTL)
+	body := jsonBody
+
+	if ts.db != nil {
+		entry := &malcomdb.DownloadToken{
+			Token:        token,
+			FilePath:     "",
+			PayloadJSON:  &body,
+			ChatID:       chatID,
+			ResourceType: resourceType,
+			ExpiresAt:    expiresAt,
+		}
+		if err := ts.db.WithContext(context.Background()).Create(entry).Error; err == nil {
+			return token
+		}
+	}
+
+	ts.mu.Lock()
+	ts.store[token] = tokenEntry{
+		chatID:    chatID,
+		resType:   resourceType,
+		filePath:  "",
+		payload:   &body,
+		expiresAt: expiresAt,
+	}
+	ts.mu.Unlock()
+	return token
+}
+
+// ResolveFull devuelve ruta y/o payload JSON si el token sigue vigente.
+// chart y dashboard no marcan used_at (múltiples GET).
+func (ts *TokenStore) ResolveFull(token string) (*ResolvedToken, bool) {
 	if ts.db != nil {
 		var e malcomdb.DownloadToken
 		err := ts.db.WithContext(context.Background()).Where("token = ?", token).First(&e).Error
 		if err != nil {
-			return "", "", false
+			return nil, false
 		}
 		if time.Now().After(e.ExpiresAt) {
 			_ = ts.db.WithContext(context.Background()).Delete(&e).Error
-			return "", "", false
+			return nil, false
 		}
 		rt := e.ResourceType
-		if rt != "chart" && e.UsedAt == nil {
+		if rt != "chart" && rt != "dashboard" && e.UsedAt == nil {
 			now := time.Now().UTC()
 			_ = ts.db.WithContext(context.Background()).Model(&e).Update("used_at", &now).Error
 		}
-		return e.FilePath, rt, true
+		return &ResolvedToken{
+			FilePath:     e.FilePath,
+			PayloadJSON:  e.PayloadJSON,
+			ResourceType: rt,
+		}, true
 	}
 
 	ts.mu.Lock()
@@ -105,9 +144,13 @@ func (ts *TokenStore) Resolve(token string) (filePath string, resourceType strin
 	e, ok := ts.store[token]
 	if !ok || time.Now().After(e.expiresAt) {
 		delete(ts.store, token)
-		return "", "", false
+		return nil, false
 	}
-	return e.filePath, e.resType, true
+	return &ResolvedToken{
+		FilePath:     e.filePath,
+		PayloadJSON:  e.payload,
+		ResourceType: e.resType,
+	}, true
 }
 
 // gc elimina las entradas expiradas cada 5 minutos.

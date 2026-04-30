@@ -173,8 +173,26 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		}
 	}
 
+	// 8b · Dashboard premium (ECharts): solo premium; token de sesión para /dashboard
+	var dashboardURL *string
+	var echartsOpt json.RawMessage
+	if creditStatus.IsPremium && len(result.EChartsOption) > 0 {
+		echartsOpt = result.EChartsOption
+		wrap, err := json.Marshal(map[string]json.RawMessage{"echarts_option": result.EChartsOption})
+		if err == nil {
+			tok := h.tokens.StorePayload(req.ChatID, "dashboard", string(wrap))
+			u := base + "/dashboard?token=" + tok
+			dashboardURL = &u
+			artifacts = append(artifacts, types.ArtifactInfo{
+				Type:  "dashboard",
+				URL:   u,
+				Label: "Abrir dashboard interactivo (ECharts)",
+			})
+		}
+	}
+
 	// 9 · Respuesta
-	c.JSON(http.StatusOK, types.ChatResponse{
+	out := types.ChatResponse{
 		Response:         result.Response,
 		HasPDF:           result.HasPDF,
 		HasExcel:         result.HasExcel,
@@ -186,7 +204,12 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		DownloadLabel:    downloadLabel,
 		ChartURLs:        chartURLs,
 		Artifacts:        artifacts,
-	})
+		DashboardURL:     dashboardURL,
+	}
+	if len(echartsOpt) > 0 {
+		out.EChartsOption = echartsOpt
+	}
+	c.JSON(http.StatusOK, out)
 }
 
 // ── POST /api/v1/chat/upload ──────────────────────────────────────────────────

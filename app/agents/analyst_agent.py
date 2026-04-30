@@ -6,9 +6,10 @@ PDFs y documentos se manejan exclusivamente vía KnowledgeAgent (contexto vector
 """
 import functools
 import io
+import json
 import os
 import re
-from typing import Optional, List, Dict
+from typing import Any, Dict, List, Optional, Tuple
 
 import google.generativeai as genai
 import pandas as pd
@@ -21,10 +22,9 @@ try:
     from app.agents.report_generator import (
         generar_reporte_excel_avanzado,
         generar_reporte_pdf,
-        generar_reporte_premium_pdf,
+        _read_schema_sample,
     )
     from app.agents.report_generator_agent import build_report_translator_instructions
-    from app.agents.data_cleaner import smart_read_schema
     from app.api.schemas import ReportConfig
 except ModuleNotFoundError:
     from agents.model_manager import ModelManager
@@ -32,10 +32,9 @@ except ModuleNotFoundError:
     from agents.report_generator import (
         generar_reporte_excel_avanzado,
         generar_reporte_pdf,
-        generar_reporte_premium_pdf,
+        _read_schema_sample,
     )
     from agents.report_generator_agent import build_report_translator_instructions
-    from agents.data_cleaner import smart_read_schema  # type: ignore
     from api.schemas import ReportConfig
 try:
     # Cuando se ejecuta desde la raíz: `python -m app.main`
@@ -199,25 +198,16 @@ class AnalystAgent:
     def _answer_document_only(
         self, user_query: str, document_context: str, require_strict_data: bool = False
     ) -> str:
-        """Respuesta basada exclusivamente en el contexto vectorial de documentos (PDFs, DOCX, TXT)."""
+        """Respuesta basada exclusivamente en el contexto vectorial de documentos y los mensajes del usuario (PDFs, DOCX, TXT)."""
         if not document_context:
             return self._cap(
-                "No encontré información relevante en los documentos indexados. "
+                "No encontré información relevante en los documentos indexados o en los mensajes del usuario. "
                 "¿Podrías subir el PDF o documento que deseas consultar?"
             )
-        strict_prefix = ""
-        if require_strict_data:
-            strict_prefix = (
-                "MODO ESTRICTO (backend): Esta conversación tiene archivos asociados. "
-                "No inventes cifras ni hechos que no aparezcan en el contexto siguiente.\n\n"
-            )
         prompt = (
-            f"{strict_prefix}{document_context}\n\n"
-            "PREGUNTA DEL USUARIO: " + user_query + "\n\n"
-            "INSTRUCCIONES: Responde ÚNICAMENTE con base en la información de los documentos proporcionados arriba. "
-            "No inventes datos. Si la información no está en los documentos, indícalo claramente. "
-            "Responde como Analista Senior de InsightFlow. "
-            + LENGTH_INSTRUCTION
+            f"{document_context}\n\n"
+            f"PREGUNTA DEL USUARIO: {user_query}\n\n"
+            f"{LENGTH_INSTRUCTION}"
         )
         response = self._generate(prompt)
         return self._cap(response.text)
@@ -238,47 +228,34 @@ class AnalystAgent:
         response = self._generate(prompt)
         return self._cap(response.text)
 
-    def _build_read_instruction(
-        self,
-        clean_path: str,
-        path_lower: str,
-        csv_encoding: Optional[str],
-        header_row: int = 0,
-        pipe_columns: Optional[List[str]] = None,
-    ) -> str:
-        pipe_cols = pipe_columns or []
-        # Instrucción base de lectura con header real
+    def _extract_echarts_json(self, text: str) -> Tuple[str, Optional[Dict[str, Any]]]:
+        """Separa el bloque ```echarts-json del texto y devuelve (texto_limpio, opción ECharts o None)."""
+        pattern = r"```echarts-json\s*([\s\S]*?)\s*```"
+        m = re.search(pattern, text, re.IGNORECASE)
+        if not m:
+            return text, None
+        raw = m.group(1).strip()
+        cleaned = re.sub(pattern, "", text, count=1, flags=re.IGNORECASE).strip()
+        try:
+            obj = json.loads(raw)
+        except json.JSONDecodeError:
+            return cleaned, None
+        if isinstance(obj, dict) and "echarts_option" in obj:
+            inner = obj["echarts_option"]
+            if isinstance(inner, dict):
+                obj = inner
+            else:
+                return cleaned, None
+        if not isinstance(obj, dict):
+            return cleaned, None
+        return cleaned, obj
+
+    def _build_read_instruction(self, clean_path: str, path_lower: str, csv_encoding: Optional[str]) -> str:
         if path_lower.endswith((".xlsx", ".xls")):
-            if header_row > 0:
-                base = (
-                    f"Usa pd.read_excel('{clean_path}', header={header_row}) para cargar el archivo "
-                    f"(el preprocesador detectó que el header real está en la fila {header_row}; "
-                    "las filas anteriores son metadata/título del reporte — no las incluyas)."
-                )
-            else:
-                base = f"Usa pd.read_excel('{clean_path}') para cargar el archivo."
-        else:
-            enc_part = f", encoding='{csv_encoding}'" if csv_encoding and csv_encoding != "utf-8" else ""
-            if header_row > 0:
-                base = (
-                    f"Usa pd.read_csv('{clean_path}'{enc_part}, header={header_row}) para cargar el archivo "
-                    f"(el preprocesador detectó el header real en la fila {header_row}; "
-                    "las filas anteriores son metadata/título del reporte — no las incluyas)."
-                )
-            else:
-                base = f"Usa pd.read_csv('{clean_path}'{enc_part}) para cargar el archivo."
-        # Instrucción de expansión pipe si aplica
-        if not pipe_cols:
-            return base
-        pipe_list = ", ".join(f"'{c}'" for c in pipe_cols)
-        pipe_instruction = (
-            f" Inmediatamente después de cargar df, expande las columnas con separador '|' así: "
-            f"for _col in [{pipe_list}]:\n"
-            "    _exp = df[_col].astype(str).str.split('|', expand=True).apply(lambda s: s.str.strip())\n"
-            "    _exp.columns = [f'{_col}_p{i}' for i in range(len(_exp.columns))]\n"
-            "    df = pd.concat([df.drop(_col, axis=1), _exp], axis=1)"
-        )
-        return base + pipe_instruction
+            return f"Usa pd.read_excel('{clean_path}') para cargar el archivo."
+        if csv_encoding and csv_encoding != "utf-8":
+            return f"Usa pd.read_csv('{clean_path}', encoding='{csv_encoding}') para cargar el archivo (este CSV no es UTF-8)."
+        return f"Usa pd.read_csv('{clean_path}') para cargar el archivo."
 
     def _build_code_prompt(
         self,
@@ -298,7 +275,7 @@ class AnalystAgent:
             strict_prefix = (
                 "MODO ESTRICTO (confirmado por el backend): Esta conversación tiene archivos del usuario "
                 "en su carpeta de datos. Está PROHIBIDO inventar cifras, tablas o series que no provengan "
-                "del archivo indicado abajo o de contexto_documentos. Si no alcanza, detente y explica qué falta; "
+                "del archivo indicado abajo o de contexto_documentos. Si no alcanza, detente y explica qué falta y pregunta al usuario; "
                 "no rellenes con datos supuestos.\n\n"
             )
         system = strict_prefix + (
@@ -347,18 +324,7 @@ class AnalystAgent:
             "12. INFORME CON CONTRATO DE ESTILO: Si existe un bloque REPORTE — COMUNICACIÓN CORPORATIVA más abajo, "
             "redacta el contenido textual que irá a PDF/Excel (p. ej. vía contexto_documentos o resumen ejecutivo) "
             "cumpliendo ese contrato: audiencia, tono y dialecto. Los colores y tamaños de fuente en el archivo "
-            "los aplica el sistema; no los codifiques en Python.\n"
-            "13. CONTEXTO DE DOMINIO — COLOMBIA / DIAN: Si el schema del archivo contiene columnas como FOB, CIF, "
-            "Aduana, NIT, Subpartida, NANDINA, Declaración, o si el schema_info menciona 'NOTA DE LIMPIEZA "
-            "AUTOMÁTICA', aplica estas reglas sin pedir permiso al usuario: "
-            "(a) Usa exactamente el header_row y las opciones de lectura que están en la instrucción de carga "
-            "    (regla 2); nunca redefinás header=0 si ya se especificó otro valor. "
-            "(b) Las columnas con sufijos _p0, _p1, _p2... son el resultado de expandir un separador '|'; "
-            "    son columnas de datos reales — úsalas directamente en el análisis. "
-            "(c) Las columnas llamadas 'Unnamed: N' en reportes DIAN suelen contener valores reales; "
-            "    renómbralas según el contexto de las columnas vecinas antes de graficar. "
-            "(d) Nunca solicites al usuario que especifique la fila del header ni el separador; "
-            "    el preprocesador ya lo resolvió. Limpia en silencio y reporta los hallazgos."
+            "los aplica el sistema; no los codifiques en Python."
         )
         doc_block = ""
         if document_context:
@@ -369,44 +335,9 @@ class AnalystAgent:
                 "Para PDF usa generar_reporte_pdf (regla 8); para Excel generar_reporte_excel_avanzado (regla 9). "
                 "NO leas archivos .pdf con código."
             )
-
-        # ── Bloque de tier (licencia de construcción) ────────────────────────
-        tier = getattr(report_config, "tier", "free") if report_config else "free"
-        chart_types = getattr(report_config, "chart_types", ["bars"]) if report_config else ["bars"]
-
-        if tier == "premium":
-            tier_block = (
-                "\n\nCONFIGURACIÓN DE TIER — PREMIUM (poderes desbloqueados):\n"
-                f"El usuario tiene plan premium. Tipos de gráficas disponibles: {chart_types}.\n"
-                "- Para heatmap usa seaborn.heatmap() (import seaborn as sns).\n"
-                "- Para pie/donut usa plt.pie() con wedgeprops={'width': 0.5} para donut.\n"
-                "- Para treemap: import squarify; squarify.plot(...).\n"
-                f"- Gráfica principal: '{plot_filename}'. Gráficas adicionales: "
-                f"'{plot_filename.replace('.png', '_2.png')}', '{plot_filename.replace('.png', '_3.png')}', etc. "
-                "Usa plt.savefig() + plt.close() para cada una.\n"
-                "- Para el reporte PDF premium usa ÚNICAMENTE la función inyectada:\n"
-                f"  generar_reporte_premium_pdf(contexto_documentos, r'{report_pdf_path}', "
-                f"rutas_graficas=['{plot_filename}'])\n"
-                "- El análisis debe incluir múltiples KPIs, tendencias y comparativas.\n"
-                "- PROHIBIDO usar fpdf, FPDF, xlsxwriter ni cualquier otra librería de reportes."
-            )
-        else:
-            tier_block = (
-                "\n\nCONFIGURACIÓN DE TIER — GRATUITO (plan básico):\n"
-                "- Solo puedes generar UNA gráfica de barras (plt.bar o plt.barh). "
-                "PROHIBIDO: heatmap, treemap, pie, scatter, boxplot, seaborn, squarify ni cualquier otro tipo.\n"
-                "- Para reporte PDF usa: "
-                f"generar_reporte_pdf(contexto_documentos, r'{report_pdf_path}')\n"
-                "- Al final de tu análisis en texto, incluye EXACTAMENTE esta frase de upsell "
-                "(no la pongas en el código, solo en la narrativa final):\n"
-                "  'He identificado [N] KPIs adicionales y tendencias clave. "
-                "Desbloquea el Dashboard Corporativo con gráficas avanzadas, múltiples páginas "
-                "y tu logo corporativo por $40.000 COP.'"
-            )
-
         style_block = build_report_translator_instructions(report_config)
         return (
-            f"{system}{tier_block}{style_block}\n\nESTRUCTURA DEL ARCHIVO:\n{schema_info}{doc_block}\n\n"
+            f"{system}{style_block}\n\nESTRUCTURA DEL ARCHIVO:\n{schema_info}{doc_block}\n\n"
             f"PREGUNTA DEL USUARIO: {user_query}"
         )
 
@@ -421,15 +352,12 @@ class AnalystAgent:
         report_excel_path: str,
         plot_filename: str,
         report_config: Optional[ReportConfig] = None,
-    ) -> str:
+        generate_echarts: bool = False,
+    ) -> Tuple[str, Optional[Dict[str, Any]]]:
         """Ejecuta el código generado, captura stdout y pide al modelo un resumen cruzado."""
         ruta_img = plot_filename or None
-        tier = getattr(report_config, "tier", "free") if report_config else "free"
         generar_pdf = functools.partial(
             generar_reporte_pdf, ruta_grafica=ruta_img, report_config=report_config
-        )
-        generar_premium_pdf = functools.partial(
-            generar_reporte_premium_pdf, report_config=report_config
         )
         generar_excel = functools.partial(
             generar_reporte_excel_avanzado, ruta_grafica=ruta_img, report_config=report_config
@@ -442,8 +370,6 @@ class AnalystAgent:
             "generar_reporte_pdf": generar_pdf,
             "generar_reporte_excel_avanzado": generar_excel,
         }
-        if tier == "premium":
-            namespace["generar_reporte_premium_pdf"] = generar_premium_pdf
         print(f"DEBUG: Ejecutando análisis local sobre {clean_path}...")
         prev_cwd = os.getcwd()
         try:
@@ -480,14 +406,29 @@ class AnalystAgent:
             cross_reference = ""
 
         narrative_contract = build_report_translator_instructions(report_config)
+        echarts_suffix = ""
+        if generate_echarts:
+            echarts_suffix = (
+                "\n\nDASHBOARD PREMIUM (Apache ECharts):\n"
+                "Tras el resumen, AL FINAL incluye un bloque con lenguaje exactamente `echarts-json` "
+                "con UN SOLO objeto JSON: la opción completa de ECharts (title, tooltip, xAxis, yAxis, series, etc.). "
+                "Los datos deben coincidir EXCLUSIVAMENTE con números y categorías de la salida del análisis; "
+                "no inventes valores.\n"
+                "Formato obligatorio:\n```echarts-json\n{ \"title\": { \"text\": \"...\" }, ... }\n```\n"
+            )
         prompt_final = (
             f"El código se ejecutó con éxito. Resultados técnicos del análisis de datos:\n{resultados}\n\n"
             f"{narrative_contract}"
             "Responde como Analista Senior de InsightFlow. No menciones el código, solo conclusiones y "
             f"hallazgos en lenguaje natural.{cross_reference} {LENGTH_INSTRUCTION}"
+            + echarts_suffix
         )
         response = self._generate(prompt_final)
-        return self._cap(response.text)
+        text = response.text
+        opt: Optional[Dict[str, Any]] = None
+        if generate_echarts:
+            text, opt = self._extract_echarts_json(text)
+        return self._cap(text), opt
 
     # ── Punto de entrada principal ───────────────────────────────────────
 
@@ -499,7 +440,8 @@ class AnalystAgent:
         chat_id: Optional[int] = None,
         report_config: Optional[ReportConfig] = None,
         require_strict_data: bool = False,
-    ) -> str:
+        generate_echarts: bool = False,
+    ) -> Tuple[str, Optional[Dict[str, Any]]]:
         """
         Analiza según la pregunta del usuario.
         - Si el archivo es un PDF/documento: responde exclusivamente con el contexto vectorial.
@@ -520,40 +462,29 @@ class AnalystAgent:
         # Sin archivo de datos → respuesta basada solo en documentos o conversacional
         if not data_file_path or not os.path.exists(data_file_path):
             if local_file_path and _is_document_file(local_file_path):
-                return self._answer_document_only(
-                    user_query, document_context, require_strict_data
+                return (
+                    self._answer_document_only(
+                        user_query, document_context, require_strict_data
+                    ),
+                    None,
                 )
-            return self._answer_without_data_file(
-                user_query, document_context, require_strict_data
+            return (
+                self._answer_without_data_file(
+                    user_query, document_context, require_strict_data
+                ),
+                None,
             )
 
-        # Archivo de datos (CSV/Excel) presente → limpieza heurística + generar código de análisis
+        # Archivo de datos (CSV/Excel) presente → generar código de análisis
         try:
-            read_result = smart_read_schema(data_file_path)
-            df_sample = read_result.df
-            csv_encoding = read_result.encoding
-            header_row = read_result.header_row
-            pipe_columns = read_result.pipe_columns
+            df_sample, csv_encoding = _read_schema_sample(data_file_path)
             schema_info = f"Columnas: {list(df_sample.columns)}\nMuestra: {df_sample.to_dict('records')}"
-            if read_result.was_cleaned:
-                cleaning_parts = []
-                if header_row > 0:
-                    cleaning_parts.append(f"header real detectado en fila {header_row}")
-                if pipe_columns:
-                    cleaning_parts.append(f"columnas con separador '|' expandidas: {pipe_columns}")
-                schema_info += (
-                    "\n\nNOTA DE LIMPIEZA AUTOMÁTICA: El preprocesador aplicó correcciones silenciosas "
-                    f"({'; '.join(cleaning_parts)}). Informa brevemente al usuario al inicio de tu "
-                    "respuesta que limpiaste el archivo automáticamente antes de analizar."
-                )
         except Exception as e:
-            return f"Error al leer la estructura del archivo local: {e}"
+            return f"Error al leer la estructura del archivo local: {e}", None
 
         clean_path = data_file_path.replace("\\", "/")
         path_lower = clean_path.lower()
-        read_instruction = self._build_read_instruction(
-            clean_path, path_lower, csv_encoding, header_row, pipe_columns
-        )
+        read_instruction = self._build_read_instruction(clean_path, path_lower, csv_encoding)
         plot_filename = f"output_plot_{chat_id}.png" if chat_id else "output_plot.png"
         report_pdf_path = (
             os.path.join(os.path.abspath(user_data_folder), "reporte_final.pdf")
@@ -583,10 +514,10 @@ class AnalystAgent:
             respuesta_texto = response.text
             codigo_python = self._sanitize_code(self._extraer_codigo(respuesta_texto))
         except Exception as e:
-            return f"Error de comunicación con el modelo de análisis: {str(e)}"
+            return f"Error de comunicación con el modelo de análisis: {str(e)}", None
 
         if not self._looks_like_python_code(codigo_python):
-            return self._cap(respuesta_texto)
+            return self._cap(respuesta_texto), None
 
         try:
             return self._run_code_and_summarize(
@@ -597,6 +528,7 @@ class AnalystAgent:
                 report_excel_path,
                 plot_filename,
                 report_config=report_config,
+                generate_echarts=generate_echarts,
             )
         except Exception as e:
             print(f"Error ejecutando código local: {e}")
@@ -619,10 +551,14 @@ class AnalystAgent:
                         report_excel_path,
                         plot_filename,
                         report_config=report_config,
+                        generate_echarts=generate_echarts,
                     )
             except Exception as e2:
                 print(f"Error en reintento de corrección: {e2}")
-            return self._cap(
-                f"Encontré un problema al analizar el archivo: {e}. "
-                "Por favor verifica que el archivo CSV esté bien formado o intenta con otra pregunta."
+            return (
+                self._cap(
+                    f"Encontré un problema al analizar el archivo: {e}. "
+                    "Por favor verifica que el archivo CSV esté bien formado o intenta con otra pregunta."
+                ),
+                None,
             )

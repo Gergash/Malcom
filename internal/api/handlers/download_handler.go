@@ -33,10 +33,24 @@ func (h *DownloadHandler) Download(c *gin.Context) {
 		return
 	}
 
-	filePath, resType, ok := h.tokens.Resolve(token)
+	asset, ok := h.tokens.ResolveFull(token)
 	if !ok {
 		c.JSON(http.StatusNotFound, types.ErrorResponse{
 			Detail: "Enlace de descarga expirado o inválido. Genera un nuevo reporte.",
+		})
+		return
+	}
+
+	if asset.PayloadJSON != nil && strings.TrimSpace(*asset.PayloadJSON) != "" {
+		c.Header("Cache-Control", "no-store")
+		c.Data(http.StatusOK, "application/json; charset=utf-8", []byte(*asset.PayloadJSON))
+		return
+	}
+
+	filePath := asset.FilePath
+	if filePath == "" {
+		c.JSON(http.StatusNotFound, types.ErrorResponse{
+			Detail: "El recurso no está disponible.",
 		})
 		return
 	}
@@ -63,6 +77,7 @@ func (h *DownloadHandler) Download(c *gin.Context) {
 		}
 	}
 
+	resType := asset.ResourceType
 	ext := filepath.Ext(filePath)
 	mimeType := mime.TypeByExtension(ext)
 	if mimeType == "" {

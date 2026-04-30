@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import Any
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -39,6 +40,8 @@ class ProcessMessageRequest(BaseModel):
     report_config: ReportConfig | None = None
     # True cuando la API Go detecta archivos en data/{chat_id}/ — no inventar datos.
     require_strict_data: bool = False
+    # True solo premium (lo envía Go): el analista añade bloque echarts-json al final.
+    generate_echarts: bool = False
 
 
 class IngestFileRequest(BaseModel):
@@ -60,18 +63,23 @@ async def internal_process_message(body: ProcessMessageRequest):
             body.message,
             report_config=body.report_config,
             require_strict_data=body.require_strict_data,
+            generate_echarts=body.generate_echarts,
         )
-        return {
-            "response":   result.get("response", ""),
-            "has_pdf":    bool(result.get("has_pdf")),
-            "has_excel":  bool(result.get("has_excel")),
-            "has_chart":  bool(result.get("has_chart")),
+        payload: dict[str, Any] = {
+            "response": result.get("response", ""),
+            "has_pdf": bool(result.get("has_pdf")),
+            "has_excel": bool(result.get("has_excel")),
+            "has_chart": bool(result.get("has_chart")),
             "chart_path": result.get("chart_path") or "",
             # Rutas absolutas para que el bot de Telegram pueda leer y enviar
             # los archivos directamente (volumen compartido en Docker).
-            "pdf_path":   result.get("pdf_path") or "",
+            "pdf_path": result.get("pdf_path") or "",
             "excel_path": result.get("excel_path") or "",
         }
+        eo = result.get("echarts_option")
+        if eo is not None:
+            payload["echarts_option"] = eo
+        return payload
     except Exception as exc:
         logger.exception("process-message chat_id=%s", body.chat_id)
         raise HTTPException(status_code=500, detail=str(exc)) from exc

@@ -6,8 +6,8 @@ tanto por el bot de Telegram como por el endpoint FastAPI /api/v1/chat.
 
 Responsabilidades:
   - Detectar si la consulta es de predicción o análisis general.
-  - Invocar al agente correspondiente en un executor de hilos
-    (los agentes son síncronos; el orquestador es async).
+  - Enrutar a PredictorAgent vía executor (síncrono) o a AnalystAgent con
+    await analyze_data (async).
   - Devolver un dict estructurado con la respuesta y los artefactos generados.
 """
 
@@ -105,30 +105,31 @@ class Orchestrator:
         }
 
     async def process_message(
-        self, message: str, report_config=None, require_strict_data: bool = False
+        self,
+        message: str,
+        report_config=None,
+        require_strict_data: bool = False,
+        generate_echarts: bool = False,
     ) -> dict:
         """
-        Procesa un mensaje de texto y devuelve:
-
-            {
-                "response":   str,   # texto de respuesta del agente
-                "has_pdf":    bool,  # ¿se generó reporte PDF?
-                "has_excel":  bool,  # ¿se generó reporte Excel?
-                "has_chart":  bool,  # ¿se generó imagen de gráfica?
-                "pdf_path":   str | None,
-                "excel_path": str | None,
-                "chart_path": str | None,
-            }
+        Procesa un mensaje de texto y devuelve un dict con response, flags de
+        artefactos (PDF/Excel/gráfica), rutas opcionales y, si generate_echarts
+        es True y el modelo emitió bloque echarts-json, la clave echarts_option
+        (dict listo para serializar a JSON).
         """
         loop = asyncio.get_event_loop()
 
         if self._is_prediction_query(message):
+            self._echarts_option = None
             response_text = await loop.run_in_executor(
                 None, self._run_predictor, message
             )
         else:
             response_text = await self._run_analyst(
-                message, loop, report_config, require_strict_data
+                message,
+                report_config,
+                require_strict_data,
+                generate_echarts=generate_echarts,
             )
 
         return self._build_result(response_text)
@@ -153,36 +154,24 @@ class Orchestrator:
     async def _run_analyst(
         self,
         message: str,
-        loop: asyncio.AbstractEventLoop,
         report_config=None,
         require_strict_data: bool = False,
+        *,
+        generate_echarts: bool = False,
     ) -> str:
         analyst = AnalystAgent()
         user_data_folder = str(self.data_dir.resolve())
 
-        def _sync_call():
-            # analyze_data puede ser sync o async según la versión del agente.
-            # Llamamos la versión sync aquí; si el agente expone un método async
-            # directo, usarlo directamente en el await más abajo.
-            import inspect
-            result = analyst.analyze_data(
-                message,
-                local_file_path=None,
-                user_data_folder=user_data_folder,
-                chat_id=self.chat_id,
-                report_config=report_config,
-                require_strict_data=require_strict_data,
-            )
-            # Si el agente devuelve una coroutine (análisis async nativo), la ejecutamos
-            if inspect.isawaitable(result):
-                return None, result  # señal para await fuera del executor
-            return result, None
-
-        response_text, maybe_coro = await loop.run_in_executor(None, _sync_call)
-
-        # Si analyze_data es async, la ejecutamos directamente en el event loop
-        if maybe_coro is not None:
-            response_text = await maybe_coro
+        response_text, echarts_opt = await analyst.analyze_data(
+            message,
+            local_file_path=None,
+            user_data_folder=user_data_folder,
+            chat_id=self.chat_id,
+            report_config=report_config,
+            require_strict_data=require_strict_data,
+            generate_echarts=generate_echarts,
+        )
+        self._echarts_option = echarts_opt
 
         # Capturar reportes pendientes antes de que el objeto analyst se destruya
         self._pending_pdf = analyst.peek_pending_pdf_report()
@@ -199,7 +188,7 @@ class Orchestrator:
         chart_abs = self.data_dir / chart_name
         has_chart = chart_abs.is_file()
 
-        return {
+        out = {
             "response": response_text,
             "has_pdf": bool(pdf_path and os.path.isfile(pdf_path)),
             "has_excel": bool(excel_path and os.path.isfile(excel_path)),
@@ -208,3 +197,7 @@ class Orchestrator:
             "excel_path": excel_path if (excel_path and os.path.isfile(excel_path)) else None,
             "chart_path": str(chart_abs) if has_chart else None,
         }
+        eo = getattr(self, "_echarts_option", None)
+        if eo is not None:
+            out["echarts_option"] = eo
+        return out

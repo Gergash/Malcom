@@ -62,6 +62,7 @@ func main() {
 	chatHandler := handlers.NewChatHandler(userRepo, convRepo, workerClient, cfg.DataDir, tokenStore, cfg.EnablePublicData)
 	billingHandler := handlers.NewBillingHandler(userRepo, paymentRepo)
 	downloadHandler := handlers.NewDownloadHandler(tokenStore)
+	dashboardHandler := handlers.NewDashboardHandler(tokenStore)
 
 	router := gin.Default()
 
@@ -82,6 +83,8 @@ func main() {
 
 	// Descarga (reportes) y vista de gráficas cuando /data está cerrado: token efímero (TTL 30 min).
 	router.GET("/download/:token", downloadHandler.Download)
+	// Dashboard premium (ECharts): misma base pública que el API (proxy o dominio único).
+	router.GET("/dashboard", dashboardHandler.Page)
 
 	router.GET("/health", healthHandler.HealthCheck)
 
@@ -90,6 +93,7 @@ func main() {
 		v1.POST("/chat", chatHandler.Chat)
 		v1.POST("/chat/upload", chatHandler.UploadFile)
 		v1.GET("/chat/:chat_id/credits", chatHandler.GetCredits)
+		v1.GET("/dashboard/session/:token", dashboardHandler.SessionJSON)
 
 		v1.GET("/billing/status", billingHandler.BillingStatus)
 		v1.POST("/billing/webhook", billingHandler.PaymentWebhook)

@@ -48,12 +48,14 @@ type UserFile struct {
 
 // DownloadToken — token de descarga persistido en PostgreSQL (P2: reemplaza memoria).
 // Válido hasta expires_at; used_at registra primera descarga (auditoría).
+// PayloadJSON: sesión dashboard (ECharts) u otros JSON efímeros; FilePath vacío si solo hay payload.
 type DownloadToken struct {
 	ID           uint      `gorm:"primaryKey"`
 	Token        string    `gorm:"uniqueIndex;size:64;not null"`
-	FilePath     string    `gorm:"size:1024;not null"`
+	FilePath     string    `gorm:"size:1024"` // vacío si el recurso es solo payload_json
+	PayloadJSON  *string   `gorm:"column:payload_json;type:text"`
 	ChatID       int64     `gorm:"index;not null"`
-	ResourceType string    `gorm:"size:20;not null;default:report"` // "pdf" | "excel"
+	ResourceType string    `gorm:"size:20;not null;default:report"` // pdf | excel | chart | dashboard
 	ExpiresAt    time.Time `gorm:"not null;index"`
 	UsedAt       *time.Time
 	CreatedAt    time.Time

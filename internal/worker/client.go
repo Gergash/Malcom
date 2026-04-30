@@ -5,7 +5,9 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -24,6 +26,8 @@ type ProcessResult struct {
 	ChartPaths []string `json:"chart_paths"` // P5: rutas adicionales (premium multi-chart)
 	PDFPath    string   `json:"pdf_path"`    // ruta al PDF generado
 	ExcelPath  string   `json:"excel_path"`  // ruta al Excel generado
+	// EChartsOption — opción Apache ECharts (JSON) cuando el Brain generó dashboard premium.
+	EChartsOption json.RawMessage `json:"echarts_option,omitempty"`
 }
 
 // IngestResult — resultado que el Worker Python retorna tras ingestar un archivo.
@@ -42,6 +46,7 @@ type processRequest struct {
 	Message           string              `json:"message"`
 	ReportConfig      *types.ReportConfig `json:"report_config,omitempty"`
 	RequireStrictData bool                `json:"require_strict_data"`
+	GenerateECharts   bool                `json:"generate_echarts"` // true solo premium: Brain devuelve echarts_option
 }
 
 type ingestRequest struct {
@@ -128,6 +133,7 @@ func (c *HTTPClient) ProcessMessage(
 	var result ProcessResult
 	var apiErr map[string]any
 
+	genECharts := reportConfig != nil && strings.EqualFold(reportConfig.Tier, "premium")
 	resp, err := c.resty.R().
 		SetContext(dynamicCtx).
 		SetBody(processRequest{
@@ -135,6 +141,7 @@ func (c *HTTPClient) ProcessMessage(
 			Message:           message,
 			ReportConfig:      reportConfig,
 			RequireStrictData: requireStrictData,
+			GenerateECharts:   genECharts,
 		}).
 		SetResult(&result).
 		SetError(&apiErr).
