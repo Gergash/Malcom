@@ -407,6 +407,14 @@ func buildTierConfig(req *types.ReportConfig, state *repositories.UserState) *ty
 		rc.ChartTypes = []string{"bars"}
 		rc.PrimaryColor = "#808080" // gris estándar — no personalizable en free
 	}
+	// El worker Python exige font_size_body >= 6, font_size_titles >= 8.
+	// Los ceros aparecen cuando el frontend no envía report_config (zero value de Go).
+	if rc.FontSizeBody < 6 {
+		rc.FontSizeBody = 11
+	}
+	if rc.FontSizeTitles < 8 {
+		rc.FontSizeTitles = 16
+	}
 	return rc
 }
 
