@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>InsightFlow · Tablero interactivo Premium</title>
+  <meta name="robots" content="noindex,nofollow" />
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <style>
+    :root {
+      --pu-bg: #0e1116;
+      --pu-surface: #161b24;
+      --pu-border: #2a3344;
+      --pu-text: #e8edf5;
+      --pu-muted: #8b98a8;
+      --pu-accent: #28468C;
+      --pu-accent-bright: #3a5fb8;
+      --pu-danger: #c94b4b;
+      --pu-radius: 12px;
+      --pu-shadow: 0 12px 40px rgba(0,0,0,.45);
+      --pu-input-bg: #0c1017;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: system-ui, "Segoe UI", Roboto, Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.45;
+      color: var(--pu-text);
+      background: var(--pu-bg);
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+    .top {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding: 12px 18px;
+      background: var(--pu-surface);
+      border-bottom: 1px solid var(--pu-border);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.25);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .brand-mark {
+      width: 10px; height: 36px;
+      border-radius: 4px;
+      background: linear-gradient(180deg, var(--pu-accent-bright), var(--pu-accent));
+      flex-shrink: 0;
+    }
+    .brand-text strong { display: block; font-size: 15px; letter-spacing: 0.02em; }
+    .brand-text span { font-size: 11px; color: var(--pu-muted); text-transform: uppercase; letter-spacing: 0.08em; }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+    .toolbar button, .toolbar a.btn-link {
+      padding: 8px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--pu-border);
+      background: var(--pu-input-bg);
+      color: var(--pu-text);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .toolbar button:hover, .toolbar a.btn-link:hover {
+      border-color: var(--pu-accent);
+      background: rgba(40, 70, 140, 0.2);
+    }
+    .toolbar button.primary {
+      border-color: var(--pu-accent);
+      background: var(--pu-accent);
+      color: #fff;
+    }
+    .toolbar button.primary:hover { background: var(--pu-accent-bright); border-color: var(--pu-accent-bright); }
+    .toolbar button:disabled { opacity: 0.45; cursor: not-allowed; }
+    main {
+      flex: 1;
+      display: flex;
+      min-height: 0;
+    }
+    .chart-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      padding: 14px 16px 18px;
+    }
+    .chart-surface {
+      flex: 1;
+      min-height: 420px;
+      border-radius: var(--pu-radius);
+      border: 1px solid var(--pu-border);
+      background: var(--pu-input-bg);
+      box-shadow: var(--pu-shadow);
+      overflow: hidden;
+      position: relative;
+    }
+    #chart-main { width: 100%; height: 100%; min-height: 400px; }
+    .aside {
+      width: min(280px, 100%);
+      border-left: 1px solid var(--pu-border);
+      background: rgba(22, 27, 36, 0.6);
+      padding: 16px;
+      font-size: 12px;
+      color: var(--pu-muted);
+    }
+    .aside h3 { margin: 0 0 10px; font-size: 13px; color: var(--pu-text); font-weight: 700; }
+    .aside ul { margin: 0; padding-left: 18px; }
+    .aside li { margin-bottom: 8px; }
+    .err {
+      padding: 32px 24px;
+      color: #f0b0b0;
+      text-align: center;
+      max-width: 520px;
+      margin: auto;
+    }
+    .err code { color: #9ec5ff; }
+    .loading {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(14, 17, 22, 0.75);
+      color: var(--pu-muted);
+      font-size: 14px;
+      z-index: 2;
+    }
+    .loading[hidden] { display: none !important; }
+    @media (max-width: 900px) {
+      main { flex-direction: column; }
+      .aside { width: 100%; border-left: none; border-top: 1px solid var(--pu-border); }
+    }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div class="brand-text">
+        <strong>InsightFlow</strong>
+        <span>Tablero Premium · ECharts</span>
+      </div>
+    </div>
+    <div class="toolbar">
+      <button type="button" id="btn-png" class="primary" disabled title="Exportar vista actual">Descargar PNG</button>
+      <button type="button" id="btn-reload" disabled>Recargar datos</button>
+      <a class="btn-link" href="premium-portal.html">Portal Premium</a>
+    </div>
+  </header>
+
+  <main>
+    <div class="chart-panel">
+      <div class="chart-surface">
+        <div class="loading" id="loading">Cargando tablero…</div>
+        <div id="chart-main" role="img" aria-label="Gráfica interactiva"></div>
+      </div>
+    </div>
+    <aside class="aside" aria-label="Ayuda">
+      <h3>Uso rápido</h3>
+      <ul>
+        <li><strong>Leyenda:</strong> clic en series para mostrar u ocultar.</li>
+        <li><strong>Zoom:</strong> rueda del ratón o dataZoom si el gráfico lo incluye.</li>
+        <li><strong>PNG:</strong> exporta lo que ves (resolución del canvas).</li>
+      </ul>
+      <p style="margin: 16px 0 0;">
+        El tipo de gráfico (barras, líneas, sunburst, mapa de calor…) lo define tu petición o el criterio del analista para tus datos.
+      </p>
+    </aside>
+  </main>
+
+  <script>
+(function () {
+  /**
+   * Misma base que el widget: vacío = mismo origen (servido por la API Go).
+   * Si publicas este HTML en otro dominio, define antes:
+   * window.POWERUPS_API_BASE = 'https://tu-api.powerups.com.co';
+   */
+  var API_BASE = (typeof window.POWERUPS_API_BASE === 'string' ? window.POWERUPS_API_BASE.replace(/\/$/, '') : '');
+
+  var params = new URLSearchParams(window.location.search);
+  var token = params.get('token');
+  var chartEl = document.getElementById('chart-main');
+  var loadingEl = document.getElementById('loading');
+  var btnPng = document.getElementById('btn-png');
+  var btnReload = document.getElementById('btn-reload');
+  var chart = null;
+
+  echarts.registerTheme('powerups', {
+    color: ['#3a5fb8', '#5a7fcf', '#9ec5ff', '#28468C', '#6bc9a8', '#d4a853', '#c77dff'],
+    backgroundColor: 'transparent',
+    textStyle: { fontFamily: 'system-ui, Segoe UI, Roboto, Arial, sans-serif' },
+    categoryAxis: { axisLine: { lineStyle: { color: '#8b98a8' } }, axisLabel: { color: '#8b98a8' }, splitLine: { lineStyle: { color: '#2a3344' } } },
+    valueAxis: { axisLine: { lineStyle: { color: '#8b98a8' } }, axisLabel: { color: '#8b98a8' }, splitLine: { lineStyle: { color: '#2a3344' } } },
+    timeAxis: { axisLine: { lineStyle: { color: '#8b98a8' } }, axisLabel: { color: '#8b98a8' }, splitLine: { lineStyle: { color: '#2a3344' } } },
+    logAxis: { axisLine: { lineStyle: { color: '#8b98a8' } }, axisLabel: { color: '#8b98a8' }, splitLine: { lineStyle: { color: '#2a3344' } } },
+    title: { textStyle: { color: '#e8edf5' } },
+    legend: { textStyle: { color: '#8b98a8' } },
+    tooltip: { backgroundColor: 'rgba(22, 27, 36, 0.94)', borderColor: '#2a3344', textStyle: { color: '#e8edf5' } },
+  });
+
+  function showError(msg) {
+    loadingEl.hidden = true;
+    chartEl.innerHTML = '<div class="err"><p>' + msg + '</p><p style="margin-top:12px;font-size:12px;">Si acabas de pagar, abre el enlace que envía el chat tras el análisis Premium.</p></div>';
+  }
+
+  function sessionURL(tok) {
+    return API_BASE + '/api/v1/dashboard/session/' + encodeURIComponent(tok);
+  }
+
+  function fetchSession(tok) {
+    var headers = { 'Accept': 'application/json' };
+    if (window.location.hostname.indexOf('ngrok') !== -1) {
+      headers['ngrok-skip-browser-warning'] = 'true';
+    }
+    return fetch(sessionURL(tok), { credentials: 'omit', headers: headers }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    });
+  }
+
+  function extractOption(data) {
+    if (!data || typeof data !== 'object') return null;
+    var opt = data.echarts_option != null ? data.echarts_option : data;
+    if (!opt || typeof opt !== 'object') return null;
+    return opt;
+  }
+
+  function renderOption(opt) {
+    if (chart) {
+      chart.dispose();
+      chart = null;
+    }
+    chartEl.innerHTML = '';
+    chart = echarts.init(chartEl, 'powerups', { renderer: 'canvas' });
+    chart.setOption(opt, true);
+    btnPng.disabled = false;
+    btnReload.disabled = false;
+    loadingEl.hidden = true;
+    window.addEventListener('resize', onResize);
+  }
+
+  function onResize() {
+    if (chart) chart.resize();
+  }
+
+  function load() {
+    if (!token) {
+      showError('Falta el parámetro <code>token</code> en la URL. Ejemplo: <code>?token=…</code>');
+      return;
+    }
+    loadingEl.hidden = false;
+    btnPng.disabled = true;
+    btnReload.disabled = true;
+    fetchSession(token)
+      .then(function (data) {
+        var opt = extractOption(data);
+        if (!opt) throw new Error('La respuesta no incluye una opción ECharts válida.');
+        renderOption(opt);
+      })
+      .catch(function (e) {
+        showError('No se pudo cargar el tablero: ' + (e.message || String(e)));
+      });
+  }
+
+  btnReload.addEventListener('click', function () {
+    if (!token) return;
+    chartEl.innerHTML = '';
+    loadingEl.hidden = false;
+    if (chart) {
+      chart.dispose();
+      chart = null;
+    }
+    fetchSession(token)
+      .then(function (data) {
+        var opt = extractOption(data);
+        if (!opt) throw new Error('Respuesta sin echarts_option');
+        renderOption(opt);
+      })
+      .catch(function (e) {
+        showError('Error al recargar: ' + (e.message || String(e)));
+      });
+  });
+
+  btnPng.addEventListener('click', function () {
+    if (!chart) return;
+    var url = chart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#0c1017' });
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'insightflow-tablero-premium.png';
+    a.click();
+  });
+
+  load();
+})();
+  </script>
+</body>
+</html>

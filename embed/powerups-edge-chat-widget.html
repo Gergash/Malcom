@@ -47,6 +47,25 @@
       <button type="button" class="powerups-edge__chip" id="powerups-edge-btn-pdf" title="Requiere plan premium">Generar Informe PDF Premium</button>
       <button type="button" class="powerups-edge__chip" id="powerups-edge-btn-excel" title="Requiere plan premium">Exportar Excel con Gráficas</button>
     </div>
+    <div class="powerups-edge__dashboard-live" id="powerups-edge-dashboard-live" hidden>
+      <div class="powerups-edge__dashboard-head">
+        <div class="powerups-edge__dashboard-titles">
+          <strong class="powerups-edge__dashboard-title">Tablero en vivo</strong>
+          <span class="powerups-edge__dashboard-sub">Premium · ECharts</span>
+        </div>
+        <p class="powerups-edge__dashboard-hint">Sigue escribiendo abajo: cada análisis puede renovar la gráfica (tipo de vista, filtros, comparaciones).</p>
+        <div class="powerups-edge__dashboard-actions">
+          <button type="button" class="powerups-edge__dashboard-btn" id="powerups-edge-dashboard-toggle" aria-expanded="true" aria-controls="powerups-edge-dashboard-frame-wrap">Ocultar gráfico</button>
+          <a class="powerups-edge__dashboard-link" id="powerups-edge-dashboard-open" href="#" target="_blank" rel="noopener noreferrer" hidden>Abrir en pestaña</a>
+        </div>
+      </div>
+      <div class="powerups-edge__dashboard-frame-wrap" id="powerups-edge-dashboard-frame-wrap">
+        <iframe class="powerups-edge__dashboard-iframe" id="powerups-edge-dashboard-iframe" title="Dashboard InsightFlow Premium" sandbox="allow-scripts allow-same-origin allow-popups" hidden></iframe>
+        <div class="powerups-edge__dashboard-placeholder" id="powerups-edge-dashboard-placeholder">
+          Cuando pidas un análisis con datos, el tablero interactivo aparecerá aquí. Prueba: «gráfico de barras por mes», «mapa de calor por categoría» o «evolución en línea».
+        </div>
+      </div>
+    </div>
     <div class="powerups-edge__messages" id="powerups-edge-messages"></div>
     <form class="powerups-edge__composer" id="powerups-edge-form" autocomplete="off">
       <label class="powerups-edge__clip">
@@ -216,7 +235,7 @@
   right: 0;
   bottom: calc(100% + 10px);
   width: min(400px, calc(100vw - 32px));
-  max-height: min(620px, calc(100vh - 100px));
+  max-height: min(720px, calc(100vh - 88px));
   display: flex;
   flex-direction: column;
   background: var(--pu-bg);
@@ -327,6 +346,99 @@
   transition: border-color 0.15s, background 0.15s;
 }
 .powerups-edge__chip:hover { border-color: var(--pu-accent); background: rgba(40, 70, 140, 0.2); }
+.powerups-edge__dashboard-live {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid rgba(42,51,68,0.6);
+  background: rgba(40, 70, 140, 0.06);
+}
+.powerups-edge__dashboard-head {
+  padding: 10px 14px 8px;
+}
+.powerups-edge__dashboard-titles {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.powerups-edge__dashboard-title { font-size: 13px; color: var(--pu-text); letter-spacing: 0.02em; }
+.powerups-edge__dashboard-sub {
+  font-size: 10px;
+  color: var(--pu-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.powerups-edge__dashboard-hint {
+  margin: 6px 0 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--pu-muted);
+}
+.powerups-edge__dashboard-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.powerups-edge__dashboard-btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--pu-border);
+  background: #121722;
+  color: var(--pu-text);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+.powerups-edge__dashboard-btn:hover { border-color: var(--pu-accent); color: var(--pu-accent-bright); }
+.powerups-edge__dashboard-link {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--pu-accent-bright);
+  text-decoration: none;
+}
+.powerups-edge__dashboard-link:hover { text-decoration: underline; }
+.powerups-edge__dashboard-frame-wrap {
+  position: relative;
+  height: min(240px, 32vh);
+  min-height: 180px;
+  margin: 0 10px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--pu-border);
+  background: var(--pu-bg);
+  overflow: hidden;
+  transition: height 0.25s ease, min-height 0.25s ease, opacity 0.2s ease;
+}
+.powerups-edge__dashboard-live.is-collapsed .powerups-edge__dashboard-frame-wrap {
+  height: 0;
+  min-height: 0;
+  margin-bottom: 6px;
+  border-width: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.powerups-edge__dashboard-iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #0c1017;
+}
+.powerups-edge__dashboard-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--pu-muted);
+  text-align: center;
+}
+.powerups-edge__dashboard-placeholder[hidden] { display: none !important; }
 .powerups-edge__messages {
   flex: 1;
   overflow-y: auto;
@@ -534,6 +646,8 @@
     USERNAME: null,
     STORAGE_KEY_CHAT: 'powerups_edge_chat_id_v1',
     STORAGE_KEY_HISTORY: 'powerups_edge_history_v1',
+    // Token del último tablero ECharts por chat_id (se renueva con cada respuesta que incluya dashboard).
+    STORAGE_KEY_DASH_PREFIX: 'powerups_edge_dash_tok_',
     // Mensajes enviados al agente cuando el usuario ya es premium y pulsa las acciones
     PROMPT_PDF: 'Genera el informe PDF premium consolidado de este hilo de análisis, listo para presentación ejecutiva.',
     PROMPT_EXCEL: 'Exporta un libro Excel con gráficas a partir del análisis actual (hojas claras y un gráfico por insight clave).',
@@ -560,6 +674,100 @@
       localStorage.setItem(CONFIG.STORAGE_KEY_CHAT, String(n));
     }
     return n;
+  }
+
+  function dashboardTokenStorageKey() {
+    return CONFIG.STORAGE_KEY_DASH_PREFIX + String(getOrCreateChatId());
+  }
+
+  function saveDashboardToken(token) {
+    if (!token) return;
+    try {
+      localStorage.setItem(dashboardTokenStorageKey(), token);
+    } catch (e) { /* quota */ }
+  }
+
+  function loadDashboardToken() {
+    try {
+      return localStorage.getItem(dashboardTokenStorageKey()) || '';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  /** Extrae token de una URL absoluta o relativa con ?token= */
+  function tokenFromDashboardUrl(url) {
+    if (!url || typeof url !== 'string') return null;
+    var m = url.match(/(?:\?|&)token=([^&]+)/i);
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+
+  function expandLiveDashboard() {
+    var live = el('powerups-edge-dashboard-live');
+    var btn = el('powerups-edge-dashboard-toggle');
+    if (!live || !btn) return;
+    live.classList.remove('is-collapsed');
+    btn.setAttribute('aria-expanded', 'true');
+    btn.textContent = 'Ocultar gráfico';
+  }
+
+  /** Carga o refresca el iframe del tablero (mismo origen que API_BASE). */
+  function setLiveDashboardIframe(token) {
+    var wrapLive = el('powerups-edge-dashboard-live');
+    var iframe = el('powerups-edge-dashboard-iframe');
+    var ph = el('powerups-edge-dashboard-placeholder');
+    var openA = el('powerups-edge-dashboard-open');
+    if (!iframe || !token) return;
+    expandLiveDashboard();
+    var src = CONFIG.API_BASE + '/dashboard?token=' + encodeURIComponent(token);
+    iframe.src = src;
+    iframe.hidden = false;
+    if (ph) ph.hidden = true;
+    if (openA) {
+      openA.href = src;
+      openA.hidden = false;
+    }
+    if (wrapLive) wrapLive.hidden = false;
+  }
+
+  function showDashboardPlaceholder() {
+    var iframe = el('powerups-edge-dashboard-iframe');
+    var ph = el('powerups-edge-dashboard-placeholder');
+    var openA = el('powerups-edge-dashboard-open');
+    if (iframe) {
+      iframe.hidden = true;
+      iframe.removeAttribute('src');
+    }
+    if (ph) ph.hidden = false;
+    if (openA) openA.hidden = true;
+  }
+
+  function hydrateLiveDashboardForPremium() {
+    var tok = loadDashboardToken();
+    if (tok) setLiveDashboardIframe(tok);
+    else showDashboardPlaceholder();
+  }
+
+  /**
+   * Tras POST /chat: si hay dashboard_url o artefacto tipo dashboard, persistir token y refrescar iframe.
+   */
+  function applyDashboardFromChatResponse(out) {
+    if (!out) return;
+    var url = out.dashboard_url || out.dashboardUrl;
+    if (!url && out.artifacts && out.artifacts.length) {
+      for (var i = 0; i < out.artifacts.length; i++) {
+        var a = out.artifacts[i];
+        if (a && String(a.type).toLowerCase() === 'dashboard' && a.url) {
+          url = a.url;
+          break;
+        }
+      }
+    }
+    if (!url) return;
+    var tok = tokenFromDashboardUrl(url);
+    if (!tok) return;
+    saveDashboardToken(tok);
+    setLiveDashboardIframe(tok);
   }
 
   function checkoutUrl() {
@@ -687,6 +895,11 @@
       fill.style.width = '100%';
       banner.hidden = true;
       setComposerLocked(false);
+      var dashLive = el('powerups-edge-dashboard-live');
+      if (dashLive) {
+        dashLive.hidden = false;
+        hydrateLiveDashboardForPremium();
+      }
       return;
     }
     var used = Math.min(state.message_count, limit);
@@ -696,6 +909,8 @@
     var wall = !!state.paywall;
     banner.hidden = !wall;
     setComposerLocked(wall);
+    var dashLiveFree = el('powerups-edge-dashboard-live');
+    if (dashLiveFree) dashLiveFree.hidden = true;
   }
 
   async function fetchCredits() {
@@ -776,6 +991,7 @@
       var dlInfo = (out.download_url) ? { url: out.download_url, label: out.download_label || 'Descargar Reporte' } : null;
       appendMessage('bot', out.response || '(Sin texto de respuesta)', imgUrl, dlInfo);
       pushHistory('bot', out.response || '', imgUrl);
+      applyDashboardFromChatResponse(out);
       await refreshCredits();
     } catch (e) {
       appendMessage('sys', 'No se pudo completar la acción: ' + (e.message || e), null);
@@ -812,6 +1028,14 @@
     el('powerups-edge-paywall-pay').addEventListener('click', function () {
       window.location.href = checkoutUrl();
     });
+    el('powerups-edge-dashboard-toggle').addEventListener('click', function () {
+      var live = el('powerups-edge-dashboard-live');
+      var btn = el('powerups-edge-dashboard-toggle');
+      if (!live || !btn) return;
+      var collapsed = live.classList.toggle('is-collapsed');
+      btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      btn.textContent = collapsed ? 'Mostrar gráfico' : 'Ocultar gráfico';
+    });
     el('powerups-edge-btn-pdf').addEventListener('click', function () { premiumAction(CONFIG.PROMPT_PDF); });
     el('powerups-edge-btn-excel').addEventListener('click', function () { premiumAction(CONFIG.PROMPT_EXCEL); });
 
@@ -840,6 +1064,7 @@
           appendMessage('bot', out.response || '(Sin respuesta)', imgU, dlInfo);
           pushHistory('bot', out.response || '', imgU);
         }
+        applyDashboardFromChatResponse(out);
       } catch (err) {
         appendMessage('sys', 'Error: ' + (err.message || err), null, null);
       } finally {
