@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import logging
 import os
+import uuid
+from pathlib import Path
 
 import httpx
 from dotenv import load_dotenv
@@ -64,12 +66,25 @@ async def _worker_process(chat_id: int, message: str) -> dict:
         return resp.json()
 
 
-async def _worker_ingest(chat_id: int, file_path: str, filename: str) -> dict:
+async def _worker_ingest(
+    chat_id: int,
+    file_path: str,
+    filename: str,
+    *,
+    original_filename: str | None = None,
+) -> dict:
     """POST /internal/ingest-file → indexa el archivo ya guardado en disco."""
+    payload: dict = {
+        "chat_id": chat_id,
+        "tmp_path": file_path,
+        "filename": filename,
+    }
+    if original_filename:
+        payload["original_filename"] = original_filename
     async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.post(
             f"{WORKER_URL}/internal/ingest-file",
-            json={"chat_id": chat_id, "tmp_path": file_path, "filename": filename},
+            json=payload,
         )
         resp.raise_for_status()
         return resp.json()
@@ -105,19 +120,31 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
-    filename = update.message.document.file_name or "archivo"
+    original_name = update.message.document.file_name or "archivo"
+    ext = Path(original_name).suffix or ".bin"
+    stored_name = f"{uuid.uuid4()}{ext}"
 
-    # Guardar el archivo en data/{chat_id}/ (mismo volumen que el worker en Docker)
+    # Guardar como UUID en disco (mismo patrón que la API Go: sin colisiones ni sobrescrituras).
     user_dir = os.path.join(DATA_DIR, str(chat_id))
     os.makedirs(user_dir, exist_ok=True)
-    save_path = os.path.abspath(os.path.join(user_dir, filename))
+    save_path = os.path.abspath(os.path.join(user_dir, stored_name))
 
     tg_file = await update.message.document.get_file()
     await tg_file.download_to_drive(save_path)
-    logger.info("Archivo chat_id=%s guardado en: %s", chat_id, save_path)
+    logger.info(
+        "Archivo chat_id=%s guardado en: %s (orig=%s)",
+        chat_id,
+        save_path,
+        original_name,
+    )
 
     try:
-        result = await _worker_ingest(chat_id, save_path, filename)
+        result = await _worker_ingest(
+            chat_id,
+            save_path,
+            stored_name,
+            original_filename=original_name,
+        )
         await update.message.reply_text(
             f"✅ {result.get('message', 'Archivo recibido.')}\n"
             "Ya puedes pedirme el análisis."
@@ -125,7 +152,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     except Exception as exc:
         logger.exception("Error ingesting file chat_id=%s", chat_id)
         await update.message.reply_text(
-            f"✅ Archivo '{filename}' recibido.\n⚠️ Error al procesar: {exc}"
+            f"✅ Archivo '{original_name}' recibido.\n⚠️ Error al procesar: {exc}"
         )
 
 

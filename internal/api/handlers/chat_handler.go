@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/powerups/insightflow-malcom/internal/api/types"
+	malcomdb "github.com/powerups/insightflow-malcom/internal/db"
 	"github.com/powerups/insightflow-malcom/internal/db/repositories"
 	"github.com/powerups/insightflow-malcom/internal/filesystem"
 	"github.com/powerups/insightflow-malcom/internal/worker"
@@ -189,6 +191,9 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 			tok := h.tokens.StorePayload(req.ChatID, "dashboard", string(wrap))
 			u := base + "/dashboard?token=" + tok
 			dashboardURL = &u
+			if err := h.userRepo.SaveLastDashboardSnapshot(ctx, req.ChatID, string(wrap)); err != nil {
+				slog.Warn("SaveLastDashboardSnapshot", "error", err, "chat_id", req.ChatID)
+			}
 			artifacts = append(artifacts, types.ArtifactInfo{
 				Type:  "dashboard",
 				URL:   u,
@@ -305,6 +310,28 @@ func (h *ChatHandler) UploadFile(c *gin.Context) {
 		return
 	}
 
+	// Auditoría user_files solo cuando el worker confirmó indexación (evita filas sin RAG real).
+	if result.Error == nil && result.Indexed {
+		if _, ge := h.userRepo.GetState(ctx, &chatID, nil); ge == nil {
+			if uid, _ := h.userRepo.GetUserIDForChat(ctx, chatID); uid != nil {
+				sz := int(fh.Size)
+				rec := &malcomdb.UserFile{
+					UserID:        *uid,
+					ChatID:        chatID,
+					Filename:      baseName,
+					FileType:      uploadAuditFileType(ext),
+					FilePath:      result.SavedPath,
+					SizeBytes:     &sz,
+					Indexed:       true,
+					IndexedChunks: result.Chunks,
+				}
+				if re := h.userRepo.RecordUploadedFile(ctx, rec); re != nil {
+					slog.Warn("RecordUploadedFile", "error", re, "chat_id", chatID)
+				}
+			}
+		}
+	}
+
 	c.JSON(http.StatusOK, types.UploadResponse{
 		ChatID:    chatID,
 		Filename:  fh.Filename,
@@ -351,7 +378,60 @@ func (h *ChatHandler) GetCredits(c *gin.Context) {
 	})
 }
 
+// DashboardTokenRefresh emite un nuevo token de dashboard desde el último snapshot guardado (premium).
+// POST /api/v1/chat/token/refresh — usado por el widget cuando el token one-shot ya se consumió.
+func (h *ChatHandler) DashboardTokenRefresh(c *gin.Context) {
+	var req types.DashboardTokenRefreshRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusUnprocessableEntity, types.ErrorResponse{Detail: err.Error()})
+		return
+	}
+	if req.ChatID <= 0 {
+		c.JSON(http.StatusUnprocessableEntity, types.ErrorResponse{Detail: "chat_id inválido."})
+		return
+	}
+	ctx := c.Request.Context()
+	premium, err := h.userRepo.IsPremiumForChat(ctx, req.ChatID)
+	if err != nil {
+		slog.Error("DashboardTokenRefresh premium", "error", err, "chat_id", req.ChatID)
+		c.JSON(http.StatusInternalServerError, types.ErrorResponse{Detail: "No se pudo validar el acceso."})
+		return
+	}
+	if !premium {
+		c.JSON(http.StatusForbidden, types.ErrorResponse{Detail: "Se requiere plan premium activo."})
+		return
+	}
+	snap, err := h.userRepo.GetLastDashboardSnapshot(ctx, req.ChatID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, types.ErrorResponse{Detail: "No se pudo leer el tablero guardado."})
+		return
+	}
+	if snap == "" {
+		c.JSON(http.StatusNotFound, types.ErrorResponse{
+			Detail: "No hay tablero guardado. Envía un mensaje en el chat para generar uno nuevo.",
+		})
+		return
+	}
+	tok := h.tokens.StorePayload(req.ChatID, "dashboard", snap)
+	base := strings.TrimRight(publicBaseURL(c), "/")
+	u := base + "/dashboard?token=" + tok
+	c.JSON(http.StatusOK, types.DashboardTokenRefreshResponse{DashboardURL: u, Token: tok})
+}
+
 // ── Helpers internos ──────────────────────────────────────────────────────────
+
+func uploadAuditFileType(ext string) string {
+	switch strings.ToLower(ext) {
+	case ".pdf":
+		return "pdf"
+	case ".csv", ".xlsx", ".xls":
+		return "data"
+	case ".txt", ".doc", ".docx":
+		return "document"
+	default:
+		return "other"
+	}
+}
 
 // publicBaseURL devuelve la base pública del servidor (sin barra final).
 // Prioridad: PUBLIC_BASE_URL env → X-Forwarded headers (ngrok/proxy) → Host del request.

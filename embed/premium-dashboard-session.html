@@ -227,7 +227,15 @@
       headers['ngrok-skip-browser-warning'] = 'true';
     }
     return fetch(sessionURL(tok), { credentials: 'omit', headers: headers }).then(function (r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
+      if (!r.ok) {
+        var st = r.status;
+        if ((st === 409 || st === 401 || st === 403 || st === 404) && window.parent !== window) {
+          try {
+            window.parent.postMessage({ type: 'insightflow-dashboard', action: 'token_refresh', status: st }, '*');
+          } catch (e) {}
+        }
+        throw new Error('HTTP ' + st);
+      }
       return r.json();
     });
   }

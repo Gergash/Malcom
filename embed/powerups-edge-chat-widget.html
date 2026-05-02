@@ -748,6 +748,33 @@
     else showDashboardPlaceholder();
   }
 
+  var dashTokenRefreshInFlight = false;
+  /** Silencioso: el iframe avisa (409/401/403/404) tras token one-shot consumido. */
+  async function requestDashboardTokenRefresh() {
+    if (dashTokenRefreshInFlight) return;
+    dashTokenRefreshInFlight = true;
+    try {
+      var chatId = getOrCreateChatId();
+      var res = await fetch(CONFIG.API_BASE + '/api/v1/chat/token/refresh', {
+        method: 'POST',
+        headers: apiHeaders({ 'Content-Type': 'application/json', 'Accept': 'application/json' }),
+        credentials: 'omit',
+        body: JSON.stringify({ chat_id: chatId }),
+      });
+      if (!res.ok) return;
+      var data = await res.json();
+      var url = data.dashboard_url || data.dashboardUrl;
+      var tok = data.token || tokenFromDashboardUrl(url);
+      if (tok) {
+        saveDashboardToken(tok);
+        setLiveDashboardIframe(tok);
+      }
+    } catch (e) { /* red / CORS */ }
+    finally {
+      setTimeout(function () { dashTokenRefreshInFlight = false; }, 1500);
+    }
+  }
+
   /**
    * Tras POST /chat: si hay dashboard_url o artefacto tipo dashboard, persistir token y refrescar iframe.
    */
@@ -1076,6 +1103,14 @@
         setComposerSending(false);
         await refreshCredits();
       }
+    });
+
+    window.addEventListener('message', function (ev) {
+      try {
+        var d = ev.data;
+        if (!d || d.type !== 'insightflow-dashboard' || d.action !== 'token_refresh') return;
+        requestDashboardTokenRefresh();
+      } catch (e) {}
     });
 
     file.addEventListener('change', async function () {

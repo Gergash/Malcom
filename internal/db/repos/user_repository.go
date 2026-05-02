@@ -278,3 +278,46 @@ func (r *userRepo) IsPremiumForChat(ctx context.Context, chatID int64) (bool, er
 	}
 	return u.IsPremium, nil
 }
+
+func (r *userRepo) SaveLastDashboardSnapshot(ctx context.Context, chatID int64, payloadJSON string) error {
+	u, err := lookupUserByChatID(ctx, r.db, chatID)
+	if err != nil {
+		return err
+	}
+	if u == nil {
+		return errors.New("usuario no encontrado para chat_id")
+	}
+	u.LastDashboardJSON = &payloadJSON
+	u.UpdatedAt = time.Now().UTC()
+	return r.db.WithContext(ctx).Save(u).Error
+}
+
+func (r *userRepo) GetLastDashboardSnapshot(ctx context.Context, chatID int64) (string, error) {
+	u, err := lookupUserByChatID(ctx, r.db, chatID)
+	if err != nil {
+		return "", err
+	}
+	if u == nil || u.LastDashboardJSON == nil {
+		return "", nil
+	}
+	return strings.TrimSpace(*u.LastDashboardJSON), nil
+}
+
+func (r *userRepo) GetUserIDForChat(ctx context.Context, chatID int64) (*uint, error) {
+	u, err := lookupUserByChatID(ctx, r.db, chatID)
+	if err != nil {
+		return nil, err
+	}
+	if u == nil {
+		return nil, nil
+	}
+	id := u.ID
+	return &id, nil
+}
+
+func (r *userRepo) RecordUploadedFile(ctx context.Context, file *db.UserFile) error {
+	if file == nil {
+		return errors.New("file nil")
+	}
+	return r.db.WithContext(ctx).Create(file).Error
+}

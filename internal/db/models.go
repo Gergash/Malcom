@@ -15,6 +15,8 @@ type User struct {
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 	PremiumSince     *time.Time
+	// Último JSON envuelto {"echarts_option":...} para reemitir token tras consumo one-shot.
+	LastDashboardJSON *string `gorm:"column:last_dashboard_json;type:text"`
 	// Branding premium — null = usar defaults del tier; solo aplica cuando is_premium = true.
 	BrandingColor    *string `gorm:"column:branding_color;size:7"`
 	BrandingColorSec *string `gorm:"column:branding_color_sec;size:7"`

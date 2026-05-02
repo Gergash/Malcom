@@ -29,6 +29,17 @@ type ChatRequest struct {
 	ReportConfig *ReportConfig `json:"report_config,omitempty"`
 }
 
+// DashboardTokenRefreshRequest — POST /api/v1/chat/token/refresh (nuevo token tras consumo one-shot).
+type DashboardTokenRefreshRequest struct {
+	ChatID int64 `json:"chat_id" validate:"required"`
+}
+
+// DashboardTokenRefreshResponse — URL y token opaco nuevos.
+type DashboardTokenRefreshResponse struct {
+	DashboardURL string `json:"dashboard_url"`
+	Token        string `json:"token"`
+}
+
 // ArtifactInfo — entregable premium (gráfica, PDF o Excel) con URL tokenizada y etiqueta.
 type ArtifactInfo struct {
 	Type  string `json:"type"`  // "chart" | "pdf" | "excel"

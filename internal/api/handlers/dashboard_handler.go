@@ -98,7 +98,18 @@ const dashboardPremiumHTML = `<!DOCTYPE html>
     headers['ngrok-skip-browser-warning'] = 'true';
   }
   fetch('/api/v1/dashboard/session/' + encodeURIComponent(token), { credentials: 'omit', headers: headers })
-    .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(function (r) {
+      if (!r.ok) {
+        var st = r.status;
+        if ((st === 409 || st === 401 || st === 403 || st === 404) && window.parent !== window) {
+          try {
+            window.parent.postMessage({ type: 'insightflow-dashboard', action: 'token_refresh', status: st }, '*');
+          } catch (e) {}
+        }
+        throw new Error('HTTP ' + st);
+      }
+      return r.json();
+    })
     .then(function (data) {
       var opt = data.echarts_option || data;
       if (!opt || typeof opt !== 'object') throw new Error('Respuesta sin echarts_option');

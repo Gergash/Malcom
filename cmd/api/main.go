@@ -99,6 +99,7 @@ func main() {
 	{
 		v1.POST("/chat", chatRL, chatHandler.Chat)
 		v1.POST("/chat/upload", chatRL, chatHandler.UploadFile)
+		v1.POST("/chat/token/refresh", chatRL, chatHandler.DashboardTokenRefresh)
 		v1.GET("/chat/:chat_id/credits", chatHandler.GetCredits)
 		v1.GET("/dashboard/session/:token", dashboardHandler.SessionJSON)
 

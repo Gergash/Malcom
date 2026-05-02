@@ -2,7 +2,11 @@
 // Implementaciones: internal/db/repos (GORM).
 package repositories
 
-import "context"
+import (
+	"context"
+
+	malcomdb "github.com/powerups/insightflow-malcom/internal/db"
+)
 
 // ── Tipos de retorno compartidos ──────────────────────────────────────────────
 
@@ -63,6 +67,16 @@ type UserRepository interface {
 	// IsPremiumForChat consulta si existe un usuario con chat_id y está en premium.
 	// No crea filas (adecuado para validar tokens de dashboard/descarga).
 	IsPremiumForChat(ctx context.Context, chatID int64) (bool, error)
+
+	// SaveLastDashboardSnapshot guarda el JSON de sesión ECharts (mismo cuerpo que StorePayload).
+	SaveLastDashboardSnapshot(ctx context.Context, chatID int64, payloadJSON string) error
+	// GetLastDashboardSnapshot devuelve "" si no hay snapshot.
+	GetLastDashboardSnapshot(ctx context.Context, chatID int64) (string, error)
+
+	// GetUserIDForChat devuelve el ID de fila users o nil si no existe.
+	GetUserIDForChat(ctx context.Context, chatID int64) (*uint, error)
+	// RecordUploadedFile inserta auditoría en user_files (tras ingestión exitosa).
+	RecordUploadedFile(ctx context.Context, file *malcomdb.UserFile) error
 }
 
 // ConversationRepository — operaciones sobre el historial de conversación.
