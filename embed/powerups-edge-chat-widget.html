@@ -738,8 +738,30 @@
       iframe.hidden = true;
       iframe.removeAttribute('src');
     }
-    if (ph) ph.hidden = false;
+    if (ph) {
+      ph.hidden = false;
+      ph.textContent = 'Cuando pidas un análisis con datos, el tablero interactivo aparecerá aquí. Prueba: «gráfico de barras por mes», «mapa de calor por categoría» o «evolución en línea».';
+    }
     if (openA) openA.hidden = true;
+  }
+
+  /** Premium con datos pero sin snapshot ECharts aún (202 desde /chat/token/refresh). */
+  function showLiveDashboardPending(message) {
+    var wrapLive = el('powerups-edge-dashboard-live');
+    var iframe = el('powerups-edge-dashboard-iframe');
+    var ph = el('powerups-edge-dashboard-placeholder');
+    var openA = el('powerups-edge-dashboard-open');
+    expandLiveDashboard();
+    if (iframe) {
+      iframe.hidden = true;
+      iframe.removeAttribute('src');
+    }
+    if (openA) openA.hidden = true;
+    if (ph) {
+      ph.hidden = false;
+      ph.textContent = message || 'Preparando tablero… Cuando el análisis genere una gráfica premium, aparecerá aquí. Escribe en el chat para generarla.';
+    }
+    if (wrapLive) wrapLive.hidden = false;
   }
 
   function hydrateLiveDashboardForPremium() {
@@ -761,8 +783,15 @@
         credentials: 'omit',
         body: JSON.stringify({ chat_id: chatId }),
       });
+      var data = {};
+      try {
+        data = await res.json();
+      } catch (e) {}
+      if (res.status === 202 || data.status === 'pending') {
+        showLiveDashboardPending(data.message);
+        return;
+      }
       if (!res.ok) return;
-      var data = await res.json();
       var url = data.dashboard_url || data.dashboardUrl;
       var tok = data.token || tokenFromDashboardUrl(url);
       if (tok) {

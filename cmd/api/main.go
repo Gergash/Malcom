@@ -68,7 +68,7 @@ func main() {
 	chatHandler := handlers.NewChatHandler(userRepo, convRepo, workerClient, cfg.DataDir, tokenStore, cfg.EnablePublicData, uploadMaxBytes)
 	billingHandler := handlers.NewBillingHandler(userRepo, paymentRepo, cfg.WompiEventSecret)
 	downloadHandler := handlers.NewDownloadHandler(tokenStore, userRepo, cfg.DataDir)
-	dashboardHandler := handlers.NewDashboardHandler(tokenStore, userRepo)
+	dashboardHandler := handlers.NewDashboardHandler(tokenStore, userRepo, cfg.DataDir)
 
 	router := gin.Default()
 	router.MaxMultipartMemory = uploadMaxBytes

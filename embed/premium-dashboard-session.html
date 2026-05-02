@@ -128,6 +128,15 @@
       margin: auto;
     }
     .err code { color: #9ec5ff; }
+    .pending {
+      padding: 32px 24px;
+      color: #ff9e9e;
+      text-align: center;
+      max-width: 520px;
+      margin: auto;
+      line-height: 1.5;
+    }
+    .pending strong { color: var(--pu-text); }
     .loading {
       position: absolute;
       inset: 0;
@@ -217,6 +226,14 @@
     chartEl.innerHTML = '<div class="err"><p>' + msg + '</p><p style="margin-top:12px;font-size:12px;">Si acabas de pagar, abre el enlace que envía el chat tras el análisis Premium.</p></div>';
   }
 
+  function showPreparing(msg) {
+    loadingEl.hidden = true;
+    btnPng.disabled = true;
+    btnReload.disabled = false;
+    var text = msg || 'Genera la gráfica enviando un mensaje en el chat.';
+    chartEl.innerHTML = '<div class="pending"><p><strong>Preparando tablero…</strong></p><p>' + text + '</p></div>';
+  }
+
   function sessionURL(tok) {
     return API_BASE + '/api/v1/dashboard/session/' + encodeURIComponent(tok);
   }
@@ -227,9 +244,17 @@
       headers['ngrok-skip-browser-warning'] = 'true';
     }
     return fetch(sessionURL(tok), { credentials: 'omit', headers: headers }).then(function (r) {
+      if (r.status === 202) {
+        return r.json().then(function (body) {
+          return { __pending: true, message: (body && body.message) ? body.message : '' };
+        });
+      }
       if (!r.ok) {
         var st = r.status;
-        if ((st === 409 || st === 401 || st === 403 || st === 404) && window.parent !== window) {
+        if (st === 404) {
+          return { __pending404: true };
+        }
+        if ((st === 409 || st === 401 || st === 403) && window.parent !== window) {
           try {
             window.parent.postMessage({ type: 'insightflow-dashboard', action: 'token_refresh', status: st }, '*');
           } catch (e) {}
@@ -275,6 +300,19 @@
     btnReload.disabled = true;
     fetchSession(token)
       .then(function (data) {
+        if (data && data.__pending404) {
+          showPreparing('No hay una sesión de gráfica lista todavía. Vuelve al chat y pide un análisis con datos.');
+          if (window.parent !== window) {
+            try {
+              window.parent.postMessage({ type: 'insightflow-dashboard', action: 'token_refresh', status: 404 }, '*');
+            } catch (e) {}
+          }
+          return;
+        }
+        if (data && data.__pending) {
+          showPreparing(data.message);
+          return;
+        }
         var opt = extractOption(data);
         if (!opt) throw new Error('La respuesta no incluye una opción ECharts válida.');
         renderOption(opt);
@@ -294,6 +332,19 @@
     }
     fetchSession(token)
       .then(function (data) {
+        if (data && data.__pending404) {
+          showPreparing('No hay una sesión de gráfica lista todavía. Vuelve al chat y pide un análisis con datos.');
+          if (window.parent !== window) {
+            try {
+              window.parent.postMessage({ type: 'insightflow-dashboard', action: 'token_refresh', status: 404 }, '*');
+            } catch (e) {}
+          }
+          return;
+        }
+        if (data && data.__pending) {
+          showPreparing(data.message);
+          return;
+        }
         var opt = extractOption(data);
         if (!opt) throw new Error('Respuesta sin echarts_option');
         renderOption(opt);

@@ -407,6 +407,14 @@ func (h *ChatHandler) DashboardTokenRefresh(c *gin.Context) {
 		return
 	}
 	if snap == "" {
+		if filesystem.HasUploadedDataFiles(h.dataDir, req.ChatID) {
+			c.JSON(http.StatusAccepted, types.DashboardPendingResponse{
+				Status: "pending",
+				Message: "Preparando tablero: aún no hay una gráfica guardada. " +
+					"Envía un mensaje de análisis en el chat para generarla.",
+			})
+			return
+		}
 		c.JSON(http.StatusNotFound, types.ErrorResponse{
 			Detail: "No hay tablero guardado. Envía un mensaje en el chat para generar uno nuevo.",
 		})

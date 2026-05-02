@@ -4,21 +4,24 @@ package handlers
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/powerups/insightflow-malcom/internal/api/types"
 	"github.com/powerups/insightflow-malcom/internal/db/repositories"
+	"github.com/powerups/insightflow-malcom/internal/filesystem"
 )
 
 // DashboardHandler sirve la SPA mínima del tablero y el JSON de sesión.
 type DashboardHandler struct {
-	tokens *TokenStore
-	users  repositories.UserRepository
+	tokens  *TokenStore
+	users   repositories.UserRepository
+	dataDir string
 }
 
 // NewDashboardHandler construye el handler.
-func NewDashboardHandler(tokens *TokenStore, users repositories.UserRepository) *DashboardHandler {
-	return &DashboardHandler{tokens: tokens, users: users}
+func NewDashboardHandler(tokens *TokenStore, users repositories.UserRepository, dataDir string) *DashboardHandler {
+	return &DashboardHandler{tokens: tokens, users: users, dataDir: dataDir}
 }
 
 // SessionJSON devuelve el JSON de la sesión (incluye echarts_option) para el token dashboard.
@@ -31,6 +34,43 @@ func (h *DashboardHandler) SessionJSON(c *gin.Context) {
 	}
 	asset, ok := h.tokens.PeekDashboardSession(token)
 	if !ok || asset.PayloadJSON == nil || *asset.PayloadJSON == "" {
+		if chatID, metaOk := h.tokens.LookupDashboardTokenChatID(token); metaOk {
+			ctx := c.Request.Context()
+			premium, err := h.users.IsPremiumForChat(ctx, chatID)
+			if err != nil {
+				slog.Error("dashboard session premium check", "error", err, "chat_id", chatID)
+				c.JSON(http.StatusInternalServerError, types.ErrorResponse{Detail: "No se pudo validar el acceso."})
+				return
+			}
+			if !premium {
+				slog.Warn("dashboard session forbidden", "chat_id", chatID, "reason", "not_premium")
+				c.JSON(http.StatusForbidden, types.ErrorResponse{
+					Detail: "El tablero interactivo requiere plan premium activo.",
+				})
+				return
+			}
+			snap, err := h.users.GetLastDashboardSnapshot(ctx, chatID)
+			if err != nil {
+				slog.Error("dashboard snapshot read", "error", err, "chat_id", chatID)
+				c.JSON(http.StatusInternalServerError, types.ErrorResponse{Detail: "No se pudo leer el tablero guardado."})
+				return
+			}
+			if strings.TrimSpace(snap) != "" {
+				c.JSON(http.StatusConflict, types.ErrorResponse{
+					Detail: "Este enlace de tablero ya fue utilizado. Solicita uno nuevo desde el chat.",
+				})
+				return
+			}
+			if h.dataDir != "" && filesystem.HasUploadedDataFiles(h.dataDir, chatID) {
+				c.Header("Cache-Control", "no-store")
+				c.JSON(http.StatusAccepted, types.DashboardPendingResponse{
+					Status: "pending",
+					Message: "Preparando tablero: aún no hay una gráfica guardada. " +
+						"Envía un mensaje de análisis en el chat para generarla.",
+				})
+				return
+			}
+		}
 		c.JSON(http.StatusNotFound, types.ErrorResponse{
 			Detail: "Sesión de dashboard expirada, ya utilizada o inválida.",
 		})
@@ -79,6 +119,8 @@ const dashboardPremiumHTML = `<!DOCTYPE html>
     header { padding: 12px 16px; background: #161b24; border-bottom: 1px solid #2a3344; }
     #chart { width: 100%; height: calc(100vh - 56px); min-height: 420px; }
     .err { padding: 24px; color: #f0a0a0; }
+    .pending { padding: 24px 28px; color: #9ec5ff; line-height: 1.5; max-width: 520px; }
+    .pending strong { color: #e8edf5; }
   </style>
 </head>
 <body>
@@ -99,9 +141,24 @@ const dashboardPremiumHTML = `<!DOCTYPE html>
   }
   fetch('/api/v1/dashboard/session/' + encodeURIComponent(token), { credentials: 'omit', headers: headers })
     .then(function (r) {
+      if (r.status === 202) {
+        return r.json().then(function (data) {
+          var msg = (data && data.message) ? data.message : 'Genera la gráfica enviando un mensaje en el chat.';
+          el.innerHTML = '<div class="pending"><p><strong>Preparando tablero…</strong></p><p>' + msg + '</p></div>';
+        });
+      }
       if (!r.ok) {
         var st = r.status;
-        if ((st === 409 || st === 401 || st === 403 || st === 404) && window.parent !== window) {
+        if (st === 404) {
+          el.innerHTML = '<div class="pending"><p><strong>Preparando tablero…</strong></p><p>No hay una sesión de gráfica lista todavía. Vuelve al chat y pide un análisis con datos; el tablero se actualizará cuando esté listo.</p></div>';
+          if (window.parent !== window) {
+            try {
+              window.parent.postMessage({ type: 'insightflow-dashboard', action: 'token_refresh', status: st }, '*');
+            } catch (e) {}
+          }
+          return;
+        }
+        if ((st === 409 || st === 401 || st === 403) && window.parent !== window) {
           try {
             window.parent.postMessage({ type: 'insightflow-dashboard', action: 'token_refresh', status: st }, '*');
           } catch (e) {}
@@ -111,6 +168,7 @@ const dashboardPremiumHTML = `<!DOCTYPE html>
       return r.json();
     })
     .then(function (data) {
+      if (!data || (data.status === 'pending')) return;
       var opt = data.echarts_option || data;
       if (!opt || typeof opt !== 'object') throw new Error('Respuesta sin echarts_option');
       var chart = echarts.init(el, 'dark');

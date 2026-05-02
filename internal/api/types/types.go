@@ -40,6 +40,12 @@ type DashboardTokenRefreshResponse struct {
 	Token        string `json:"token"`
 }
 
+// DashboardPendingResponse — 202 Accepted: hay datos en disco pero aún no hay snapshot ECharts en BD.
+type DashboardPendingResponse struct {
+	Status  string `json:"status"` // "pending"
+	Message string `json:"message,omitempty"`
+}
+
 // ArtifactInfo — entregable premium (gráfica, PDF o Excel) con URL tokenizada y etiqueta.
 type ArtifactInfo struct {
 	Type  string `json:"type"`  // "chart" | "pdf" | "excel"

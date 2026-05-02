@@ -175,6 +175,38 @@ func (ts *TokenStore) PeekDashboardSession(token string) (*ResolvedToken, bool) 
 	}, true
 }
 
+// LookupDashboardTokenChatID devuelve el chat_id de un token dashboard no expirado, aunque ya esté consumido.
+// Permite distinguir 404 “roto” de 202 “pendiente” o 409 “refrescar enlace”.
+func (ts *TokenStore) LookupDashboardTokenChatID(token string) (int64, bool) {
+	if strings.TrimSpace(token) == "" {
+		return 0, false
+	}
+	if ts.db != nil {
+		var e malcomdb.DownloadToken
+		err := ts.db.WithContext(context.Background()).
+			Where("token = ? AND resource_type = ?", token, "dashboard").
+			First(&e).Error
+		if err != nil {
+			return 0, false
+		}
+		if time.Now().After(e.ExpiresAt) {
+			return 0, false
+		}
+		return e.ChatID, true
+	}
+
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	e, ok := ts.store[token]
+	if !ok || time.Now().After(e.expiresAt) {
+		return 0, false
+	}
+	if !strings.EqualFold(e.resType, "dashboard") {
+		return 0, false
+	}
+	return e.chatID, true
+}
+
 // MarkDashboardConsumed marca el token dashboard como usado (un solo acceso exitoso tras validar premium).
 func (ts *TokenStore) MarkDashboardConsumed(token string) bool {
 	now := time.Now().UTC()
