@@ -133,6 +133,7 @@ func (ts *TokenStore) ResolveFull(token string) (*ResolvedToken, bool) {
 			_ = ts.db.WithContext(context.Background()).Model(&e).Update("used_at", &now).Error
 		}
 		return &ResolvedToken{
+			ChatID:       e.ChatID,
 			FilePath:     e.FilePath,
 			PayloadJSON:  e.PayloadJSON,
 			ResourceType: rt,
@@ -147,6 +148,7 @@ func (ts *TokenStore) ResolveFull(token string) (*ResolvedToken, bool) {
 		return nil, false
 	}
 	return &ResolvedToken{
+		ChatID:       e.chatID,
 		FilePath:     e.filePath,
 		PayloadJSON:  e.payload,
 		ResourceType: e.resType,

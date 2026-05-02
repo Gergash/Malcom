@@ -21,6 +21,22 @@ type Config struct {
 	PublicBaseURL    string
 	FreeMessageLimit int
 	EnablePublicData bool // cuando true, sirve /data/* sin restricción (solo DEV)
+
+	// CORSAllowedOrigins — lista separada por comas; vacío = permitir cualquier origen (solo desarrollo).
+	CORSAllowedOrigins []string
+	// CSPFrameAncestors — orígenes que pueden embeber /dashboard en iframe (p. ej. sitio WordPress).
+	// Formato: "https://powerups.com.co https://www.powerups.com.co". Vacío = solo 'self'.
+	CSPFrameAncestors string
+
+	// Límite aproximado de peticiones /chat y /chat/upload por IP (token bucket). Cero = desactivado.
+	ChatRateLimitRPS   float64
+	ChatRateLimitBurst int
+
+	// Tamaño máximo de subida multipart (MB). Por defecto 32.
+	UploadMaxMB int
+
+	// Si no está vacío, POST /billing/webhook exige el mismo valor en X-Webhook-Secret o Authorization: Bearer …
+	BillingWebhookSecret string
 }
 
 // Load reads .env (if present) and environment variables.
@@ -67,15 +83,62 @@ func Load() (*Config, error) {
 
 	enablePublicData := strings.ToLower(strings.TrimSpace(os.Getenv("ENABLE_PUBLIC_DATA"))) == "true"
 
+	corsOrigins := parseCommaList(os.Getenv("CORS_ALLOWED_ORIGINS"))
+	cspFrames := strings.TrimSpace(os.Getenv("CSP_FRAME_ANCESTORS"))
+
+	chatRPS := 8.0
+	if v := strings.TrimSpace(os.Getenv("CHAT_RATE_LIMIT_RPS")); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f >= 0 {
+			chatRPS = f
+		}
+	}
+	chatBurst := 24
+	if v := strings.TrimSpace(os.Getenv("CHAT_RATE_LIMIT_BURST")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			chatBurst = n
+		}
+	}
+
+	uploadMB := 32
+	if v := strings.TrimSpace(os.Getenv("UPLOAD_MAX_MB")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			uploadMB = n
+		}
+	}
+
+	webhookSecret := strings.TrimSpace(os.Getenv("BILLING_WEBHOOK_SECRET"))
+
 	return &Config{
-		DatabaseURL:      NormalizeDatabaseURL(rawURL),
-		Port:             port,
-		WorkerURL:        strings.TrimRight(workerURL, "/"),
-		DataDir:          dataDir,
-		PublicBaseURL:    strings.TrimSpace(os.Getenv("PUBLIC_BASE_URL")),
-		FreeMessageLimit: freeLimit,
-		EnablePublicData: enablePublicData,
+		DatabaseURL:          NormalizeDatabaseURL(rawURL),
+		Port:                 port,
+		WorkerURL:            strings.TrimRight(workerURL, "/"),
+		DataDir:              dataDir,
+		PublicBaseURL:        strings.TrimSpace(os.Getenv("PUBLIC_BASE_URL")),
+		FreeMessageLimit:     freeLimit,
+		EnablePublicData:     enablePublicData,
+		CORSAllowedOrigins:   corsOrigins,
+		CSPFrameAncestors:    cspFrames,
+		ChatRateLimitRPS:     chatRPS,
+		ChatRateLimitBurst:   chatBurst,
+		UploadMaxMB:          uploadMB,
+		BillingWebhookSecret: webhookSecret,
 	}, nil
+}
+
+func parseCommaList(s string) []string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // NormalizeDatabaseURL converts SQLAlchemy/asyncpg URLs to a form GORM accepts.

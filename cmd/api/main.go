@@ -5,10 +5,11 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/powerups/insightflow-malcom/internal/api/handlers"
+	"github.com/powerups/insightflow-malcom/internal/api/middleware"
 	"github.com/powerups/insightflow-malcom/internal/config"
 	malcomdb "github.com/powerups/insightflow-malcom/internal/db"
 	"github.com/powerups/insightflow-malcom/internal/db/repos"
@@ -59,45 +60,58 @@ func main() {
 	tokenStore := handlers.NewPersistentTokenStore(gdb)
 
 	healthHandler := handlers.NewHealthHandler()
-	chatHandler := handlers.NewChatHandler(userRepo, convRepo, workerClient, cfg.DataDir, tokenStore, cfg.EnablePublicData)
+
+	uploadMaxBytes := int64(cfg.UploadMaxMB) * 1024 * 1024
+	if cfg.UploadMaxMB <= 0 {
+		uploadMaxBytes = 32 * 1024 * 1024
+	}
+	chatHandler := handlers.NewChatHandler(userRepo, convRepo, workerClient, cfg.DataDir, tokenStore, cfg.EnablePublicData, uploadMaxBytes)
 	billingHandler := handlers.NewBillingHandler(userRepo, paymentRepo)
-	downloadHandler := handlers.NewDownloadHandler(tokenStore)
-	dashboardHandler := handlers.NewDashboardHandler(tokenStore)
+	downloadHandler := handlers.NewDownloadHandler(tokenStore, userRepo)
+	dashboardHandler := handlers.NewDashboardHandler(tokenStore, userRepo)
 
 	router := gin.Default()
+	router.MaxMultipartMemory = uploadMaxBytes
 
-	// CORS: el widget en WordPress y ngrok usan otro origen; credenciales omitidas en fetch del widget.
-	corsCfg := cors.DefaultConfig()
-	corsCfg.AllowAllOrigins = true
-	corsCfg.AllowCredentials = false
-	corsCfg.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
-	corsCfg.AllowHeaders = []string{
-		"Origin", "Content-Type", "Accept", "Authorization", "ngrok-skip-browser-warning",
+	router.Use(middleware.DefaultSecurityHeaders())
+	router.Use(middleware.BuildCORS(cfg.CORSAllowedOrigins))
+	if len(cfg.CORSAllowedOrigins) > 0 {
+		log.Printf("CORS restringido a: %v", cfg.CORSAllowedOrigins)
 	}
-	router.Use(cors.New(corsCfg))
 
 	if cfg.EnablePublicData {
 		router.Static("/data", cfg.DataDir)
 		log.Println("ENABLE_PUBLIC_DATA=true: /data expuesto sin token (solo desarrollo).")
 	}
 
-	// Descarga (reportes) y vista de gráficas cuando /data está cerrado: token efímero (TTL 30 min).
 	router.GET("/download/:token", downloadHandler.Download)
-	// Dashboard premium (ECharts): misma base pública que el API (proxy o dominio único).
-	router.GET("/dashboard", dashboardHandler.Page)
+	router.GET("/dashboard", middleware.DashboardPageSecurity(cfg.CSPFrameAncestors), dashboardHandler.Page)
 
 	router.GET("/health", healthHandler.HealthCheck)
 
+	chatRL := middleware.ChatRateLimit(cfg.ChatRateLimitRPS, cfg.ChatRateLimitBurst)
+	if cfg.ChatRateLimitRPS > 0 {
+		log.Printf("Rate limit chat: %.1f r/s burst=%d por IP", cfg.ChatRateLimitRPS, cfg.ChatRateLimitBurst)
+	}
+
 	v1 := router.Group("/api/v1")
+	v1.Use(middleware.APIFrameDeny())
 	{
-		v1.POST("/chat", chatHandler.Chat)
-		v1.POST("/chat/upload", chatHandler.UploadFile)
+		v1.POST("/chat", chatRL, chatHandler.Chat)
+		v1.POST("/chat/upload", chatRL, chatHandler.UploadFile)
 		v1.GET("/chat/:chat_id/credits", chatHandler.GetCredits)
 		v1.GET("/dashboard/session/:token", dashboardHandler.SessionJSON)
 
 		v1.GET("/billing/status", billingHandler.BillingStatus)
-		v1.POST("/billing/webhook", billingHandler.PaymentWebhook)
+		v1.POST("/billing/webhook", middleware.BillingWebhookAuth(cfg.BillingWebhookSecret), billingHandler.PaymentWebhook)
 		v1.POST("/billing/link-email", billingHandler.LinkEmail)
+	}
+	if cfg.BillingWebhookSecret != "" {
+		log.Println("BILLING_WEBHOOK_SECRET activo: el webhook exige cabecera compartida.")
+	}
+	if strings.TrimSpace(cfg.CSPFrameAncestors) == "" {
+		log.Println("Aviso: CSP_FRAME_ANCESTORS vacío — frame-ancestors solo incluye 'self'. " +
+			"Para embeber /dashboard desde WordPress u otro sitio, define orígenes en CSP_FRAME_ANCESTORS.")
 	}
 
 	log.Printf("InsightFlow Malcom API en :%s | worker=%s | data=%s", cfg.Port, cfg.WorkerURL, cfg.DataDir)

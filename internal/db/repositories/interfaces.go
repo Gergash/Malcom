@@ -59,6 +59,10 @@ type UserRepository interface {
 	// ActivatePremium activa is_premium (y premium_since) si aún no lo está.
 	// Usado por el webhook de pago. Equivale a user_repo.activate_premium().
 	ActivatePremium(ctx context.Context, chatID *int64, email *string) (*PaymentUser, error)
+
+	// IsPremiumForChat consulta si existe un usuario con chat_id y está en premium.
+	// No crea filas (adecuado para validar tokens de dashboard/descarga).
+	IsPremiumForChat(ctx context.Context, chatID int64) (bool, error)
 }
 
 // ConversationRepository — operaciones sobre el historial de conversación.

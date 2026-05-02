@@ -2,23 +2,27 @@
 package handlers
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/powerups/insightflow-malcom/internal/api/types"
+	"github.com/powerups/insightflow-malcom/internal/db/repositories"
 )
 
 // DashboardHandler sirve la SPA mínima del tablero y el JSON de sesión.
 type DashboardHandler struct {
 	tokens *TokenStore
+	users  repositories.UserRepository
 }
 
 // NewDashboardHandler construye el handler.
-func NewDashboardHandler(tokens *TokenStore) *DashboardHandler {
-	return &DashboardHandler{tokens: tokens}
+func NewDashboardHandler(tokens *TokenStore, users repositories.UserRepository) *DashboardHandler {
+	return &DashboardHandler{tokens: tokens, users: users}
 }
 
 // SessionJSON devuelve el JSON de la sesión (incluye echarts_option) para el token dashboard.
+// Exige suscripción premium vigente en PostgreSQL para el chat_id asociado al token.
 func (h *DashboardHandler) SessionJSON(c *gin.Context) {
 	token := c.Param("token")
 	if token == "" {
@@ -29,6 +33,20 @@ func (h *DashboardHandler) SessionJSON(c *gin.Context) {
 	if !ok || asset.ResourceType != "dashboard" || asset.PayloadJSON == nil || *asset.PayloadJSON == "" {
 		c.JSON(http.StatusNotFound, types.ErrorResponse{
 			Detail: "Sesión de dashboard expirada o inválida.",
+		})
+		return
+	}
+	ctx := c.Request.Context()
+	premium, err := h.users.IsPremiumForChat(ctx, asset.ChatID)
+	if err != nil {
+		slog.Error("dashboard session premium check", "error", err, "chat_id", asset.ChatID)
+		c.JSON(http.StatusInternalServerError, types.ErrorResponse{Detail: "No se pudo validar el acceso."})
+		return
+	}
+	if !premium {
+		slog.Warn("dashboard session forbidden", "chat_id", asset.ChatID, "reason", "not_premium")
+		c.JSON(http.StatusForbidden, types.ErrorResponse{
+			Detail: "El tablero interactivo requiere plan premium activo.",
 		})
 		return
 	}

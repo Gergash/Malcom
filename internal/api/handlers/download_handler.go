@@ -5,6 +5,7 @@
 package handlers
 
 import (
+	"log/slog"
 	"mime"
 	"net/http"
 	"os"
@@ -13,16 +14,18 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/powerups/insightflow-malcom/internal/api/types"
+	"github.com/powerups/insightflow-malcom/internal/db/repositories"
 )
 
 // DownloadHandler sirve archivos de reporte generados por el agente Python.
 type DownloadHandler struct {
 	tokens *TokenStore
+	users  repositories.UserRepository
 }
 
 // NewDownloadHandler construye el handler con su TokenStore.
-func NewDownloadHandler(tokens *TokenStore) *DownloadHandler {
-	return &DownloadHandler{tokens: tokens}
+func NewDownloadHandler(tokens *TokenStore, users repositories.UserRepository) *DownloadHandler {
+	return &DownloadHandler{tokens: tokens, users: users}
 }
 
 // Download resuelve el token y sirve el archivo como descarga adjunta.
@@ -42,6 +45,22 @@ func (h *DownloadHandler) Download(c *gin.Context) {
 	}
 
 	if asset.PayloadJSON != nil && strings.TrimSpace(*asset.PayloadJSON) != "" {
+		if strings.EqualFold(asset.ResourceType, "dashboard") {
+			ctx := c.Request.Context()
+			premium, err := h.users.IsPremiumForChat(ctx, asset.ChatID)
+			if err != nil {
+				slog.Error("download dashboard premium check", "error", err, "chat_id", asset.ChatID)
+				c.JSON(http.StatusInternalServerError, types.ErrorResponse{Detail: "No se pudo validar el acceso."})
+				return
+			}
+			if !premium {
+				slog.Warn("download dashboard forbidden", "chat_id", asset.ChatID)
+				c.JSON(http.StatusForbidden, types.ErrorResponse{
+					Detail: "Este recurso requiere plan premium activo.",
+				})
+				return
+			}
+		}
 		c.Header("Cache-Control", "no-store")
 		c.Data(http.StatusOK, "application/json; charset=utf-8", []byte(*asset.PayloadJSON))
 		return

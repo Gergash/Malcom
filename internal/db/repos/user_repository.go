@@ -267,3 +267,14 @@ func (r *userRepo) ActivatePremium(ctx context.Context, chatID *int64, email *st
 	}
 	return userToPaymentUser(u), nil
 }
+
+func (r *userRepo) IsPremiumForChat(ctx context.Context, chatID int64) (bool, error) {
+	u, err := lookupUserByChatID(ctx, r.db, chatID)
+	if err != nil {
+		return false, err
+	}
+	if u == nil {
+		return false, nil
+	}
+	return u.IsPremium, nil
+}

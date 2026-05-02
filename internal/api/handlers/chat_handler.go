@@ -32,6 +32,7 @@ type ChatHandler struct {
 	dataDir          string // ruta absoluta al directorio data/ del proyecto
 	tokens           *TokenStore
 	enablePublicData bool // si true, URLs de gráficas vía /data/...; si false, vía /download/:token
+	maxUploadBytes   int64
 }
 
 // NewChatHandler construye el handler con sus dependencias.
@@ -42,7 +43,11 @@ func NewChatHandler(
 	dataDir string,
 	tokens *TokenStore,
 	enablePublicData bool,
+	maxUploadBytes int64,
 ) *ChatHandler {
+	if maxUploadBytes <= 0 {
+		maxUploadBytes = 32 << 20
+	}
 	return &ChatHandler{
 		userRepo:         userRepo,
 		convRepo:         convRepo,
@@ -50,6 +55,7 @@ func NewChatHandler(
 		dataDir:          dataDir,
 		tokens:           tokens,
 		enablePublicData: enablePublicData,
+		maxUploadBytes:   maxUploadBytes,
 	}
 }
 
@@ -236,6 +242,13 @@ func (h *ChatHandler) UploadFile(c *gin.Context) {
 		return
 	}
 
+	if h.maxUploadBytes > 0 && fh.Size > h.maxUploadBytes {
+		c.JSON(http.StatusRequestEntityTooLarge, types.ErrorResponse{
+			Detail: "El archivo supera el tamaño máximo permitido.",
+		})
+		return
+	}
+
 	// Archivo en data/.upload-tmp/ para que el worker Python (mismo volumen Docker) pueda leerlo.
 	uploadDir := filepath.Join(h.dataDir, ".upload-tmp")
 	if err := os.MkdirAll(uploadDir, 0o755); err != nil {
@@ -276,6 +289,11 @@ func (h *ChatHandler) UploadFile(c *gin.Context) {
 		return
 	}
 	out.Close()
+
+	if err := validateUploadMIME(tmpPath, fh.Filename); err != nil {
+		c.JSON(http.StatusUnprocessableEntity, types.ErrorResponse{Detail: err.Error()})
+		return
+	}
 
 	// Delegar ingestión al Worker Python
 	ctx := c.Request.Context()
