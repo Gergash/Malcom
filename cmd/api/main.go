@@ -66,8 +66,8 @@ func main() {
 		uploadMaxBytes = 32 * 1024 * 1024
 	}
 	chatHandler := handlers.NewChatHandler(userRepo, convRepo, workerClient, cfg.DataDir, tokenStore, cfg.EnablePublicData, uploadMaxBytes)
-	billingHandler := handlers.NewBillingHandler(userRepo, paymentRepo)
-	downloadHandler := handlers.NewDownloadHandler(tokenStore, userRepo)
+	billingHandler := handlers.NewBillingHandler(userRepo, paymentRepo, cfg.WompiEventSecret)
+	downloadHandler := handlers.NewDownloadHandler(tokenStore, userRepo, cfg.DataDir)
 	dashboardHandler := handlers.NewDashboardHandler(tokenStore, userRepo)
 
 	router := gin.Default()
@@ -108,6 +108,9 @@ func main() {
 	}
 	if cfg.BillingWebhookSecret != "" {
 		log.Println("BILLING_WEBHOOK_SECRET activo: el webhook exige cabecera compartida.")
+	}
+	if cfg.WompiEventSecret != "" {
+		log.Println("WOMPI_EVENT_SECRET activo: se valida el checksum de eventos Wompi.")
 	}
 	if strings.TrimSpace(cfg.CSPFrameAncestors) == "" {
 		log.Println("Aviso: CSP_FRAME_ANCESTORS vacío — frame-ancestors solo incluye 'self'. " +

@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,7 +14,10 @@ import (
 	"gorm.io/gorm"
 )
 
-const tokenTTL = 30 * time.Minute
+const (
+	standardTokenTTL  = 30 * time.Minute
+	dashboardTokenTTL = 15 * time.Minute
+)
 
 type tokenEntry struct {
 	chatID    int64
@@ -21,6 +25,14 @@ type tokenEntry struct {
 	filePath  string
 	payload   *string
 	expiresAt time.Time
+	consumed  bool // solo dashboard en memoria: un solo uso efectivo
+}
+
+func ttlForResourceType(resourceType string) time.Duration {
+	if strings.EqualFold(resourceType, "dashboard") {
+		return dashboardTokenTTL
+	}
+	return standardTokenTTL
 }
 
 // TokenStore guarda tokens efímeros; si db != nil persiste en PostgreSQL.
@@ -53,7 +65,7 @@ func newTokenValue() string {
 // Store registra un token en memoria/DB y devuelve su valor.
 func (ts *TokenStore) Store(chatID int64, resourceType, filePath string) string {
 	token := newTokenValue()
-	expiresAt := time.Now().Add(tokenTTL)
+	expiresAt := time.Now().Add(ttlForResourceType(resourceType))
 
 	if ts.db != nil {
 		entry := &malcomdb.DownloadToken{
@@ -72,10 +84,10 @@ func (ts *TokenStore) Store(chatID int64, resourceType, filePath string) string 
 
 	ts.mu.Lock()
 	ts.store[token] = tokenEntry{
-		chatID:   chatID,
-		resType:  resourceType,
-		filePath: filePath,
-		payload:  nil,
+		chatID:    chatID,
+		resType:   resourceType,
+		filePath:  filePath,
+		payload:   nil,
 		expiresAt: expiresAt,
 	}
 	ts.mu.Unlock()
@@ -85,7 +97,7 @@ func (ts *TokenStore) Store(chatID int64, resourceType, filePath string) string 
 // StorePayload guarda JSON efímero (p. ej. sesión ECharts dashboard) bajo resourceType "dashboard".
 func (ts *TokenStore) StorePayload(chatID int64, resourceType, jsonBody string) string {
 	token := newTokenValue()
-	expiresAt := time.Now().Add(tokenTTL)
+	expiresAt := time.Now().Add(ttlForResourceType(resourceType))
 	body := jsonBody
 
 	if ts.db != nil {
@@ -114,8 +126,79 @@ func (ts *TokenStore) StorePayload(chatID int64, resourceType, jsonBody string) 
 	return token
 }
 
+// PeekDashboardSession devuelve el payload del tablero si el token es válido, no expirado y aún no consumido.
+func (ts *TokenStore) PeekDashboardSession(token string) (*ResolvedToken, bool) {
+	if ts.db != nil {
+		var e malcomdb.DownloadToken
+		err := ts.db.WithContext(context.Background()).
+			Where("token = ? AND resource_type = ?", token, "dashboard").
+			First(&e).Error
+		if err != nil {
+			return nil, false
+		}
+		if time.Now().After(e.ExpiresAt) {
+			_ = ts.db.WithContext(context.Background()).Delete(&e).Error
+			return nil, false
+		}
+		if e.UsedAt != nil {
+			return nil, false
+		}
+		if e.PayloadJSON == nil || strings.TrimSpace(*e.PayloadJSON) == "" {
+			return nil, false
+		}
+		return &ResolvedToken{
+			ChatID:       e.ChatID,
+			FilePath:     e.FilePath,
+			PayloadJSON:  e.PayloadJSON,
+			ResourceType: e.ResourceType,
+		}, true
+	}
+
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	e, ok := ts.store[token]
+	if !ok || time.Now().After(e.expiresAt) {
+		delete(ts.store, token)
+		return nil, false
+	}
+	if !strings.EqualFold(e.resType, "dashboard") || e.payload == nil || strings.TrimSpace(*e.payload) == "" {
+		return nil, false
+	}
+	if e.consumed {
+		return nil, false
+	}
+	return &ResolvedToken{
+		ChatID:       e.chatID,
+		FilePath:     e.filePath,
+		PayloadJSON:  e.payload,
+		ResourceType: e.resType,
+	}, true
+}
+
+// MarkDashboardConsumed marca el token dashboard como usado (un solo acceso exitoso tras validar premium).
+func (ts *TokenStore) MarkDashboardConsumed(token string) bool {
+	now := time.Now().UTC()
+	if ts.db != nil {
+		r := ts.db.WithContext(context.Background()).
+			Model(&malcomdb.DownloadToken{}).
+			Where("token = ? AND resource_type = ? AND used_at IS NULL", token, "dashboard").
+			Update("used_at", &now)
+		return r.RowsAffected == 1
+	}
+
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	e, ok := ts.store[token]
+	if !ok || !strings.EqualFold(e.resType, "dashboard") || e.consumed {
+		return false
+	}
+	e.consumed = true
+	ts.store[token] = e
+	return true
+}
+
 // ResolveFull devuelve ruta y/o payload JSON si el token sigue vigente.
-// chart y dashboard no marcan used_at (múltiples GET).
+// chart no marca used_at (múltiples GET). dashboard con JSON solo vía Peek/Mark o descarga legacy no-dashboard.
 func (ts *TokenStore) ResolveFull(token string) (*ResolvedToken, bool) {
 	if ts.db != nil {
 		var e malcomdb.DownloadToken
@@ -128,6 +211,11 @@ func (ts *TokenStore) ResolveFull(token string) (*ResolvedToken, bool) {
 			return nil, false
 		}
 		rt := e.ResourceType
+		if strings.EqualFold(rt, "dashboard") && e.PayloadJSON != nil && strings.TrimSpace(*e.PayloadJSON) != "" {
+			if e.UsedAt != nil {
+				return nil, false
+			}
+		}
 		if rt != "chart" && rt != "dashboard" && e.UsedAt == nil {
 			now := time.Now().UTC()
 			_ = ts.db.WithContext(context.Background()).Model(&e).Update("used_at", &now).Error
@@ -146,6 +234,11 @@ func (ts *TokenStore) ResolveFull(token string) (*ResolvedToken, bool) {
 	if !ok || time.Now().After(e.expiresAt) {
 		delete(ts.store, token)
 		return nil, false
+	}
+	if strings.EqualFold(e.resType, "dashboard") && e.payload != nil && strings.TrimSpace(*e.payload) != "" {
+		if e.consumed {
+			return nil, false
+		}
 	}
 	return &ResolvedToken{
 		ChatID:       e.chatID,

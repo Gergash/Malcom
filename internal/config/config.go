@@ -37,6 +37,8 @@ type Config struct {
 
 	// Si no está vacío, POST /billing/webhook exige el mismo valor en X-Webhook-Secret o Authorization: Bearer …
 	BillingWebhookSecret string
+	// Secreto de eventos Wompi (Dashboard comercio): valida X-Event-Checksum / signature.checksum del body.
+	WompiEventSecret string
 }
 
 // Load reads .env (if present) and environment variables.
@@ -107,6 +109,7 @@ func Load() (*Config, error) {
 	}
 
 	webhookSecret := strings.TrimSpace(os.Getenv("BILLING_WEBHOOK_SECRET"))
+	wompiEvent := strings.TrimSpace(os.Getenv("WOMPI_EVENT_SECRET"))
 
 	return &Config{
 		DatabaseURL:          NormalizeDatabaseURL(rawURL),
@@ -122,6 +125,7 @@ func Load() (*Config, error) {
 		ChatRateLimitBurst:   chatBurst,
 		UploadMaxMB:          uploadMB,
 		BillingWebhookSecret: webhookSecret,
+		WompiEventSecret:     wompiEvent,
 	}, nil
 }
 

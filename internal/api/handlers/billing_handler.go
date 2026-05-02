@@ -7,29 +7,37 @@
 package handlers
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/powerups/insightflow-malcom/internal/api/types"
 	"github.com/powerups/insightflow-malcom/internal/db/repositories"
+	"github.com/powerups/insightflow-malcom/internal/payment/wompi"
 )
 
 // BillingHandler agrupa las dependencias de los endpoints de facturación.
 type BillingHandler struct {
-	userRepo    repositories.UserRepository
-	paymentRepo repositories.PaymentRepository
+	userRepo         repositories.UserRepository
+	paymentRepo      repositories.PaymentRepository
+	wompiEventSecret string
 }
 
 // NewBillingHandler construye el handler con sus dependencias.
 func NewBillingHandler(
 	userRepo repositories.UserRepository,
 	paymentRepo repositories.PaymentRepository,
+	wompiEventSecret string,
 ) *BillingHandler {
 	return &BillingHandler{
-		userRepo:    userRepo,
-		paymentRepo: paymentRepo,
+		userRepo:         userRepo,
+		paymentRepo:      paymentRepo,
+		wompiEventSecret: wompiEventSecret,
 	}
 }
 
@@ -105,15 +113,40 @@ func (h *BillingHandler) BillingStatus(c *gin.Context) {
 //
 // Es idempotente: si la referencia ya fue procesada responde AlreadyProcessed=true.
 func (h *BillingHandler) PaymentWebhook(c *gin.Context) {
-	var req types.PaymentWebhookRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusUnprocessableEntity, types.ErrorResponse{Detail: err.Error()})
+	raw, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, types.ErrorResponse{Detail: "No se pudo leer el cuerpo."})
 		return
 	}
+	c.Request.Body = io.NopCloser(bytes.NewReader(raw))
 
-	// Proveedor por defecto
-	if req.Provider == "" {
+	if strings.TrimSpace(h.wompiEventSecret) != "" {
+		chk := c.GetHeader("X-Event-Checksum")
+		if !wompi.VerifyEventChecksum(raw, chk, h.wompiEventSecret) {
+			slog.Warn("billing webhook: checksum Wompi inválido o evento sin firma")
+			c.JSON(http.StatusForbidden, types.ErrorResponse{Detail: "Firma de evento inválida."})
+			return
+		}
+	}
+
+	ref, wStatus, amountCents, emailStr, mapped := wompi.MapTransactionWebhook(raw)
+	var req types.PaymentWebhookRequest
+	if mapped {
+		req.Reference = ref
+		req.Status = wStatus
+		req.AmountInCents = amountCents
 		req.Provider = "wompi"
+		if emailStr != "" {
+			req.PayerEmail = &emailStr
+		}
+	} else {
+		if err := json.Unmarshal(raw, &req); err != nil {
+			c.JSON(http.StatusUnprocessableEntity, types.ErrorResponse{Detail: err.Error()})
+			return
+		}
+		if req.Provider == "" {
+			req.Provider = "wompi"
+		}
 	}
 
 	ctx := c.Request.Context()

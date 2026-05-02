@@ -54,21 +54,21 @@ class Orchestrator:
     # API pública
     # ------------------------------------------------------------------
 
-    def ingest_file(self, source_path: str, filename: str) -> dict:
+    def ingest_file(
+        self,
+        source_path: str,
+        filename: str,
+        *,
+        display_name: str | None = None,
+    ) -> dict:
         """
         Copia un archivo a data/{chat_id}/ y, si es documento, lo indexa.
 
-        Retorna:
-            {
-                "saved_path": str,
-                "indexed": bool,
-                "chunks": int,
-                "error": str | None,
-                "message": str,
-            }
+        filename: nombre en disco (p. ej. UUID.ext). display_name: etiqueta humana / source_id en RAG.
         """
         self.data_dir.mkdir(parents=True, exist_ok=True)
         filename = os.path.basename(filename or "archivo")
+        label = os.path.basename(display_name) if display_name else filename
         target_path = self.data_dir / filename
         source_abs = os.path.abspath(source_path)
         target_abs = os.path.abspath(str(target_path))
@@ -79,21 +79,21 @@ class Orchestrator:
         if suffix in DOC_EXTENSIONS:
             analyst = AnalystAgent()
             knowledge_agent = analyst.get_knowledge_agent(int(self.chat_id))
-            n_chunks, err = knowledge_agent.index_file(str(target_path), source_id=filename)
+            n_chunks, err = knowledge_agent.index_file(str(target_path), source_id=label)
             if err:
                 return {
                     "saved_path": str(target_path),
                     "indexed": False,
                     "chunks": 0,
                     "error": err,
-                    "message": f"Archivo '{filename}' guardado, pero no se pudo indexar: {err}",
+                    "message": f"Archivo '{label}' guardado, pero no se pudo indexar: {err}",
                 }
             return {
                 "saved_path": str(target_path),
                 "indexed": True,
                 "chunks": int(n_chunks),
                 "error": None,
-                "message": f"Archivo '{filename}' guardado e indexado ({n_chunks} fragmentos).",
+                "message": f"Archivo '{label}' guardado e indexado ({n_chunks} fragmentos).",
             }
 
         return {
@@ -101,7 +101,7 @@ class Orchestrator:
             "indexed": False,
             "chunks": 0,
             "error": None,
-            "message": f"Archivo '{filename}' guardado.",
+            "message": f"Archivo '{label}' guardado.",
         }
 
     async def process_message(

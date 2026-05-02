@@ -15,17 +15,19 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/powerups/insightflow-malcom/internal/api/types"
 	"github.com/powerups/insightflow-malcom/internal/db/repositories"
+	"github.com/powerups/insightflow-malcom/internal/filesystem"
 )
 
 // DownloadHandler sirve archivos de reporte generados por el agente Python.
 type DownloadHandler struct {
-	tokens *TokenStore
-	users  repositories.UserRepository
+	tokens  *TokenStore
+	users   repositories.UserRepository
+	dataDir string // raíz data/ absoluta: solo se sirven archivos bajo data/{chat_id}/
 }
 
 // NewDownloadHandler construye el handler con su TokenStore.
-func NewDownloadHandler(tokens *TokenStore, users repositories.UserRepository) *DownloadHandler {
-	return &DownloadHandler{tokens: tokens, users: users}
+func NewDownloadHandler(tokens *TokenStore, users repositories.UserRepository, dataDir string) *DownloadHandler {
+	return &DownloadHandler{tokens: tokens, users: users, dataDir: dataDir}
 }
 
 // Download resuelve el token y sirve el archivo como descarga adjunta.
@@ -33,6 +35,34 @@ func (h *DownloadHandler) Download(c *gin.Context) {
 	token := c.Param("token")
 	if token == "" {
 		c.JSON(http.StatusBadRequest, types.ErrorResponse{Detail: "Token requerido."})
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	// Sesión ECharts (JSON): mismo flujo que /api/v1/dashboard/session (premium + un solo uso).
+	if dash, ok := h.tokens.PeekDashboardSession(token); ok && dash.PayloadJSON != nil {
+		premium, err := h.users.IsPremiumForChat(ctx, dash.ChatID)
+		if err != nil {
+			slog.Error("download dashboard premium check", "error", err, "chat_id", dash.ChatID)
+			c.JSON(http.StatusInternalServerError, types.ErrorResponse{Detail: "No se pudo validar el acceso."})
+			return
+		}
+		if !premium {
+			slog.Warn("download dashboard forbidden", "chat_id", dash.ChatID)
+			c.JSON(http.StatusForbidden, types.ErrorResponse{
+				Detail: "Este recurso requiere plan premium activo.",
+			})
+			return
+		}
+		if !h.tokens.MarkDashboardConsumed(token) {
+			c.JSON(http.StatusConflict, types.ErrorResponse{
+				Detail: "Este enlace ya fue utilizado.",
+			})
+			return
+		}
+		c.Header("Cache-Control", "no-store")
+		c.Data(http.StatusOK, "application/json; charset=utf-8", []byte(*dash.PayloadJSON))
 		return
 	}
 
@@ -45,22 +75,6 @@ func (h *DownloadHandler) Download(c *gin.Context) {
 	}
 
 	if asset.PayloadJSON != nil && strings.TrimSpace(*asset.PayloadJSON) != "" {
-		if strings.EqualFold(asset.ResourceType, "dashboard") {
-			ctx := c.Request.Context()
-			premium, err := h.users.IsPremiumForChat(ctx, asset.ChatID)
-			if err != nil {
-				slog.Error("download dashboard premium check", "error", err, "chat_id", asset.ChatID)
-				c.JSON(http.StatusInternalServerError, types.ErrorResponse{Detail: "No se pudo validar el acceso."})
-				return
-			}
-			if !premium {
-				slog.Warn("download dashboard forbidden", "chat_id", asset.ChatID)
-				c.JSON(http.StatusForbidden, types.ErrorResponse{
-					Detail: "Este recurso requiere plan premium activo.",
-				})
-				return
-			}
-		}
 		c.Header("Cache-Control", "no-store")
 		c.Data(http.StatusOK, "application/json; charset=utf-8", []byte(*asset.PayloadJSON))
 		return
@@ -80,20 +94,12 @@ func (h *DownloadHandler) Download(c *gin.Context) {
 		})
 		return
 	}
-	// Seguridad: solo servir archivos dentro de DATA_DIR.
-	dataRoot := strings.TrimSpace(os.Getenv("DATA_DIR"))
-	if dataRoot != "" {
-		absRoot, _ := filepath.Abs(dataRoot)
-		absFile, _ := filepath.Abs(filePath)
-		if absRoot != "" && absFile != "" {
-			prefix := absRoot + string(os.PathSeparator)
-			if absFile != absRoot && !strings.HasPrefix(absFile, prefix) {
-				c.JSON(http.StatusForbidden, types.ErrorResponse{
-					Detail: "Archivo fuera del directorio permitido.",
-				})
-				return
-			}
-		}
+	if h.dataDir == "" || !filesystem.FileUnderChatData(h.dataDir, filePath, asset.ChatID) {
+		slog.Warn("download path outside chat jail", "chat_id", asset.ChatID, "path", filePath)
+		c.JSON(http.StatusForbidden, types.ErrorResponse{
+			Detail: "Archivo fuera del directorio permitido para este chat.",
+		})
+		return
 	}
 
 	resType := asset.ResourceType

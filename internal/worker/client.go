@@ -50,9 +50,10 @@ type processRequest struct {
 }
 
 type ingestRequest struct {
-	ChatID   int64  `json:"chat_id"`
-	TmpPath  string `json:"tmp_path"`
-	Filename string `json:"filename"`
+	ChatID           int64  `json:"chat_id"`
+	TmpPath          string `json:"tmp_path"`
+	Filename         string `json:"filename"` // nombre almacenado en disco (p. ej. UUID + ext)
+	OriginalFilename string `json:"original_filename,omitempty"`
 }
 
 // ── Interfaz ──────────────────────────────────────────────────────────────────
@@ -64,8 +65,8 @@ type Client interface {
 	ProcessMessage(ctx context.Context, chatID int64, message string, reportConfig *types.ReportConfig, requireStrictData bool) (*ProcessResult, error)
 
 	// IngestFile envía la ruta de un archivo temporal al Worker para que lo
-	// indexe/almacene y devuelve el resultado de la ingestión.
-	IngestFile(ctx context.Context, chatID int64, tmpPath, filename string) (*IngestResult, error)
+	// indexe/almacene. storedFilename es el nombre en data/{chat_id}/; originalFilename es el nombre del usuario (RAG).
+	IngestFile(ctx context.Context, chatID int64, tmpPath, storedFilename, originalFilename string) (*IngestResult, error)
 }
 
 // ── Implementación HTTP (Resty) ───────────────────────────────────────────────
@@ -159,7 +160,7 @@ func (c *HTTPClient) ProcessMessage(
 func (c *HTTPClient) IngestFile(
 	ctx context.Context,
 	chatID int64,
-	tmpPath, filename string,
+	tmpPath, storedFilename, originalFilename string,
 ) (*IngestResult, error) {
 	ingestCtx, cancel := context.WithTimeout(ctx, maxWorkerPatience)
 	defer cancel()
@@ -167,9 +168,17 @@ func (c *HTTPClient) IngestFile(
 	var result IngestResult
 	var apiErr map[string]any
 
+	if strings.TrimSpace(originalFilename) == "" {
+		originalFilename = storedFilename
+	}
 	resp, err := c.resty.R().
 		SetContext(ingestCtx).
-		SetBody(ingestRequest{ChatID: chatID, TmpPath: tmpPath, Filename: filename}).
+		SetBody(ingestRequest{
+			ChatID:           chatID,
+			TmpPath:          tmpPath,
+			Filename:         storedFilename,
+			OriginalFilename: originalFilename,
+		}).
 		SetResult(&result).
 		SetError(&apiErr).
 		Post("/internal/ingest-file")

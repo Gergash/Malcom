@@ -29,10 +29,10 @@ func (h *DashboardHandler) SessionJSON(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, types.ErrorResponse{Detail: "Token requerido."})
 		return
 	}
-	asset, ok := h.tokens.ResolveFull(token)
-	if !ok || asset.ResourceType != "dashboard" || asset.PayloadJSON == nil || *asset.PayloadJSON == "" {
+	asset, ok := h.tokens.PeekDashboardSession(token)
+	if !ok || asset.PayloadJSON == nil || *asset.PayloadJSON == "" {
 		c.JSON(http.StatusNotFound, types.ErrorResponse{
-			Detail: "Sesión de dashboard expirada o inválida.",
+			Detail: "Sesión de dashboard expirada, ya utilizada o inválida.",
 		})
 		return
 	}
@@ -47,6 +47,12 @@ func (h *DashboardHandler) SessionJSON(c *gin.Context) {
 		slog.Warn("dashboard session forbidden", "chat_id", asset.ChatID, "reason", "not_premium")
 		c.JSON(http.StatusForbidden, types.ErrorResponse{
 			Detail: "El tablero interactivo requiere plan premium activo.",
+		})
+		return
+	}
+	if !h.tokens.MarkDashboardConsumed(token) {
+		c.JSON(http.StatusConflict, types.ErrorResponse{
+			Detail: "Este enlace de tablero ya fue utilizado. Solicita uno nuevo desde el chat.",
 		})
 		return
 	}

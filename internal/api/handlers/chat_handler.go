@@ -15,9 +15,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/powerups/insightflow-malcom/internal/api/types"
 	"github.com/powerups/insightflow-malcom/internal/db/repositories"
 	"github.com/powerups/insightflow-malcom/internal/filesystem"
@@ -259,12 +259,12 @@ func (h *ChatHandler) UploadFile(c *gin.Context) {
 	if baseName == "" || baseName == "." {
 		baseName = "archivo"
 	}
-	ext := filepath.Ext(baseName)
+	ext := strings.ToLower(filepath.Ext(baseName))
 	if ext == "" {
 		ext = ".bin"
 	}
-	tmpName := fmt.Sprintf("%d_%d%s", chatID, time.Now().UnixNano(), ext)
-	tmpPath := filepath.Join(uploadDir, tmpName)
+	storedName := uuid.New().String() + ext
+	tmpPath := filepath.Join(uploadDir, storedName)
 	defer os.Remove(tmpPath)
 
 	out, err := os.Create(tmpPath)
@@ -297,7 +297,7 @@ func (h *ChatHandler) UploadFile(c *gin.Context) {
 
 	// Delegar ingestión al Worker Python
 	ctx := c.Request.Context()
-	result, err := h.worker.IngestFile(ctx, chatID, tmpPath, fh.Filename)
+	result, err := h.worker.IngestFile(ctx, chatID, tmpPath, storedName, baseName)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, types.ErrorResponse{
 			Detail: fmt.Sprintf("No se pudo subir/procesar el archivo: %v", err),
