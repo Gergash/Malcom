@@ -1,7 +1,7 @@
 <!--
   PowerUps InsightFlow — Widget de chat embebible (BeBuilder / HTML custom)
   --------------------------------------------------------------------
-  1. Ajusta CONFIG (API_BASE y CHECKOUT_URL).
+  1. Ajusta CONFIG (API_BASE, CHECKOUT_URL, y opcional PREMIUM_PORTAL_URL / DASHBOARD_SESSION_URL).
   2. Pega este bloque completo en un módulo HTML de BeBuilder o plantilla.
   3. Asegura que el backend expone /api/v1 con CORS si el sitio y el API no comparten dominio.
   4. Tras actualizar el archivo, vuelve a guardar/publicar y fuerza recarga (Ctrl+F5) por si el tema cachea HTML.
@@ -40,6 +40,10 @@
     <div class="powerups-edge__usage" id="powerups-edge-usage" role="status">
       <span class="powerups-edge__usage-text" id="powerups-edge-usage-text">Mensajes usados: —/—</span>
       <div class="powerups-edge__usage-bar" aria-hidden="true"><div class="powerups-edge__usage-fill" id="powerups-edge-usage-fill" style="width:0%"></div></div>
+    </div>
+    <div class="powerups-edge__portal-row">
+      <a class="powerups-edge__portal-link" id="powerups-edge-link-portal" href="#" target="_blank" rel="noopener noreferrer">Portal Premium</a>
+      <a class="powerups-edge__portal-link" id="powerups-edge-link-dashboard" href="#" target="_blank" rel="noopener noreferrer" title="Si ya tienes token de tablero, se abre con tu sesión">Visor tablero (ECharts)</a>
     </div>
     <div class="powerups-edge__paywall-banner" id="powerups-edge-paywall" hidden>
       <strong>Desbloquea el análisis total por $40.000 COP</strong>
@@ -405,11 +409,52 @@
 }
 .powerups-edge__head,
 .powerups-edge__usage,
+.powerups-edge__portal-row,
 .powerups-edge__premium-row,
 .powerups-edge__paywall-banner,
 .powerups-edge__composer,
 .powerups-edge__legal {
   flex-shrink: 0;
+}
+.powerups-edge__portal-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  /* ~10px respecto al borde del panel; aire respecto al bloque superior (logo / uso) */
+  margin: 16px 10px 0;
+  padding: 10px 0 14px;
+  border-bottom: 1px solid rgba(42, 51, 68, 0.55);
+  background: rgba(22, 27, 36, 0.65);
+  border-radius: 10px;
+  box-sizing: border-box;
+}
+.powerups-edge__portal-link {
+  flex: 1 1 calc(50% - 5px);
+  min-width: 120px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(90, 127, 207, 0.55);
+  background: rgba(40, 70, 140, 0.22);
+  color: #c8daf8;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  text-align: center;
+  line-height: 1.25;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.powerups-edge__portal-link:hover {
+  border-color: var(--pu-accent-bright);
+  background: rgba(58, 95, 184, 0.35);
+  color: #f0f6ff;
+}
+.powerups-edge__portal-link:focus-visible {
+  outline: 2px solid var(--pu-accent-bright);
+  outline-offset: 2px;
 }
 .powerups-edge__head {
   display: flex;
@@ -477,7 +522,7 @@
   font-size: 22px; line-height: 1; cursor: pointer; padding: 4px 8px;
 }
 .powerups-edge__close:hover { color: var(--pu-text); }
-.powerups-edge__usage { padding: 10px 14px 8px; border-bottom: 1px solid rgba(42,51,68,0.6); }
+.powerups-edge__usage { padding: 10px 14px 12px; border-bottom: 1px solid rgba(42,51,68,0.6); }
 .powerups-edge__usage-text { font-size: 12px; color: var(--pu-muted); }
 .powerups-edge__usage-bar { margin-top: 6px; height: 4px; border-radius: 4px; background: #1f2633; overflow: hidden; }
 .powerups-edge__usage-fill {
@@ -848,12 +893,41 @@
     // Token del último tablero ECharts por chat_id (se renueva con cada respuesta que incluya dashboard).
     STORAGE_KEY_DASH_PREFIX: 'powerups_edge_dash_tok_',
     STORAGE_KEY_PANEL_SIZE: 'powerups_edge_panel_size_v1',
+    // URLs absolutas opcionales si los HTML no están en la raíz del API (WordPress/CDN). Si null, se usa API_BASE + ruta por defecto.
+    PREMIUM_PORTAL_URL: null,
+    DASHBOARD_SESSION_URL: null,
     // Mensajes enviados al agente cuando el usuario ya es premium y pulsa las acciones
     PROMPT_PDF: 'Genera el informe PDF premium consolidado de este hilo de análisis, listo para presentación ejecutiva.',
     PROMPT_EXCEL: 'Exporta un libro Excel con gráficas a partir del análisis actual (hojas claras y un gráfico por insight clave).',
   };
 
   function el(id) { return document.getElementById(id); }
+
+  function apiOriginBase() {
+    return String(CONFIG.API_BASE || '').replace(/\/$/, '');
+  }
+
+  /** premium-portal.html — pegar token o abrir visor premium. */
+  function resolvePremiumPortalUrl() {
+    if (CONFIG.PREMIUM_PORTAL_URL) return CONFIG.PREMIUM_PORTAL_URL;
+    return apiOriginBase() + '/premium-portal.html';
+  }
+
+  /** premium-dashboard-session.html — añade ?token= si hay tablero guardado para este chat. */
+  function resolveDashboardSessionUrl() {
+    var base = CONFIG.DASHBOARD_SESSION_URL ? CONFIG.DASHBOARD_SESSION_URL : (apiOriginBase() + '/premium-dashboard-session.html');
+    var path = base.split('?')[0];
+    var tok = loadDashboardToken();
+    if (tok) return path + '?token=' + encodeURIComponent(tok);
+    return path;
+  }
+
+  function updatePortalLinks() {
+    var aPortal = el('powerups-edge-link-portal');
+    var aDash = el('powerups-edge-link-dashboard');
+    if (aPortal) aPortal.href = resolvePremiumPortalUrl();
+    if (aDash) aDash.href = resolveDashboardSessionUrl();
+  }
 
   /** Evita la página intersticial de ngrok (tunnel gratuito) en peticiones al API. */
   function apiHeaders(extra) {
@@ -885,6 +959,7 @@
     try {
       localStorage.setItem(dashboardTokenStorageKey(), token);
     } catch (e) { /* quota */ }
+    updatePortalLinks();
   }
 
   function loadDashboardToken() {
@@ -928,6 +1003,7 @@
       openA.hidden = false;
     }
     if (wrapLive) wrapLive.hidden = false;
+    updatePortalLinks();
   }
 
   function showDashboardPlaceholder() {
@@ -962,12 +1038,16 @@
       ph.textContent = message || 'Preparando tablero… Cuando el análisis genere una gráfica premium, aparecerá aquí. Escribe en el chat para generarla.';
     }
     if (wrapLive) wrapLive.hidden = false;
+    updatePortalLinks();
   }
 
   function hydrateLiveDashboardForPremium() {
     var tok = loadDashboardToken();
     if (tok) setLiveDashboardIframe(tok);
-    else showDashboardPlaceholder();
+    else {
+      showDashboardPlaceholder();
+      updatePortalLinks();
+    }
   }
 
   var dashTokenRefreshInFlight = false;
@@ -997,6 +1077,8 @@
       if (tok) {
         saveDashboardToken(tok);
         setLiveDashboardIframe(tok);
+      } else {
+        updatePortalLinks();
       }
     } catch (e) { /* red / CORS */ }
     finally {
@@ -1456,6 +1538,7 @@
     wirePanelResizePersistence();
     wirePanelDragResize();
     wirePanelViewportClamp();
+    updatePortalLinks();
 
     toggle.addEventListener('click', function () {
       var open = !root.classList.contains('is-open');
@@ -1463,6 +1546,7 @@
       toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
       panel.setAttribute('aria-hidden', open ? 'false' : 'true');
       if (open) {
+        updatePortalLinks();
         hydrateFromStorage();
         refreshCredits();
         setTimeout(function () { input.focus(); }, 280);
