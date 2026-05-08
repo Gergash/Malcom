@@ -1,5 +1,9 @@
 <!--
-  PowerUps InsightFlow — Widget de chat embebible (BeBuilder / HTML custom)
+  PowerUps InsightFlow — Widget de chat embebible (monolito para pruebas / pegado rápido)
+  ---------------------------------------------------------------------------------
+  Para producción con iframe aislado y archivos separados usa:
+    widget-loader.js, powerups-edge-frame.html, powerups-edge-widget.js, powerups-edge-widget.css
+  Ver INTEGRATION-BEBUILDER.txt y bebuilder-install-snippet.html en esta carpeta.
   --------------------------------------------------------------------
   1. Ajusta CONFIG (API_BASE, CHECKOUT_URL, y opcional PREMIUM_PORTAL_URL / DASHBOARD_SESSION_URL).
   2. Pega este bloque completo en un módulo HTML de BeBuilder o plantilla.
@@ -137,7 +141,7 @@
   overflow: visible;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items:girex-end;
   gap: 0;
 }
 .powerups-edge *, .powerups-edge *::before, .powerups-edge *::after { box-sizing: border-box; }
@@ -643,7 +647,7 @@
   overflow: hidden;
   transition: height 0.25s ease, min-height 0.25s ease, opacity 0.2s ease;
 }
-.powerups-edge__dashboard-live.is-collapsed .powerups-edge__dashboard-frame-wrap {
+.powerups-edge__dashboard-frame-wrap.is-collapsed {
   height: 0;
   min-height: 0;
   margin-bottom: 6px;
@@ -893,9 +897,9 @@
     // Token del último tablero ECharts por chat_id (se renueva con cada respuesta que incluya dashboard).
     STORAGE_KEY_DASH_PREFIX: 'powerups_edge_dash_tok_',
     STORAGE_KEY_PANEL_SIZE: 'powerups_edge_panel_size_v1',
-    // URLs absolutas opcionales si los HTML no están en la raíz del API (WordPress/CDN). Si null, se usa API_BASE + ruta por defecto.
-    PREMIUM_PORTAL_URL: null,
-    DASHBOARD_SESSION_URL: null,
+    // URLs públicas de los embebidos premium en producción.
+    PREMIUM_PORTAL_URL: 'https://www.powerupsagencia.com/portal-premium/',
+    DASHBOARD_SESSION_URL: 'https://www.powerupsagencia.com/dashboard-premium-echarts/',
     // Mensajes enviados al agente cuando el usuario ya es premium y pulsa las acciones
     PROMPT_PDF: 'Genera el informe PDF premium consolidado de este hilo de análisis, listo para presentación ejecutiva.',
     PROMPT_EXCEL: 'Exporta un libro Excel con gráficas a partir del análisis actual (hojas claras y un gráfico por insight clave).',
@@ -1562,10 +1566,10 @@
       window.location.href = checkoutUrl();
     });
     el('powerups-edge-dashboard-toggle').addEventListener('click', function () {
-      var live = el('powerups-edge-dashboard-live');
+      var wrap = el('powerups-edge-dashboard-frame-wrap');
       var btn = el('powerups-edge-dashboard-toggle');
-      if (!live || !btn) return;
-      var collapsed = live.classList.toggle('is-collapsed');
+      if (!wrap || !btn) return;
+      var collapsed = wrap.classList.toggle('is-collapsed');
       btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
       btn.textContent = collapsed ? 'Mostrar gráfico' : 'Ocultar gráfico';
     });

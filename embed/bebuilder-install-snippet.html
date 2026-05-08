@@ -1,0 +1,25 @@
+<!--
+  BeBuilder / Betheme — Hook "Action: bottom" (o bloque HTML al pie).
+  Sube en la MISMA carpeta pública del sitio (o CDN) estos archivos:
+    widget-loader.js
+    powerups-edge-frame.html
+    powerups-edge-widget.js
+    powerups-edge-widget.css
+  Opcional: powerups-edge-widget-markup.html (referencia al marcar; el frame ya lo incluye embebido).
+
+  No pegues <iframe> en la sección del layout: solo el script abajo.
+-->
+<script>
+  window.POWERUPS_WIDGET_CONFIG = Object.assign(
+    {
+      API_BASE: "https://tu-api.example.com",
+      CHECKOUT_URL: "https://tu-tienda.com/premium-edge-bi/?chat_id={chatId}",
+      PREMIUM_PORTAL_URL: "https://www.powerupsagencia.com/portal-premium/",
+      DASHBOARD_SESSION_URL: "https://www.powerupsagencia.com/dashboard-premium-echarts/",
+    },
+    window.POWERUPS_WIDGET_CONFIG || {},
+  );
+  // Opcional: ruta absoluta al frame si los archivos no están junto al loader
+  // window.POWERUPS_WIDGET_LOADER = { frameUrl: "https://cdn.example.com/malcom/powerups-edge-frame.html", zIndex: 2147483000 };
+</script>
+<script src="https://TU-DOMINIO-O-CDN/ruta/malcom/embed/widget-loader.js" defer></script>

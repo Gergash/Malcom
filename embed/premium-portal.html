@@ -253,7 +253,7 @@
       <div class="row">
         <input type="text" id="portal-token-input" placeholder="https://…/dashboard?token=…  o  pegar solo el token" autocomplete="off" />
         <button type="button" class="btn" id="portal-open-btn">Abrir tablero</button>
-        <a class="btn btn-secondary" href="premium-dashboard-session.html" style="text-decoration:none;display:inline-flex;align-items:center;">Ir al visor vacío</a>
+        <a class="btn btn-secondary" href="https://www.powerupsagencia.com/dashboard-premium-echarts/" style="text-decoration:none;display:inline-flex;align-items:center;">Ir al visor vacío</a>
       </div>
     </div>
 
@@ -299,8 +299,7 @@
     if (m) t = decodeURIComponent(m[1]);
     t = t.replace(/^["']|["']$/g, '');
     if (!t || t.length < 8) return null;
-    var base = window.location.href.replace(/[^/]+$/, '');
-    return base + 'premium-dashboard-session.html?token=' + encodeURIComponent(t);
+    return 'https://www.powerupsagencia.com/dashboard-premium-echarts/?token=' + encodeURIComponent(t);
   }
 
   document.getElementById('portal-open-btn').addEventListener('click', function () {

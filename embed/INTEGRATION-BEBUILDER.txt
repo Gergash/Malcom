@@ -1,0 +1,35 @@
+InsightFlow · embed modular (BeBuilder / WordPress)
+===================================================
+
+Archivos en esta carpeta
+------------------
+- widget-loader.js          → único script en la página del sitio (hook Bottom).
+- powerups-edge-frame.html  → documento del iframe (carga CSS + marcado + JS del widget).
+- powerups-edge-widget.js   → lógica del chat.
+- powerups-edge-widget.css  → estilos.
+- powerups-edge-widget-markup.html → fragmento HTML de referencia; mantener alineado con el bloque dentro de powerups-edge-frame.html.
+- powerups-edge-chat-widget.html   → monolito legacy (todo en uno); usar embed modular en producción.
+
+¿Iframe en la misma sección que la burbuja?
+-------------------------------------------
+No. En BeBuilder no hace falta (ni conviene) un bloque con <iframe> en la sección del diseño.
+El hook "Bottom" (o un único bloque HTML al pie) incluye solo:
+  1) script opcional con window.POWERUPS_WIDGET_CONFIG
+  2) <script src=".../widget-loader.js" defer>
+El loader crea el iframe a pantalla completa encima del sitio. El documento interno usa fondo transparente
+y pointer-events para que solo la burbuja/panel capture clics cuando toca (ver powerups-edge-frame.html).
+
+Origen y localStorage
+---------------------
+El localStorage es el del origen del powerups-edge-frame.html (misma URL que sirve el iframe).
+Si el frame está en tu CDN, las claves del chat viven en ese origen, no en el dominio de WordPress.
+
+Config desde WordPress
+----------------------
+window.POWERUPS_WIDGET_CONFIG en la página principal no llega al interior del iframe si el frame
+está en otro origen. widget-loader.js copia API_BASE, CHECKOUT_URL, etc. a query string del src del iframe;
+powerups-edge-widget.js las lee y fusiona en CONFIG.
+
+Despliegue
+----------
+Publica los cuatro archivos obligatorios en la misma ruta base y ajusta la URL del script en bebuilder-install-snippet.html.
