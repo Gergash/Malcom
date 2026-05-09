@@ -32,4 +32,10 @@ powerups-edge-widget.js las lee y fusiona en CONFIG.
 
 Despliegue
 ----------
-Publica los cuatro archivos obligatorios en la misma ruta base y ajusta la URL del script en bebuilder-install-snippet.html.
+Publica los cuatro archivos obligatorios en la misma ruta base.
+
+WordPress «Biblioteca de medios»: las URLs son .../wp-content/uploads/AÑO/MES/fichero.
+No uses /malcom/embed/ en el snippet salvo que exista esa ruta en el servidor.
+En Theme Options → Hooks → Bottom usa bebuilder-install-snippet.html: rellena
+POWERUPS_WIDGET_LOADER.assetsBase con la carpeta (URL de widget-loader.js sin el nombre del archivo)
+y vuelve a subir widget-loader.js del repo si necesitas assetsBase + anti-doble-carga.

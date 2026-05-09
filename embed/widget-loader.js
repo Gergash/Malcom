@@ -6,10 +6,16 @@
  *
  * Opcional antes de este script:
  *   window.POWERUPS_WIDGET_CONFIG = { API_BASE: '…', CHECKOUT_URL: '…', … };
- *   window.POWERUPS_WIDGET_LOADER = { frameUrl: 'https://cdn…/powerups-edge-frame.html', zIndex: 2147483000 };
+ *   window.POWERUPS_WIDGET_LOADER = {
+ *     frameUrl: 'https://cdn…/powerups-edge-frame.html',
+ *     assetsBase: 'https://…/uploads/2026/05/',  // misma carpeta que frame/css/js (p. ej. WordPress Medios)
+ *     zIndex: 2147483000
+ *   };
  */
 (function () {
   if (typeof window === "undefined" || typeof document === "undefined") return;
+  if (window.__POWERUPS_WIDGET_LOADER_RAN) return;
+  window.__POWERUPS_WIDGET_LOADER_RAN = true;
 
   var LOADER = window.POWERUPS_WIDGET_LOADER && typeof window.POWERUPS_WIDGET_LOADER === "object"
     ? window.POWERUPS_WIDGET_LOADER
@@ -22,6 +28,9 @@
   var baseDir = "";
   if (script && script.src) {
     baseDir = script.src.replace(/[^/]*$/, "");
+  }
+  if (!baseDir && LOADER.assetsBase) {
+    baseDir = String(LOADER.assetsBase).trim().replace(/\/?$/, "/");
   }
 
   var frameHref;

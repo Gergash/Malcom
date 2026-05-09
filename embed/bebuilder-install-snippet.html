@@ -1,25 +1,40 @@
 <!--
-  BeBuilder / Betheme — Hook "Action: bottom" (o bloque HTML al pie).
-  Sube en la MISMA carpeta pública del sitio (o CDN) estos archivos:
-    widget-loader.js
-    powerups-edge-frame.html
-    powerups-edge-widget.js
-    powerups-edge-widget.css
-  Opcional: powerups-edge-widget-markup.html (referencia al marcar; el frame ya lo incluye embebido).
+  WordPress: los archivos en «Biblioteca de medios» tienen URL tipo:
+  https://www.powerupsagencia.com/wp-content/uploads/AÑO/MES/archivo.js
+  NO uses /malcom/embed/ salvo que esa carpeta exista en el servidor.
 
-  No pegues <iframe> en la sección del layout: solo el script abajo.
+  Pasos:
+  1) En Medios, abre widget-loader.js → «Copiar URL al portapapeles».
+  2) Quita solo el nombre del archivo; deja la barra final. Eso es assetsBase.
+     Ejemplo: .../uploads/2026/05/
+  3) Los cuatro archivos obligatorios deben estar en esa MISMA carpeta (mismo mes):
+     widget-loader.js, powerups-edge-frame.html, powerups-edge-widget.js, powerups-edge-widget.css
+  4) Sube de nuevo widget-loader.js desde este repo si añadiste soporte assetsBase (recomendado).
+
+  Pega el bloque <script> siguiente en Theme Options → Hooks → Bottom (sin envolver en iframe).
 -->
 <script>
+  window.POWERUPS_WIDGET_LOADER = {
+    assetsBase: "__PEGA_AQUI_LA_CARPETA_DE_MEDIOS__",
+  };
   window.POWERUPS_WIDGET_CONFIG = Object.assign(
     {
-      // Mismo origen que PUBLIC_BASE_URL del backend Malcom (sin barra final).
       API_BASE: "https://meroblastic-estefana-isoperimetrical.ngrok-free.dev",
-      // Ajusta la ruta si tu producto WooCommerce tiene otro slug.
       CHECKOUT_URL: "https://www.powerupsagencia.com/premium-edge-bi/?chat_id={chatId}",
       PREMIUM_PORTAL_URL: "https://www.powerupsagencia.com/portal-premium/",
       DASHBOARD_SESSION_URL: "https://www.powerupsagencia.com/dashboard-premium-echarts/",
     },
     window.POWERUPS_WIDGET_CONFIG || {},
   );
+  (function () {
+    var b = String(window.POWERUPS_WIDGET_LOADER.assetsBase || "").trim().replace(/\/?$/, "/");
+    if (!b || b.indexOf("__PEGA_AQUI_LA_CARPETA_DE_MEDIOS__") !== -1) {
+      console.error("[InsightFlow] Reemplaza assetsBase por la carpeta real de Medios (URL de widget-loader.js sin el nombre del archivo).");
+      return;
+    }
+    var s = document.createElement("script");
+    s.src = b + "widget-loader.js";
+    s.defer = true;
+    document.body.appendChild(s);
+  })();
 </script>
-<script src="https://www.powerupsagencia.com/malcom/embed/widget-loader.js" defer></script>
