@@ -1,21 +1,20 @@
 <!--
-  WordPress: los archivos en «Biblioteca de medios» tienen URL tipo:
-  https://www.powerupsagencia.com/wp-content/uploads/AÑO/MES/archivo.js
-  NO uses /malcom/embed/ salvo que esa carpeta exista en el servidor.
+  IMPORTANTE (WordPress / Betheme)
+  - Este archivo es una PLANTILLA: copia TODO el bloque <script>…</script> de abajo
+    en Theme Options → Hooks → Bottom. No hace falta subir este .html a Medios.
+  - Si abres bebuilder-install-snippet.html en el navegador, la página puede verse «vacía»:
+    es normal; el JS no se pinta como texto. Usa «Ver código fuente» si quieres leerlo.
+  - Los archivos que SÍ deben estar en Medios (misma carpeta) son:
+    powerups-edge-frame.html, powerups-edge-widget.js, powerups-edge-widget.css
+  - widget-loader.js es opcional si usas el loader INLINE aquí (recomendado si .js da 404 por caché o reglas).
 
-  Pasos:
-  1) En Medios, abre widget-loader.js → «Copiar URL al portapapeles».
-  2) Quita solo el nombre del archivo; deja la barra final. Eso es assetsBase.
-     Ejemplo: .../uploads/2026/05/
-  3) Los cuatro archivos obligatorios deben estar en esa MISMA carpeta (mismo mes):
-     widget-loader.js, powerups-edge-frame.html, powerups-edge-widget.js, powerups-edge-widget.css
-  4) Sube de nuevo widget-loader.js desde este repo si añadiste soporte assetsBase (recomendado).
-
-  Pega el bloque <script> siguiente en Theme Options → Hooks → Bottom (sin envolver en iframe).
+  Carpeta actual en producción:
+  https://www.powerupsagencia.com/wp-content/uploads/2026/05/
 -->
 <script>
+(function () {
   window.POWERUPS_WIDGET_LOADER = {
-    assetsBase: "__PEGA_AQUI_LA_CARPETA_DE_MEDIOS__",
+    assetsBase: "https://www.powerupsagencia.com/wp-content/uploads/2026/05/",
   };
   window.POWERUPS_WIDGET_CONFIG = Object.assign(
     {
@@ -26,15 +25,64 @@
     },
     window.POWERUPS_WIDGET_CONFIG || {},
   );
-  (function () {
-    var b = String(window.POWERUPS_WIDGET_LOADER.assetsBase || "").trim().replace(/\/?$/, "/");
-    if (!b || b.indexOf("__PEGA_AQUI_LA_CARPETA_DE_MEDIOS__") !== -1) {
-      console.error("[InsightFlow] Reemplaza assetsBase por la carpeta real de Medios (URL de widget-loader.js sin el nombre del archivo).");
-      return;
-    }
-    var s = document.createElement("script");
-    s.src = b + "widget-loader.js";
-    s.defer = true;
-    document.body.appendChild(s);
-  })();
+
+  if (typeof document === "undefined") return;
+  if (window.__POWERUPS_WIDGET_LOADER_RAN) return;
+  window.__POWERUPS_WIDGET_LOADER_RAN = true;
+
+  var LOADER = window.POWERUPS_WIDGET_LOADER || {};
+  var cfg = window.POWERUPS_WIDGET_CONFIG || {};
+  var baseDir = String(LOADER.assetsBase || "").trim().replace(/\/?$/, "/");
+  if (!baseDir) return;
+
+  var frameHref = LOADER.frameUrl || (baseDir + "powerups-edge-frame.html");
+  var u;
+  try {
+    u = new URL(frameHref, window.location.href);
+  } catch (e) {
+    return;
+  }
+
+  var qp = [
+    ["apiBase", cfg.API_BASE],
+    ["checkoutUrl", cfg.CHECKOUT_URL],
+    ["premiumPortalUrl", cfg.PREMIUM_PORTAL_URL],
+    ["dashboardSessionUrl", cfg.DASHBOARD_SESSION_URL],
+    ["username", cfg.USERNAME],
+  ];
+  for (var i = 0; i < qp.length; i++) {
+    var val = qp[i][1];
+    if (val != null && val !== "") u.searchParams.set(qp[i][0], String(val));
+  }
+
+  var id = LOADER.containerId || "powerups-edge-widget-host";
+  var z = LOADER.zIndex != null ? LOADER.zIndex : 2147483000;
+  var wrap = document.getElementById(id);
+  if (!wrap) {
+    wrap = document.createElement("div");
+    wrap.id = id;
+    document.body.appendChild(wrap);
+  }
+  wrap.setAttribute("data-powerups-widget-host", "");
+  wrap.style.cssText = [
+    "position:fixed", "inset:0", "width:100%", "height:100%",
+    "border:0", "margin:0", "padding:0", "pointer-events:none",
+    "z-index:" + String(z), "background:transparent",
+  ].join(";");
+
+  var ifr = document.createElement("iframe");
+  ifr.setAttribute("title", LOADER.frameTitle || "InsightFlow asistente");
+  ifr.setAttribute(
+    "sandbox",
+    "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads allow-top-navigation-by-user-activation",
+  );
+  ifr.setAttribute("allow", "clipboard-write");
+  ifr.referrerPolicy = "strict-origin-when-cross-origin";
+  ifr.style.cssText = [
+    "position:absolute", "inset:0", "width:100%", "height:100%",
+    "border:0", "margin:0", "padding:0", "background:transparent",
+  ].join(";");
+  ifr.src = u.toString();
+  wrap.appendChild(ifr);
+})();
 </script>

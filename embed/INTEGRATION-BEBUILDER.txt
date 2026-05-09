@@ -35,7 +35,9 @@ Despliegue
 Publica los cuatro archivos obligatorios en la misma ruta base.
 
 WordPress «Biblioteca de medios»: las URLs son .../wp-content/uploads/AÑO/MES/fichero.
-No uses /malcom/embed/ en el snippet salvo que exista esa ruta en el servidor.
-En Theme Options → Hooks → Bottom usa bebuilder-install-snippet.html: rellena
-POWERUPS_WIDGET_LOADER.assetsBase con la carpeta (URL de widget-loader.js sin el nombre del archivo)
-y vuelve a subir widget-loader.js del repo si necesitas assetsBase + anti-doble-carga.
+
+bebuilder-install-snippet.html: copia su bloque <script> al hook Bottom; no hace falta
+subir ese .html a Medios (si lo abres en el navegador puede verse en blanco: es normal;
+«Ver código fuente» para leer el JS). La plantilla actual lleva el loader INLINE: no depende
+de cargar widget-loader.js por HTTP. En Medios deben existir al menos:
+powerups-edge-frame.html, powerups-edge-widget.js, powerups-edge-widget.css (misma carpeta).
