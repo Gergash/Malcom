@@ -102,6 +102,8 @@
     "margin:0",
     "padding:0",
     "background:transparent",
+    /* El padre tiene pointer-events:none; sin auto aquí el iframe no recibe clics en varios navegadores. */
+    "pointer-events:auto",
   ].join(";");
   ifr.src = u.toString();
   wrap.appendChild(ifr);
