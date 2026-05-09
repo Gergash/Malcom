@@ -12,14 +12,14 @@
 <script>
   window.POWERUPS_WIDGET_CONFIG = Object.assign(
     {
-      API_BASE: "https://tu-api.example.com",
-      CHECKOUT_URL: "https://tu-tienda.com/premium-edge-bi/?chat_id={chatId}",
+      // Mismo origen que PUBLIC_BASE_URL del backend Malcom (sin barra final).
+      API_BASE: "https://meroblastic-estefana-isoperimetrical.ngrok-free.dev",
+      // Ajusta la ruta si tu producto WooCommerce tiene otro slug.
+      CHECKOUT_URL: "https://www.powerupsagencia.com/premium-edge-bi/?chat_id={chatId}",
       PREMIUM_PORTAL_URL: "https://www.powerupsagencia.com/portal-premium/",
       DASHBOARD_SESSION_URL: "https://www.powerupsagencia.com/dashboard-premium-echarts/",
     },
     window.POWERUPS_WIDGET_CONFIG || {},
   );
-  // Opcional: ruta absoluta al frame si los archivos no están junto al loader
-  // window.POWERUPS_WIDGET_LOADER = { frameUrl: "https://cdn.example.com/malcom/powerups-edge-frame.html", zIndex: 2147483000 };
 </script>
-<script src="https://TU-DOMINIO-O-CDN/ruta/malcom/embed/widget-loader.js" defer></script>
+<script src="https://www.powerupsagencia.com/malcom/embed/widget-loader.js" defer></script>
