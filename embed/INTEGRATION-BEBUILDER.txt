@@ -41,3 +41,7 @@ subir ese .html a Medios (si lo abres en el navegador puede verse en blanco: es 
 «Ver código fuente» para leer el JS). La plantilla actual lleva el loader INLINE: no depende
 de cargar widget-loader.js por HTTP. En Medios deben existir al menos:
 powerups-edge-frame.html, powerups-edge-widget.js, powerups-edge-widget.css (misma carpeta).
+
+El iframe ya no es 100%×100%: solo cubre la esquina inferior derecha (~960×92vh),
+para que la burbuja reciba clics (un iframe a pantalla completa con body pointer-events:none
+hacía que muchos navegadores enviaran el clic al padre).

@@ -93,16 +93,21 @@
   );
   ifr.setAttribute("allow", "clipboard-write");
   ifr.referrerPolicy = "strict-origin-when-cross-origin";
+  /* Solo la esquina inferior derecha: evita iframe 100%×100% con body pointer-events:none,
+   * que en Chrome/Safari hace que los clics «atraviesen» al padre y la burbuja no reciba el evento. */
   ifr.style.cssText = [
     "position:absolute",
-    "inset:0",
-    "width:100%",
-    "height:100%",
+    "right:0",
+    "bottom:0",
+    "left:auto",
+    "top:auto",
+    "width:min(960px,100vw)",
+    "height:min(92vh,100vh)",
+    "max-height:100vh",
     "border:0",
     "margin:0",
     "padding:0",
     "background:transparent",
-    /* El padre tiene pointer-events:none; sin auto aquí el iframe no recibe clics en varios navegadores. */
     "pointer-events:auto",
   ].join(";");
   ifr.src = u.toString();
