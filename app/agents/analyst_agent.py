@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 
 try:
     from app.agents.model_manager import ModelManager
+    from app.agents.compliance_agent import ComplianceAgent
     from app.agents.knowledge_agent import KnowledgeAgent, DOC_EXTENSIONS
     from app.agents.report_generator import (
         generar_reporte_excel_avanzado,
@@ -28,6 +29,7 @@ try:
     from app.api.schemas import ReportConfig
 except ModuleNotFoundError:
     from agents.model_manager import ModelManager
+    from agents.compliance_agent import ComplianceAgent
     from agents.knowledge_agent import KnowledgeAgent, DOC_EXTENSIONS
     from agents.report_generator import (
         generar_reporte_excel_avanzado,
@@ -71,6 +73,26 @@ _CODE_INDICATORS = (
 )
 
 _PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+_HEADER_SCAN_LIMIT = 12
+_TRANSACTIONAL_HEADER_KEYWORDS = (
+    "cif",
+    "fob",
+    "cantidad",
+    "arancel",
+    "aduana",
+    "fecha",
+    "nit",
+    "valor",
+    "total",
+    "descripcion",
+    "documento",
+    "factura",
+    "concepto",
+    "debito",
+    "credito",
+    "saldo",
+)
+_COMPLEX_DELIMITERS = ("|", ";")
 
 
 def _is_document_file(path: str) -> bool:
@@ -94,6 +116,120 @@ def _get_latest_data_file_in_folder(user_data_folder: str) -> Optional[str]:
     return max(candidates, key=lambda x: x[0])[1] if candidates else None
 
 
+def _normalize_header_name(value: Any, idx: int) -> str:
+    txt = str(value).strip() if value is not None else ""
+    if not txt or txt.lower() in {"nan", "none"}:
+        txt = f"col_{idx + 1}"
+    txt = re.sub(r"\s+", " ", txt).strip()
+    return txt
+
+
+def _score_header_candidate(cells: List[Any]) -> int:
+    score = 0
+    for cell in cells:
+        if cell is None or (isinstance(cell, float) and pd.isna(cell)):
+            continue
+        txt = str(cell).strip().lower()
+        if not txt or txt in {"nan", "none"}:
+            continue
+        score += sum(1 for kw in _TRANSACTIONAL_HEADER_KEYWORDS if kw in txt)
+    return score
+
+
+def _dedupe_headers(headers: List[str]) -> List[str]:
+    seen: Dict[str, int] = {}
+    out: List[str] = []
+    for h in headers:
+        base = h
+        if base not in seen:
+            seen[base] = 1
+            out.append(base)
+            continue
+        seen[base] += 1
+        out.append(f"{base}_{seen[base]}")
+    return out
+
+
+def _expand_complex_delimiters(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Si el archivo llegó en una sola columna masiva, intenta reconstruir
+    la tabla real con delimitadores corporativos frecuentes.
+    """
+    if df.empty or df.shape[1] != 1:
+        return df
+    col = df.iloc[:, 0].astype(str)
+    candidate: Optional[str] = None
+    for sep in _COMPLEX_DELIMITERS:
+        # Exigimos presencia consistente para evitar expandir textos libres.
+        ratio = float(col.str.contains(re.escape(sep), regex=True, na=False).mean())
+        if ratio >= 0.6:
+            candidate = sep
+            break
+    if not candidate:
+        return df
+    expanded = col.str.split(candidate, expand=True)
+    return expanded
+
+
+def _read_raw_dataframe(file_path: str, csv_encoding: Optional[str]) -> pd.DataFrame:
+    path_lower = file_path.lower()
+    if path_lower.endswith((".xlsx", ".xls")):
+        return pd.read_excel(file_path, header=None, dtype=str)
+
+    base_kwargs: Dict[str, Any] = {
+        "header": None,
+        "dtype": str,
+        "engine": "python",
+    }
+    if csv_encoding and csv_encoding != "utf-8":
+        base_kwargs["encoding"] = csv_encoding
+
+    # Intento 1: autodetección de separador.
+    try:
+        return pd.read_csv(file_path, sep=None, **base_kwargs)
+    except Exception:
+        pass
+    # Intento 2: separador por defecto.
+    return pd.read_csv(file_path, **base_kwargs)
+
+
+def load_structured_dataframe(file_path: str, csv_encoding: Optional[str] = None) -> pd.DataFrame:
+    """
+    Pipeline silencioso de ingesta:
+    1) Detecta y descarta metadatos previos al encabezado real.
+    2) Expande columnas cuando el archivo llegó concatenado por '|' o ';'.
+    3) Limpia nulos redundantes sin interacción con el usuario.
+    """
+    raw = _read_raw_dataframe(file_path, csv_encoding)
+    raw = _expand_complex_delimiters(raw)
+    raw = raw.apply(lambda s: s.map(lambda x: x.strip() if isinstance(x, str) else x))
+    raw = raw.replace(r"^\s*$", pd.NA, regex=True)
+    raw = raw.dropna(axis=0, how="all").dropna(axis=1, how="all").reset_index(drop=True)
+    if raw.empty:
+        return raw
+
+    scan_limit = min(len(raw), _HEADER_SCAN_LIMIT)
+    best_idx = 0
+    best_score = -1
+    for i in range(scan_limit):
+        row = raw.iloc[i].tolist()
+        score = _score_header_candidate(row)
+        if score > best_score:
+            best_idx = i
+            best_score = score
+
+    header_row = raw.iloc[best_idx].tolist()
+    headers = _dedupe_headers([_normalize_header_name(v, idx) for idx, v in enumerate(header_row)])
+    data = raw.iloc[best_idx + 1 :].copy().reset_index(drop=True)
+    data.columns = headers
+
+    data = data.replace(r"^\s*$", pd.NA, regex=True)
+    data = data.dropna(axis=0, how="all").dropna(axis=1, how="all")
+    # Limpieza silenciosa final: dejamos string vacío para no romper prompts/cálculos básicos.
+    data = data.fillna("")
+    return data
+
+
 
 class AnalystAgent:
     """
@@ -105,6 +241,8 @@ class AnalystAgent:
     def __init__(self, model_names: Optional[List[str]] = None):
         identity = (
             "Eres el cerebro analítico de InsightFlow, una plataforma de BI avanzada.\n"
+            "Actúas como Ingeniero de Datos Senior experto en idiosincrasia de archivos corporativos y gubernamentales de Colombia "
+            "(DIAN, RIPS, extractos bancarios).\n"
             "Tu propósito es transformar datos complejos en insights de negocio claros.\n"
             "Siempre te presentas como el Analista Senior de InsightFlow.\n"
             "Cuando hay archivos CSV/Excel, generas código Python local para analizarlos.\n"
@@ -119,6 +257,7 @@ class AnalystAgent:
             api_key=os.getenv("GEMINI_API_KEY"),
         )
         self._knowledge_agents: Dict[int, KnowledgeAgent] = {}
+        self._compliance_agent = ComplianceAgent(model_names=model_names or DEFAULT_MODEL_NAMES)
         self._pending_pdf_report_path: Optional[str] = None
         self._pending_excel_report_path: Optional[str] = None
 
@@ -251,11 +390,14 @@ class AnalystAgent:
         return cleaned, obj
 
     def _build_read_instruction(self, clean_path: str, path_lower: str, csv_encoding: Optional[str]) -> str:
-        if path_lower.endswith((".xlsx", ".xls")):
-            return f"Usa pd.read_excel('{clean_path}') para cargar el archivo."
-        if csv_encoding and csv_encoding != "utf-8":
-            return f"Usa pd.read_csv('{clean_path}', encoding='{csv_encoding}') para cargar el archivo (este CSV no es UTF-8)."
-        return f"Usa pd.read_csv('{clean_path}') para cargar el archivo."
+        enc_note = (
+            f" Se detectó encoding '{csv_encoding}' en el muestreo." if csv_encoding and csv_encoding != "utf-8" else ""
+        )
+        return (
+            f"Para cargar SIEMPRE usa: df = cargar_dataframe_limpio(). "
+            f"Esa función ya apunta a '{clean_path}', aplica heurística de encabezado (DIAN/RIPS), "
+            f"expansión de delimitadores complejos ('|',';') y limpieza silenciosa de nulos.{enc_note}"
+        )
 
     def _build_code_prompt(
         self,
@@ -324,7 +466,11 @@ class AnalystAgent:
             "12. INFORME CON CONTRATO DE ESTILO: Si existe un bloque REPORTE — COMUNICACIÓN CORPORATIVA más abajo, "
             "redacta el contenido textual que irá a PDF/Excel (p. ej. vía contexto_documentos o resumen ejecutivo) "
             "cumpliendo ese contrato: audiencia, tono y dialecto. Los colores y tamaños de fuente en el archivo "
-            "los aplica el sistema; no los codifiques en Python."
+            "los aplica el sistema; no los codifiques en Python.\n"
+            "13. REGLAS DE INGESTA OBLIGATORIAS (NO negociables):\n"
+            "   - No asumas encabezado en fila 0: usa SIEMPRE `df = cargar_dataframe_limpio()`.\n"
+            "   - Si el origen viene concatenado por '|' o ';', la expansión ya ocurre en la función de carga.\n"
+            "   - La limpieza de NaN debe ser silenciosa: NO pidas aclaraciones al usuario por esto."
         )
         doc_block = ""
         if document_context:
@@ -346,7 +492,9 @@ class AnalystAgent:
     def _run_code_and_summarize(
         self,
         codigo_python: str,
+        user_query: str,
         clean_path: str,
+        csv_encoding: Optional[str],
         document_context: str,
         report_pdf_path: str,
         report_excel_path: str,
@@ -369,6 +517,11 @@ class AnalystAgent:
             "contexto_documentos": document_context or "",
             "generar_reporte_pdf": generar_pdf,
             "generar_reporte_excel_avanzado": generar_excel,
+            "cargar_dataframe_limpio": functools.partial(
+                load_structured_dataframe,
+                clean_path,
+                csv_encoding=csv_encoding,
+            ),
         }
         print(f"DEBUG: Ejecutando análisis local sobre {clean_path}...")
         prev_cwd = os.getcwd()
@@ -428,6 +581,14 @@ class AnalystAgent:
         opt: Optional[Dict[str, Any]] = None
         if generate_echarts:
             text, opt = self._extract_echarts_json(text)
+
+        compliance_block = self._compliance_agent.build_diagnostic(
+            user_query=user_query,
+            analysis_stdout=resultados,
+            document_context=document_context,
+        )
+        if compliance_block:
+            text = f"{text.strip()}\n\n{compliance_block.strip()}"
         return self._cap(text), opt
 
     # ── Punto de entrada principal ───────────────────────────────────────
@@ -522,7 +683,9 @@ class AnalystAgent:
         try:
             return self._run_code_and_summarize(
                 codigo_python,
+                user_query,
                 clean_path,
+                csv_encoding,
                 document_context,
                 report_pdf_path,
                 report_excel_path,
@@ -545,7 +708,9 @@ class AnalystAgent:
                 if self._looks_like_python_code(codigo_corregido):
                     return self._run_code_and_summarize(
                         codigo_corregido,
+                        user_query,
                         clean_path,
+                        csv_encoding,
                         document_context,
                         report_pdf_path,
                         report_excel_path,
