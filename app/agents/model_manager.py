@@ -1,15 +1,18 @@
 """
-ModelManager: gestión centralizada de modelos Gemini con health-check y fallback.
+ModelManager: gestión centralizada de modelos con soporte híbrido Gemini + Ollama.
 
-- Mantiene un cooldown por modelo ante errores 429 (sin llamadas extra a la API).
-- Si todos los modelos están en cooldown, espera al que libere antes y reintenta.
-- Expone health_status() para diagnóstico.
+- Soporte para modelo local Ollama (soberanía de datos extrema).
+- Enrutamiento inteligente: local prioritario para estructuración/Pandas/scripts locales.
+- Fallback a Gemini para razonamiento conceptual complejo o tokens grandes.
+- Aislamiento total: cuando se usa Ollama, cero llamadas a APIs de terceros.
 """
 import time
 import logging
+import json
 from typing import Any, Dict, List, Optional
 
 import google.generativeai as genai
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +24,26 @@ DEFAULT_MODEL_NAMES: List[str] = [
 
 DEFAULT_EMBEDDING_MODEL: str = "models/gemini-embedding-001"
 DEFAULT_COOLDOWN_SECONDS: int = 60
+
+# ── Ollama configuration ─────────────────────────────────────────────
+OLLAMA_DEFAULT_BASE_URL = "http://localhost:11434"
+OLLAMA_DEFAULT_MODEL = "llama3.1"
+OLLAMA_TIMEOUT = 180
+
+LOCAL_PRIORITY_KEYWORDS = (
+    "pandas",
+    "dataframe",
+    "estructurar",
+    "formatear",
+    "script local",
+    "limpiar datos",
+    "preprocesar",
+    "soberanía",
+    "local",
+    "csv",
+    "excel",
+    "cargar_dataframe_limpio",
+)
 
 
 def _is_rate_limit_error(exc: Exception) -> bool:
@@ -37,11 +60,11 @@ def _is_rate_limit_error(exc: Exception) -> bool:
 
 class ModelManager:
     """
-    Administra instancias de GenerativeModel con health-check y fallback automático.
+    Administra modelos Gemini y Ollama con enrutamiento híbrido inteligente.
 
     Uso:
         manager = ModelManager(system_instruction="Eres un analista...")
-        response = manager.generate_content("¿Cuál es la tendencia de ventas?")
+        response = manager.generate_content("analiza este CSV", sovereignty_mode=True)
         embeddings = manager.embed_content(["texto a vectorizar"])
     """
 
@@ -52,6 +75,9 @@ class ModelManager:
         api_key: Optional[str] = None,
         embedding_model: str = DEFAULT_EMBEDDING_MODEL,
         cooldown_seconds: int = DEFAULT_COOLDOWN_SECONDS,
+        # Ollama params
+        ollama_model: str = OLLAMA_DEFAULT_MODEL,
+        ollama_base_url: str = OLLAMA_DEFAULT_BASE_URL,
     ):
         if api_key:
             genai.configure(api_key=api_key)
@@ -60,17 +86,22 @@ class ModelManager:
         self._cooldown_seconds = cooldown_seconds
         self._embedding_model = embedding_model
 
+        # Gemini models
         self._models: Dict[str, Any] = {
-             name: genai.GenerativeModel(
+            name: genai.GenerativeModel(
                 model_name=name,
                 system_instruction=system_instruction,
             )
             for name in self._model_names
         }
-        # Timestamp monotónico en el que el modelo vuelve a estar disponible (0 = listo)
         self._cooldown_until: Dict[str, float] = {name: 0.0 for name in self._model_names}
 
-    # ── health helpers ─────────────────────────────────────────────────
+        # Ollama
+        self._ollama_model = ollama_model
+        self._ollama_base_url = ollama_base_url.rstrip("/")
+        self._system_instruction = system_instruction
+
+    # ── health helpers (Gemini) ────────────────────────────────────────
 
     def is_healthy(self, model_name: str) -> bool:
         """True si el modelo no está en período de cooldown."""
@@ -95,24 +126,97 @@ class ModelManager:
         """Devuelve {model_name: is_healthy} para diagnóstico."""
         return {name: self.is_healthy(name) for name in self._model_names}
 
-    # ── generate_content con fallback ──────────────────────────────────
+    # ── Routing logic ─────────────────────────────────────────────────
+
+    def _should_route_to_local(
+        self,
+        content: Any,
+        force_local: bool = False,
+        sovereignty_mode: bool = False,
+    ) -> bool:
+        """
+        Decide si usar Ollama (local) o Gemini (cloud).
+        Prioridad local para tareas de datos, scripts Pandas, soberanía.
+        """
+        if force_local or sovereignty_mode:
+            return True
+
+        text = str(content).lower()
+        if any(kw in text for kw in LOCAL_PRIORITY_KEYWORDS):
+            return True
+
+        # Estimación simple de tokens
+        token_estimate = len(text.split())
+        if token_estimate > 2800:  # ventana eficiente de modelos locales pequeños
+            return False
+
+        # Por defecto, Gemini para razonamiento conceptual complejo
+        return False
+
+    # ── Ollama call (aislamiento total) ───────────────────────────────
+
+    def _generate_ollama(self, content: Any, **kwargs) -> Any:
+        """
+        Llama a Ollama manteniendo aislamiento total (sin llamadas a Gemini).
+        """
+        prompt = str(content)
+        if self._system_instruction:
+            prompt = f"{self._system_instruction}\n\n{prompt}"
+
+        url = f"{self._ollama_base_url}/api/generate"
+        payload = {
+            "model": self._ollama_model,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": kwargs.get("temperature", 0.2),
+                "num_predict": kwargs.get("max_tokens", 2048),
+            },
+        }
+
+        try:
+            resp = requests.post(url, json=payload, timeout=OLLAMA_TIMEOUT)
+            resp.raise_for_status()
+            data = resp.json()
+            text = data.get("response", "").strip()
+
+            class OllamaResponse:
+                def __init__(self, text: str):
+                    self.text = text
+
+            return OllamaResponse(text)
+        except requests.RequestException as e:
+            raise RuntimeError(f"Ollama connection error ({self._ollama_base_url}): {e}")
+        except Exception as e:
+            raise RuntimeError(f"Ollama generation error: {e}")
+
+    # ── generate_content con enrutamiento híbrido ─────────────────────
 
     def generate_content(self, content: Any, **kwargs) -> Any:
         """
-        Llama a generate_content en orden de prioridad.
-        - Omite modelos en cooldown.
-        - Ante 429 pone el modelo en cooldown y prueba el siguiente.
-        - Si todos están en cooldown, espera al más próximo y reintenta una vez.
+        Genera contenido con enrutamiento híbrido inteligente.
+
+        Parámetros de routing:
+            force_local (bool): fuerza uso de Ollama.
+            sovereignty_mode (bool): modo de soberanía de datos (prioriza local).
         """
+        force_local = kwargs.pop("force_local", False)
+        sovereignty_mode = kwargs.pop("sovereignty_mode", False)
+
+        if self._should_route_to_local(content, force_local, sovereignty_mode):
+            print(f"DEBUG ModelManager: enrutando a Ollama ({self._ollama_model}) - soberanía local")
+            return self._generate_ollama(content, **kwargs)
+
+        # ── Gemini path (solo si no es local) ─────────────────────────
         last_error: Optional[Exception] = None
 
-        for attempt in range(2):  # intento normal + 1 tras esperar cooldown
+        for attempt in range(2):
             for name in self._model_names:
                 if not self.is_healthy(name):
                     logger.debug("ModelManager: %s en cooldown, omitiendo.", name)
                     continue
                 try:
-                    print(f"DEBUG ModelManager: llamando a {name}...")
+                    print(f"DEBUG ModelManager: llamando a {name} (cloud)...")
                     return self._models[name].generate_content(content, **kwargs)
                 except Exception as exc:
                     if _is_rate_limit_error(exc):
@@ -120,7 +224,7 @@ class ModelManager:
                         self._mark_unhealthy(name)
                         last_error = exc
                         continue
-                    raise  # error distinto a rate limit → re-lanzar inmediatamente
+                    raise
 
             if attempt == 0:
                 self._wait_for_next_available()
@@ -129,12 +233,11 @@ class ModelManager:
             raise last_error
         raise RuntimeError("ModelManager: no hay modelos disponibles.")
 
-    # ── embed_content con reintentos ───────────────────────────────────
+    # ── embed_content (siempre Gemini por ahora) ──────────────────────
 
     def embed_content(self, content: Any, model: Optional[str] = None, **kwargs) -> Any:
         """
-        Wrapper de genai.embed_content con reintentos ante 429.
-        content puede ser str o List[str].
+        Embeddings permanecen en Gemini (Ollama embeddings se pueden añadir después).
         """
         target_model = model or self._embedding_model
         backoff = 10
