@@ -14,18 +14,31 @@ Responsabilidades:
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from pathlib import Path
 import shutil
+from typing import Any, Optional
 
 try:
     from app.agents.analyst_agent import AnalystAgent
     from app.agents.predictor_agent import PredictorAgent
     from app.agents.knowledge_agent import DOC_EXTENSIONS
+    # Re-exportados para que los agentes los usen en runtime sandbox.
+    from app.core.echarts_builder import (  # noqa: F401
+        build_bar_option,
+        dataframe_to_echarts_option,
+        aggregate_and_build_option,
+    )
 except ModuleNotFoundError:
     from agents.analyst_agent import AnalystAgent
     from agents.predictor_agent import PredictorAgent
     from agents.knowledge_agent import DOC_EXTENSIONS
+    from core.echarts_builder import (  # noqa: F401
+        build_bar_option,
+        dataframe_to_echarts_option,
+        aggregate_and_build_option,
+    )
 
 
 PREDICTION_KEYWORDS = (
@@ -181,6 +194,27 @@ class Orchestrator:
 
         return response_text or ""
 
+    def _load_pandas_echarts_option(self) -> Optional[dict[str, Any]]:
+        """
+        Si un agente escribió data/{chat_id}/echarts_option.json (vía
+        dataframe_to_echarts_option o aggregate_and_build_option), lo carga
+        para inyectarlo como `echarts_option` en la respuesta.
+
+        Pensado para alimentar nativamente a Apache ECharts en el frontend
+        cuando el agente trabaja un DataFrame de importaciones (mes, continente, etc.).
+        """
+        candidate = self.data_dir / "echarts_option.json"
+        if not candidate.is_file():
+            return None
+        try:
+            with candidate.open("r", encoding="utf-8") as f:
+                opt = json.load(f)
+            if isinstance(opt, dict) and opt:
+                return opt
+        except (OSError, json.JSONDecodeError):
+            return None
+        return None
+
     def _build_result(self, response_text: str) -> dict:
         pdf_path = getattr(self, "_pending_pdf", None)
         excel_path = getattr(self, "_pending_excel", None)
@@ -197,7 +231,11 @@ class Orchestrator:
             "excel_path": excel_path if (excel_path and os.path.isfile(excel_path)) else None,
             "chart_path": str(chart_abs) if has_chart else None,
         }
+
+        # Prioridad: lo que emite el modelo > lo que generan los helpers Pandas.
         eo = getattr(self, "_echarts_option", None)
+        if eo is None:
+            eo = self._load_pandas_echarts_option()
         if eo is not None:
             out["echarts_option"] = eo
         return out

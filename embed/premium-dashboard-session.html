@@ -265,21 +265,36 @@
     });
   }
 
-  function extractOption(data) {
-    if (!data || typeof data !== 'object') return null;
-    var opt = data.echarts_option != null ? data.echarts_option : data;
+  function extractOption(sessionData) {
+    if (!sessionData || typeof sessionData !== 'object') return null;
+    /*
+     * Consume directamente el objeto `echarts_option` que genera el backend
+     * (orchestrator → echarts_builder.dataframe_to_echarts_option). Si por
+     * compatibilidad la respuesta ya viene como option plano, también vale.
+     */
+    var opt = sessionData.echarts_option != null ? sessionData.echarts_option : sessionData;
     if (!opt || typeof opt !== 'object') return null;
     return opt;
   }
 
-  function renderOption(opt) {
+  function renderOption(sessionData) {
     if (chart) {
       chart.dispose();
       chart = null;
     }
     chartEl.innerHTML = '';
-    chart = echarts.init(chartEl, 'powerups', { renderer: 'canvas' });
-    chart.setOption(opt, true);
+    /*
+     * Inicialización nativa exactamente como pide el contrato:
+     *   var myChart = echarts.init(document.getElementById('main'));
+     *   myChart.setOption(sessionData.echarts_option);
+     *
+     * En este HTML el contenedor se llama `chart-main` y aplicamos además
+     * el tema visual `powerups` para coherencia con el widget.
+     */
+    var myChart = echarts.init(chartEl, 'powerups', { renderer: 'canvas' });
+    chart = myChart;
+    var opt = sessionData && sessionData.echarts_option ? sessionData.echarts_option : sessionData;
+    myChart.setOption(opt, true);
     btnPng.disabled = false;
     btnReload.disabled = false;
     loadingEl.hidden = true;
@@ -315,7 +330,7 @@
         }
         var opt = extractOption(data);
         if (!opt) throw new Error('La respuesta no incluye una opción ECharts válida.');
-        renderOption(opt);
+        renderOption(data);
       })
       .catch(function (e) {
         showError('No se pudo cargar el tablero: ' + (e.message || String(e)));
@@ -347,7 +362,7 @@
         }
         var opt = extractOption(data);
         if (!opt) throw new Error('Respuesta sin echarts_option');
-        renderOption(opt);
+        renderOption(data);
       })
       .catch(function (e) {
         showError('Error al recargar: ' + (e.message || String(e)));
