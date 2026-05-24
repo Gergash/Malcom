@@ -35,6 +35,10 @@ type ChatHandler struct {
 	tokens           *TokenStore
 	enablePublicData bool // si true, URLs de gráficas vía /data/...; si false, vía /download/:token
 	maxUploadBytes   int64
+	// devForcePremium: SOLO DESARROLLO. Si true, todos los chats actúan como premium
+	// (paywall desactivado, ECharts habilitado, multi-gráfica, descargas, dashboard URL).
+	// Controlado por DEV_FORCE_PREMIUM en .env. Mantener false en producción.
+	devForcePremium bool
 }
 
 // NewChatHandler construye el handler con sus dependencias.
@@ -46,6 +50,7 @@ func NewChatHandler(
 	tokens *TokenStore,
 	enablePublicData bool,
 	maxUploadBytes int64,
+	devForcePremium bool,
 ) *ChatHandler {
 	if maxUploadBytes <= 0 {
 		maxUploadBytes = 32 << 20
@@ -58,6 +63,7 @@ func NewChatHandler(
 		tokens:           tokens,
 		enablePublicData: enablePublicData,
 		maxUploadBytes:   maxUploadBytes,
+		devForcePremium:  devForcePremium,
 	}
 }
 
@@ -89,6 +95,17 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 			Detail: fmt.Sprintf("Error verificando créditos: %v", err),
 		})
 		return
+	}
+
+	// Modo desarrollo: tratar todos los chats como premium (sin paywall ni límites).
+	// Activado por DEV_FORCE_PREMIUM=true en .env. NO usar en producción.
+	if h.devForcePremium && creditStatus != nil {
+		creditStatus.IsPremium = true
+		creditStatus.Paywall = false
+		if creditStatus.CreditsRemaining < 1 {
+			creditStatus.CreditsRemaining = 9999
+		}
+		slog.Debug("DEV_FORCE_PREMIUM activo: chat tratado como premium", "chat_id", req.ChatID)
 	}
 
 	if creditStatus.Paywall {
@@ -396,6 +413,9 @@ func (h *ChatHandler) DashboardTokenRefresh(c *gin.Context) {
 		slog.Error("DashboardTokenRefresh premium", "error", err, "chat_id", req.ChatID)
 		c.JSON(http.StatusInternalServerError, types.ErrorResponse{Detail: "No se pudo validar el acceso."})
 		return
+	}
+	if h.devForcePremium {
+		premium = true
 	}
 	if !premium {
 		c.JSON(http.StatusForbidden, types.ErrorResponse{Detail: "Se requiere plan premium activo."})

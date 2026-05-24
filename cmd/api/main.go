@@ -65,7 +65,10 @@ func main() {
 	if cfg.UploadMaxMB <= 0 {
 		uploadMaxBytes = 32 * 1024 * 1024
 	}
-	chatHandler := handlers.NewChatHandler(userRepo, convRepo, workerClient, cfg.DataDir, tokenStore, cfg.EnablePublicData, uploadMaxBytes)
+	chatHandler := handlers.NewChatHandler(userRepo, convRepo, workerClient, cfg.DataDir, tokenStore, cfg.EnablePublicData, uploadMaxBytes, cfg.DevForcePremium)
+	if cfg.DevForcePremium {
+		log.Println("⚠️  DEV_FORCE_PREMIUM ACTIVO: todos los chats actuarán como premium. Desactivar en producción.")
+	}
 	billingHandler := handlers.NewBillingHandler(userRepo, paymentRepo, cfg.WompiEventSecret, cfg.BoldWebhookSecret)
 	downloadHandler := handlers.NewDownloadHandler(tokenStore, userRepo, cfg.DataDir)
 	dashboardHandler := handlers.NewDashboardHandler(tokenStore, userRepo, cfg.DataDir)

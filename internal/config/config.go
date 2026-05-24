@@ -41,6 +41,12 @@ type Config struct {
 	WompiEventSecret string
 	// Secreto de webhook Bold: valida X-Bold-Signature con HMAC-SHA256 sobre el body crudo.
 	BoldWebhookSecret string
+
+	// DevForcePremium: SOLO DESARROLLO. Si true, todos los chats se tratan como premium
+	// (sin paywall, con dashboard ECharts, gráficas múltiples y descargas). Útil para
+	// validar el flujo premium en local antes de exponerlo en producción.
+	// Activar con DEV_FORCE_PREMIUM=true en .env y reiniciar la API.
+	DevForcePremium bool
 }
 
 // Load reads .env (if present) and environment variables.
@@ -114,6 +120,12 @@ func Load() (*Config, error) {
 	wompiEvent := strings.TrimSpace(os.Getenv("WOMPI_EVENT_SECRET"))
 	boldWebhook := strings.TrimSpace(os.Getenv("BOLD_WEBHOOK_SECRET"))
 
+	devForcePremium := false
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("DEV_FORCE_PREMIUM"))) {
+	case "1", "true", "yes", "on":
+		devForcePremium = true
+	}
+
 	return &Config{
 		DatabaseURL:          NormalizeDatabaseURL(rawURL),
 		Port:                 port,
@@ -130,6 +142,7 @@ func Load() (*Config, error) {
 		BillingWebhookSecret: webhookSecret,
 		WompiEventSecret:     wompiEvent,
 		BoldWebhookSecret:    boldWebhook,
+		DevForcePremium:      devForcePremium,
 	}, nil
 }
 
