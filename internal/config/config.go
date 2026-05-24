@@ -39,6 +39,8 @@ type Config struct {
 	BillingWebhookSecret string
 	// Secreto de eventos Wompi (Dashboard comercio): valida X-Event-Checksum / signature.checksum del body.
 	WompiEventSecret string
+	// Secreto de webhook Bold: valida X-Bold-Signature con HMAC-SHA256 sobre el body crudo.
+	BoldWebhookSecret string
 }
 
 // Load reads .env (if present) and environment variables.
@@ -110,6 +112,7 @@ func Load() (*Config, error) {
 
 	webhookSecret := strings.TrimSpace(os.Getenv("BILLING_WEBHOOK_SECRET"))
 	wompiEvent := strings.TrimSpace(os.Getenv("WOMPI_EVENT_SECRET"))
+	boldWebhook := strings.TrimSpace(os.Getenv("BOLD_WEBHOOK_SECRET"))
 
 	return &Config{
 		DatabaseURL:          NormalizeDatabaseURL(rawURL),
@@ -126,6 +129,7 @@ func Load() (*Config, error) {
 		UploadMaxMB:          uploadMB,
 		BillingWebhookSecret: webhookSecret,
 		WompiEventSecret:     wompiEvent,
+		BoldWebhookSecret:    boldWebhook,
 	}, nil
 }
 

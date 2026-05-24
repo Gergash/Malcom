@@ -98,9 +98,36 @@ http://localhost:11434/api/generate
   - Cuando se usa Ollama, no se llama a APIs de terceros en esa generación.
   - El procesamiento local mantiene persistencia cero hacia Gemini u otros proveedores cloud.
 
+### Integración de Pagos Bold
+
+- Se reemplaza el flujo objetivo de pasarela de pagos desde Wompi hacia **Bold**, por costos y velocidad operativa.
+- Nuevo paquete backend Go:
+  - `internal/payment/bold/verify.go`
+  - `internal/payment/bold/transaction.go`
+- Nuevo webhook registrado en `cmd/api/main.go`:
+
+```text
+POST /api/v1/billing/bold-webhook
+```
+
+- Validación de integridad:
+  - Lee la cabecera `X-Bold-Signature`.
+  - Valida HMAC-SHA256 sobre el body crudo usando `BOLD_WEBHOOK_SECRET`.
+  - Si la firma es inválida, responde `401 Unauthorized` y registra un log estructurado con `slog`.
+- Activación premium:
+  - Normaliza eventos de transacción exitosos como `transaction.succeeded`, `approved`, `paid` o equivalentes.
+  - Extrae `chat_id` desde `metadata.chat_id` o desde `description`/URL con formato `?chat_id=xxxx`.
+  - Usa `UserRepository.ActivatePremium(...)` para marcar `is_premium = true` y registrar `premium_since` en PostgreSQL.
+- Nueva variable de entorno documentada:
+
+```env
+BOLD_WEBHOOK_SECRET=
+```
+
 ### Estado Actual del Ecosistema InsightFlow / Malcom
 
 - Widget web funcional en WordPress / BeBuilder.
 - Pipeline de análisis reforzado para archivos corporativos y gubernamentales colombianos.
 - Diagnóstico normativo y aduanero incorporado a los reportes.
 - Soporte híbrido local/cloud para clientes con requerimientos de soberanía extrema de datos.
+- Webhook Bold disponible para activar planes premium por `chat_id`.

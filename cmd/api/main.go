@@ -66,7 +66,7 @@ func main() {
 		uploadMaxBytes = 32 * 1024 * 1024
 	}
 	chatHandler := handlers.NewChatHandler(userRepo, convRepo, workerClient, cfg.DataDir, tokenStore, cfg.EnablePublicData, uploadMaxBytes)
-	billingHandler := handlers.NewBillingHandler(userRepo, paymentRepo, cfg.WompiEventSecret)
+	billingHandler := handlers.NewBillingHandler(userRepo, paymentRepo, cfg.WompiEventSecret, cfg.BoldWebhookSecret)
 	downloadHandler := handlers.NewDownloadHandler(tokenStore, userRepo, cfg.DataDir)
 	dashboardHandler := handlers.NewDashboardHandler(tokenStore, userRepo, cfg.DataDir)
 
@@ -105,6 +105,7 @@ func main() {
 
 		v1.GET("/billing/status", billingHandler.BillingStatus)
 		v1.POST("/billing/webhook", middleware.BillingWebhookAuth(cfg.BillingWebhookSecret), billingHandler.PaymentWebhook)
+		v1.POST("/billing/bold-webhook", billingHandler.BoldWebhook)
 		v1.POST("/billing/link-email", billingHandler.LinkEmail)
 	}
 	if cfg.BillingWebhookSecret != "" {
@@ -112,6 +113,9 @@ func main() {
 	}
 	if cfg.WompiEventSecret != "" {
 		log.Println("WOMPI_EVENT_SECRET activo: se valida el checksum de eventos Wompi.")
+	}
+	if cfg.BoldWebhookSecret != "" {
+		log.Println("BOLD_WEBHOOK_SECRET activo: se valida X-Bold-Signature en eventos Bold.")
 	}
 	if strings.TrimSpace(cfg.CSPFrameAncestors) == "" {
 		log.Println("Aviso: CSP_FRAME_ANCESTORS vacío — frame-ancestors solo incluye 'self'. " +

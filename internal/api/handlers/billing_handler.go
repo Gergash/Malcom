@@ -18,14 +18,16 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/powerups/insightflow-malcom/internal/api/types"
 	"github.com/powerups/insightflow-malcom/internal/db/repositories"
+	"github.com/powerups/insightflow-malcom/internal/payment/bold"
 	"github.com/powerups/insightflow-malcom/internal/payment/wompi"
 )
 
 // BillingHandler agrupa las dependencias de los endpoints de facturación.
 type BillingHandler struct {
-	userRepo         repositories.UserRepository
-	paymentRepo      repositories.PaymentRepository
-	wompiEventSecret string
+	userRepo          repositories.UserRepository
+	paymentRepo       repositories.PaymentRepository
+	wompiEventSecret  string
+	boldWebhookSecret string
 }
 
 // NewBillingHandler construye el handler con sus dependencias.
@@ -33,11 +35,13 @@ func NewBillingHandler(
 	userRepo repositories.UserRepository,
 	paymentRepo repositories.PaymentRepository,
 	wompiEventSecret string,
+	boldWebhookSecret string,
 ) *BillingHandler {
 	return &BillingHandler{
-		userRepo:         userRepo,
-		paymentRepo:      paymentRepo,
-		wompiEventSecret: wompiEventSecret,
+		userRepo:          userRepo,
+		paymentRepo:       paymentRepo,
+		wompiEventSecret:  wompiEventSecret,
+		boldWebhookSecret: boldWebhookSecret,
 	}
 }
 
@@ -108,8 +112,9 @@ func (h *BillingHandler) BillingStatus(c *gin.Context) {
 // PaymentWebhook recibe la notificación de pago del PSP (Wompi, PSE u otro).
 //
 // Flujo (espeja billing.py):
-//   APPROVED → registra el pago como pagado + activa is_premium en el usuario.
-//   DECLINED / ERROR / VOIDED → registra el pago como fallido.
+//
+//	APPROVED → registra el pago como pagado + activa is_premium en el usuario.
+//	DECLINED / ERROR / VOIDED → registra el pago como fallido.
 //
 // Es idempotente: si la referencia ya fue procesada responde AlreadyProcessed=true.
 func (h *BillingHandler) PaymentWebhook(c *gin.Context) {
@@ -205,6 +210,90 @@ func (h *BillingHandler) PaymentWebhook(c *gin.Context) {
 		resp.IsPremium = result.User.IsPremium
 	}
 
+	c.JSON(http.StatusOK, resp)
+}
+
+// ── POST /api/v1/billing/bold-webhook ─────────────────────────────────────────
+
+// BoldWebhook recibe notificaciones de Bold cuando cambia el estado de una transacción.
+// Si la firma es válida y la transacción fue exitosa, activa premium para el chat_id
+// recibido en metadata.chat_id o en description con formato URL (?chat_id=xxxx).
+func (h *BillingHandler) BoldWebhook(c *gin.Context) {
+	raw, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, types.ErrorResponse{Detail: "No se pudo leer el cuerpo."})
+		return
+	}
+
+	signature := c.GetHeader("X-Bold-Signature")
+	if !bold.VerifySignature(raw, signature, h.boldWebhookSecret) {
+		slog.Warn(
+			"bold webhook: firma inválida",
+			slog.String("remote_ip", c.ClientIP()),
+			slog.Bool("signature_present", strings.TrimSpace(signature) != ""),
+		)
+		c.JSON(http.StatusUnauthorized, types.ErrorResponse{Detail: "Firma Bold inválida."})
+		return
+	}
+
+	event := bold.ParseEvent(raw)
+	if !event.IsSuccessful() {
+		slog.Info(
+			"bold webhook: evento no exitoso registrado",
+			slog.String("event_type", event.Type),
+			slog.String("status", event.Status),
+			slog.String("reference", event.Reference),
+		)
+		c.JSON(http.StatusOK, gin.H{
+			"success":   false,
+			"message":   "Evento Bold recibido sin activación premium.",
+			"event":     event.Type,
+			"status":    event.Status,
+			"reference": event.Reference,
+		})
+		return
+	}
+
+	if event.ChatID == nil {
+		slog.Warn(
+			"bold webhook: pago exitoso sin chat_id",
+			slog.String("event_type", event.Type),
+			slog.String("status", event.Status),
+			slog.String("reference", event.Reference),
+		)
+		c.JSON(http.StatusUnprocessableEntity, types.ErrorResponse{
+			Detail: "No se encontró chat_id en metadata o description.",
+		})
+		return
+	}
+
+	user, err := h.userRepo.ActivatePremium(c.Request.Context(), event.ChatID, nil)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, types.ErrorResponse{
+			Detail: fmt.Sprintf("Error activando premium por Bold: %v", err),
+		})
+		return
+	}
+
+	slog.Info(
+		"bold webhook: premium activado",
+		slog.Int64("chat_id", *event.ChatID),
+		slog.String("reference", event.Reference),
+		slog.String("event_type", event.Type),
+		slog.String("status", event.Status),
+	)
+
+	resp := types.PaymentWebhookResponse{
+		Success:   true,
+		Message:   "Premium activado por Bold.",
+		Reference: event.Reference,
+		IsPremium: true,
+	}
+	if user != nil {
+		resp.UserChatID = user.ChatID
+		resp.UserEmail = user.Email
+		resp.IsPremium = user.IsPremium
+	}
 	c.JSON(http.StatusOK, resp)
 }
 
