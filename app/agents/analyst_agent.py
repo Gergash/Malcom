@@ -41,9 +41,19 @@ except ModuleNotFoundError:
 try:
     # Cuando se ejecuta desde la raíz: `python -m app.main`
     from app.executor import safe_exec
+    from app.core.echarts_builder import (
+        aggregate_and_build_option,
+        dataframe_to_echarts_option,
+        build_bar_option,
+    )
 except ModuleNotFoundError:
     # Cuando se ejecuta dentro de `app/`: `python main.py`
     from executor import safe_exec
+    from core.echarts_builder import (
+        aggregate_and_build_option,
+        dataframe_to_echarts_option,
+        build_bar_option,
+    )
 
 load_dotenv()
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
@@ -389,6 +399,59 @@ class AnalystAgent:
             return cleaned, None
         return cleaned, obj
 
+    def _extract_echarts_from_stdout(self, stdout: str) -> Optional[Dict[str, Any]]:
+        """
+        Extrae el option ECharts del stdout del sandbox cuando el código generado
+        siguió la Regla 14 e imprimió: ECHARTS_JSON_OUTPUT:<json>
+        """
+        if not stdout:
+            return None
+        for line in stdout.splitlines():
+            line = line.strip()
+            if line.startswith("ECHARTS_JSON_OUTPUT:"):
+                raw = line[len("ECHARTS_JSON_OUTPUT:"):].strip()
+                try:
+                    obj = json.loads(raw)
+                    if isinstance(obj, dict) and obj:
+                        return obj
+                except (json.JSONDecodeError, ValueError):
+                    pass
+        return None
+
+    def _request_echarts_option_dedicated(self, analysis_stdout: str) -> Optional[Dict[str, Any]]:
+        """
+        Segundo LLM call dedicado SOLO a generar el option ECharts.
+        Se invoca únicamente cuando los intentos 0 y 1 no produjeron option.
+        El prompt es intencional y corto para que el LLM no gaste tokens en narrativa.
+        """
+        # Truncar stdout para que el prompt no exceda el contexto del modelo
+        _MAX_STDOUT = 3000
+        stdout_snippet = analysis_stdout[:_MAX_STDOUT] if len(analysis_stdout) > _MAX_STDOUT else analysis_stdout
+        prompt = (
+            "Eres un generador de configuraciones Apache ECharts. Tu ÚNICA tarea es emitir un bloque JSON.\n\n"
+            "Con base EXCLUSIVAMENTE en los siguientes resultados del análisis de datos, "
+            "genera UN objeto JSON de configuración de Apache ECharts (bar chart) "
+            "que represente el insight principal (distribución, ranking o tendencia más relevante).\n\n"
+            f"RESULTADOS DEL ANÁLISIS:\n{stdout_snippet}\n\n"
+            "RESPONDE ÚNICAMENTE con el bloque JSON, sin texto adicional, sin markdown de narrativa:\n"
+            "```echarts-json\n"
+            "{ \"title\": { \"text\": \"...\", \"left\": \"center\", \"textStyle\": { \"color\": \"#ffffff\" } },\n"
+            "  \"tooltip\": { \"trigger\": \"axis\", \"axisPointer\": { \"type\": \"shadow\" } },\n"
+            "  \"xAxis\": { \"type\": \"category\", \"data\": [...] },\n"
+            "  \"yAxis\": { \"type\": \"value\", \"splitLine\": { \"lineStyle\": { \"color\": \"#333333\" } } },\n"
+            "  \"series\": [{ \"name\": \"Registros\", \"type\": \"bar\", \"data\": [...], \"itemStyle\": { \"color\": \"#ff6d00\" } }] }\n"
+            "```\n"
+            "REGLAS: usa SOLO números de los resultados, no inventes valores. Si no hay datos suficientes, devuelve {}."
+        )
+        try:
+            response = self._generate(prompt)
+            _, opt = self._extract_echarts_json(response.text or "")
+            if isinstance(opt, dict) and opt:
+                return opt
+        except Exception as e:
+            print(f"DEBUG _request_echarts_option_dedicated falló: {e}")
+        return None
+
     def _build_read_instruction(self, clean_path: str, path_lower: str, csv_encoding: Optional[str]) -> str:
         enc_note = (
             f" Se detectó encoding '{csv_encoding}' en el muestreo." if csv_encoding and csv_encoding != "utf-8" else ""
@@ -470,7 +533,16 @@ class AnalystAgent:
             "13. REGLAS DE INGESTA OBLIGATORIAS (NO negociables):\n"
             "   - No asumas encabezado en fila 0: usa SIEMPRE `df = cargar_dataframe_limpio()`.\n"
             "   - Si el origen viene concatenado por '|' o ';', la expansión ya ocurre en la función de carga.\n"
-            "   - La limpieza de NaN debe ser silenciosa: NO pidas aclaraciones al usuario por esto."
+            "   - La limpieza de NaN debe ser silenciosa: NO pidas aclaraciones al usuario por esto.\n"
+            "14. REGLA DE DASHBOARD ECHARTS (OBLIGATORIA cuando hay DataFrame):\n"
+            "   Al final del script, SIEMPRE genera el option ECharts del insight más representativo del análisis:\n"
+            "   a) Elige la columna categórica más relevante (la que aparezca en tu análisis principal).\n"
+            "   b) Llama: `_ec_opt = aggregate_and_build_option(df, '<columna>', title='<título descriptivo>')`\n"
+            "   c) Si retorna un valor no-None, imprímelo EXACTAMENTE así:\n"
+            "      `import json; print('ECHARTS_JSON_OUTPUT:' + json.dumps(_ec_opt))`\n"
+            "   d) Si aggregate_and_build_option falla o retorna None, intenta con la segunda columna relevante.\n"
+            "   e) NO uses plt ni matplotlib para este paso; es solo la llamada a aggregate_and_build_option.\n"
+            "   IMPORTANTE: esta línea de print es lo que alimenta el dashboard interactivo del usuario."
         )
         doc_block = ""
         if document_context:
@@ -514,6 +586,7 @@ class AnalystAgent:
             "pd": pd,
             "plt": plt,
             "os": os,
+            "json": json,
             "contexto_documentos": document_context or "",
             "generar_reporte_pdf": generar_pdf,
             "generar_reporte_excel_avanzado": generar_excel,
@@ -522,6 +595,10 @@ class AnalystAgent:
                 clean_path,
                 csv_encoding=csv_encoding,
             ),
+            # ECharts helpers: disponibles en el sandbox para generar option JSON directamente.
+            "aggregate_and_build_option": aggregate_and_build_option,
+            "dataframe_to_echarts_option": dataframe_to_echarts_option,
+            "build_bar_option": build_bar_option,
         }
         print(f"DEBUG: Ejecutando análisis local sobre {clean_path}...")
         prev_cwd = os.getcwd()
@@ -559,28 +636,31 @@ class AnalystAgent:
             cross_reference = ""
 
         narrative_contract = build_report_translator_instructions(report_config)
-        echarts_suffix = ""
+
+        # Intento 0: extraer echarts_option directamente del stdout del sandbox (Regla 14).
+        # El código generado imprime 'ECHARTS_JSON_OUTPUT:<json>' si aggregate_and_build_option tuvo éxito.
+        opt: Optional[Dict[str, Any]] = None
         if generate_echarts:
-            echarts_suffix = (
-                "\n\nDASHBOARD PREMIUM (Apache ECharts):\n"
-                "Tras el resumen, AL FINAL incluye un bloque con lenguaje exactamente `echarts-json` "
-                "con UN SOLO objeto JSON: la opción completa de ECharts (title, tooltip, xAxis, yAxis, series, etc.). "
-                "Los datos deben coincidir EXCLUSIVAMENTE con números y categorías de la salida del análisis; "
-                "no inventes valores.\n"
-                "Formato obligatorio:\n```echarts-json\n{ \"title\": { \"text\": \"...\" }, ... }\n```\n"
-            )
+            opt = self._extract_echarts_from_stdout(resultados)
+
         prompt_final = (
             f"El código se ejecutó con éxito. Resultados técnicos del análisis de datos:\n{resultados}\n\n"
             f"{narrative_contract}"
             "Responde como Analista Senior de InsightFlow. No menciones el código, solo conclusiones y "
             f"hallazgos en lenguaje natural.{cross_reference} {LENGTH_INSTRUCTION}"
-            + echarts_suffix
         )
         response = self._generate(prompt_final)
         text = response.text
-        opt: Optional[Dict[str, Any]] = None
-        if generate_echarts:
+
+        # Intento 1: si el stdout no trajo el option, intentar extraerlo del texto narrativo del LLM
+        # (el LLM puede incluir un bloque ```echarts-json``` aunque no se le pida explícitamente).
+        if generate_echarts and opt is None:
             text, opt = self._extract_echarts_json(text)
+
+        # Intento 2: si todavía no hay option, hacer un segundo LLM call corto y enfocado SOLO en ECharts.
+        # Esto evita el conflicto con LENGTH_INSTRUCTION que impide al LLM emitir el bloque en el call principal.
+        if generate_echarts and opt is None:
+            opt = self._request_echarts_option_dedicated(resultados)
 
         compliance_block = self._compliance_agent.build_diagnostic(
             user_query=user_query,
