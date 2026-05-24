@@ -536,12 +536,49 @@
   opacity: 0;
   pointer-events: none;
 }
-.powerups-edge__dashboard-iframe {
-  display: block;
+/* Canvas inline de ECharts (reemplaza el iframe). */
+.powerups-edge__chart-canvas {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  height: 100%;
-  border: 0;
+  height: calc(100% - 28px); /* deja espacio para la barra de nav */
   background: #0c1017;
+}
+.powerups-edge__chart-canvas[hidden] { display: none !important; }
+
+/* Navegación entre gráficas acumuladas. */
+.powerups-edge__chart-nav {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(12, 16, 23, 0.85);
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+.powerups-edge__chart-nav[hidden] { display: none !important; }
+.powerups-edge__chart-nav-btn {
+  background: none;
+  border: 1px solid rgba(255,255,255,0.18);
+  color: var(--pu-text, #e8edf5);
+  border-radius: 4px;
+  padding: 0 7px;
+  height: 18px;
+  font-size: 11px;
+  cursor: pointer;
+  line-height: 16px;
+}
+.powerups-edge__chart-nav-btn:disabled { opacity: 0.3; cursor: default; }
+.powerups-edge__chart-nav-btn:not(:disabled):hover { background: rgba(255,255,255,0.08); }
+.powerups-edge__chart-nav-label {
+  font-size: 11px;
+  color: var(--pu-muted, #7a8aa0);
+  min-width: 36px;
+  text-align: center;
 }
 .powerups-edge__dashboard-placeholder {
   position: absolute;

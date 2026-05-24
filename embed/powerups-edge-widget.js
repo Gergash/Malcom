@@ -12,8 +12,10 @@
     USERNAME: null,
     STORAGE_KEY_CHAT: 'powerups_edge_chat_id_v1',
     STORAGE_KEY_HISTORY: 'powerups_edge_history_v1',
-    // Token del último tablero ECharts por chat_id (se renueva con cada respuesta que incluya dashboard).
+    // Token del último tablero ECharts por chat_id (para el link "Abrir en pestaña").
     STORAGE_KEY_DASH_PREFIX: 'powerups_edge_dash_tok_',
+    // Historial de opciones ECharts (array, max 6) por chat_id — para el visor inline.
+    STORAGE_KEY_CHARTS_PREFIX: 'powerups_edge_charts_',
     STORAGE_KEY_PANEL_SIZE: 'powerups_edge_panel_size_v1',
     // URLs públicas de los embebidos premium en producción.
     PREMIUM_PORTAL_URL: 'https://www.powerupsagencia.com/portal-premium/',
@@ -93,6 +95,9 @@
       n = Math.floor(1e9 + Math.random() * 8.99e9);
       localStorage.setItem(CONFIG.STORAGE_KEY_CHAT, String(n));
     }
+    // Exponer API_BASE en localStorage para que el portal premium y el visor puedan
+    // usar el mismo endpoint sin que el usuario tenga que configurarlo manualmente.
+    try { localStorage.setItem('powerups_edge_api_base', apiOriginBase()); } catch (e) {}
     return n;
   }
 
@@ -123,6 +128,104 @@
     return m ? decodeURIComponent(m[1]) : null;
   }
 
+  // ── Instancia ECharts global (un solo chart dentro del widget) ──────────────
+  var _echartInstance = null;
+  var _chartHistoryIndex = 0;
+
+  function chartsStorageKey() {
+    return CONFIG.STORAGE_KEY_CHARTS_PREFIX + String(getOrCreateChatId());
+  }
+
+  function loadChartsHistory() {
+    try {
+      var raw = localStorage.getItem(chartsStorageKey());
+      if (!raw) return [];
+      var arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) { return []; }
+  }
+
+  /** Añade un option al historial (más reciente primero, máx 6). */
+  function saveChartToHistory(opt) {
+    if (!opt || typeof opt !== 'object') return;
+    var h = loadChartsHistory();
+    h.unshift(opt);
+    if (h.length > 6) h = h.slice(0, 6);
+    try { localStorage.setItem(chartsStorageKey(), JSON.stringify(h)); } catch (e) {}
+  }
+
+  /** Actualiza la barra de navegación ← 2/4 → */
+  function updateChartNav(total, index) {
+    var nav = el('powerups-edge-chart-nav');
+    if (!nav) return;
+    if (total <= 1) { nav.hidden = true; return; }
+    nav.hidden = false;
+    nav.innerHTML = '';
+    var prevBtn = document.createElement('button');
+    prevBtn.type = 'button';
+    prevBtn.className = 'powerups-edge__chart-nav-btn';
+    prevBtn.textContent = '←';
+    prevBtn.title = 'Gráfica anterior (más antigua)';
+    prevBtn.disabled = index >= total - 1;
+    prevBtn.addEventListener('click', function () { showChartAtIndex(index + 1); });
+    var label = document.createElement('span');
+    label.className = 'powerups-edge__chart-nav-label';
+    label.textContent = (index + 1) + ' / ' + total;
+    var nextBtn = document.createElement('button');
+    nextBtn.type = 'button';
+    nextBtn.className = 'powerups-edge__chart-nav-btn';
+    nextBtn.textContent = '→';
+    nextBtn.title = 'Gráfica siguiente (más reciente)';
+    nextBtn.disabled = index <= 0;
+    nextBtn.addEventListener('click', function () { showChartAtIndex(index - 1); });
+    nav.appendChild(prevBtn);
+    nav.appendChild(label);
+    nav.appendChild(nextBtn);
+  }
+
+  /** Renderiza un ECharts option directamente en el canvas del widget (sin iframe). */
+  function renderLiveChart(opt, noSave) {
+    if (!opt || typeof opt !== 'object') return;
+    if (!noSave) saveChartToHistory(opt);
+    _chartHistoryIndex = noSave ? _chartHistoryIndex : 0;
+
+    var canvas = el('powerups-edge-chart-canvas');
+    var ph = el('powerups-edge-dashboard-placeholder');
+    var openA = el('powerups-edge-dashboard-open');
+    var wrapLive = el('powerups-edge-dashboard-live');
+    if (!canvas) return;
+
+    expandLiveDashboard();
+    if (ph) ph.hidden = true;
+    canvas.hidden = false;
+    if (wrapLive) wrapLive.hidden = false;
+
+    // Destruir instancia anterior para evitar leak de memoria
+    if (_echartInstance) { try { _echartInstance.dispose(); } catch (e) {} _echartInstance = null; }
+
+    if (typeof window.echarts === 'undefined') {
+      // ECharts aún no cargó (ej. sin conexión); mostrar aviso en placeholder
+      if (ph) { ph.hidden = false; ph.textContent = 'ECharts no disponible. Verifica la conexión a internet.'; }
+      canvas.hidden = true;
+      return;
+    }
+
+    _echartInstance = window.echarts.init(canvas, 'dark', { renderer: 'canvas' });
+    _echartInstance.setOption(opt, true);
+
+    var h = loadChartsHistory();
+    var idx = noSave ? _chartHistoryIndex : 0;
+    updateChartNav(h.length, idx);
+  }
+
+  /** Muestra una gráfica del historial por índice (0 = más reciente). */
+  function showChartAtIndex(index) {
+    var h = loadChartsHistory();
+    if (!h || index < 0 || index >= h.length) return;
+    _chartHistoryIndex = index;
+    renderLiveChart(h[index], true);
+  }
+
   function expandLiveDashboard() {
     var wrap = el('powerups-edge-dashboard-frame-wrap');
     var btn = el('powerups-edge-dashboard-toggle');
@@ -132,34 +235,14 @@
     btn.textContent = 'Ocultar gráfico';
   }
 
-  /** Carga o refresca el iframe del tablero (mismo origen que API_BASE). */
-  function setLiveDashboardIframe(token) {
-    var wrapLive = el('powerups-edge-dashboard-live');
-    var iframe = el('powerups-edge-dashboard-iframe');
-    var ph = el('powerups-edge-dashboard-placeholder');
-    var openA = el('powerups-edge-dashboard-open');
-    if (!iframe || !token) return;
-    expandLiveDashboard();
-    var src = CONFIG.API_BASE + '/dashboard?token=' + encodeURIComponent(token);
-    iframe.src = src;
-    iframe.hidden = false;
-    if (ph) ph.hidden = true;
-    if (openA) {
-      openA.href = src;
-      openA.hidden = false;
-    }
-    if (wrapLive) wrapLive.hidden = false;
-    updatePortalLinks();
-  }
-
   function showDashboardPlaceholder() {
-    var iframe = el('powerups-edge-dashboard-iframe');
+    var canvas = el('powerups-edge-chart-canvas');
+    var nav = el('powerups-edge-chart-nav');
     var ph = el('powerups-edge-dashboard-placeholder');
     var openA = el('powerups-edge-dashboard-open');
-    if (iframe) {
-      iframe.hidden = true;
-      iframe.removeAttribute('src');
-    }
+    if (_echartInstance) { try { _echartInstance.dispose(); } catch (e) {} _echartInstance = null; }
+    if (canvas) canvas.hidden = true;
+    if (nav) nav.hidden = true;
     if (ph) {
       ph.hidden = false;
       ph.textContent = 'Cuando pidas un análisis con datos, el tablero interactivo aparecerá aquí. Prueba: «gráfico de barras por mes», «mapa de calor por categoría» o «evolución en línea».';
@@ -167,91 +250,49 @@
     if (openA) openA.hidden = true;
   }
 
-  /** Premium con datos pero sin snapshot ECharts aún (202 desde /chat/token/refresh). */
-  function showLiveDashboardPending(message) {
-    var wrapLive = el('powerups-edge-dashboard-live');
-    var iframe = el('powerups-edge-dashboard-iframe');
-    var ph = el('powerups-edge-dashboard-placeholder');
-    var openA = el('powerups-edge-dashboard-open');
-    expandLiveDashboard();
-    if (iframe) {
-      iframe.hidden = true;
-      iframe.removeAttribute('src');
+  /** Al abrir el widget siendo premium: cargar la gráfica más reciente del historial local. */
+  function hydrateLiveDashboardForPremium() {
+    var h = loadChartsHistory();
+    if (h.length > 0) {
+      renderLiveChart(h[0], true); // noSave=true, no duplicar en historial
+    } else {
+      showDashboardPlaceholder();
     }
-    if (openA) openA.hidden = true;
-    if (ph) {
-      ph.hidden = false;
-      ph.textContent = message || 'Preparando tablero… Cuando el análisis genere una gráfica premium, aparecerá aquí. Escribe en el chat para generarla.';
-    }
-    if (wrapLive) wrapLive.hidden = false;
     updatePortalLinks();
   }
 
-  function hydrateLiveDashboardForPremium() {
-    var tok = loadDashboardToken();
-    if (tok) setLiveDashboardIframe(tok);
-    else {
-      showDashboardPlaceholder();
-      updatePortalLinks();
-    }
-  }
-
-  var dashTokenRefreshInFlight = false;
-  /** Silencioso: el iframe avisa (409/401/403/404) tras token one-shot consumido. */
-  async function requestDashboardTokenRefresh() {
-    if (dashTokenRefreshInFlight) return;
-    dashTokenRefreshInFlight = true;
-    try {
-      var chatId = getOrCreateChatId();
-      var res = await fetch(CONFIG.API_BASE + '/api/v1/chat/token/refresh', {
-        method: 'POST',
-        headers: apiHeaders({ 'Content-Type': 'application/json', 'Accept': 'application/json' }),
-        credentials: 'omit',
-        body: JSON.stringify({ chat_id: chatId }),
-      });
-      var data = {};
-      try {
-        data = await res.json();
-      } catch (e) {}
-      if (res.status === 202 || data.status === 'pending') {
-        showLiveDashboardPending(data.message);
-        return;
-      }
-      if (!res.ok) return;
-      var url = data.dashboard_url || data.dashboardUrl;
-      var tok = data.token || tokenFromDashboardUrl(url);
-      if (tok) {
-        saveDashboardToken(tok);
-        setLiveDashboardIframe(tok);
-      } else {
-        updatePortalLinks();
-      }
-    } catch (e) { /* red / CORS */ }
-    finally {
-      setTimeout(function () { dashTokenRefreshInFlight = false; }, 1500);
-    }
-  }
-
   /**
-   * Tras POST /chat: si hay dashboard_url o artefacto tipo dashboard, persistir token y refrescar iframe.
+   * Tras POST /chat: renderiza la gráfica ECharts inline y actualiza el link externo.
+   * Fuente principal: `echarts_option` en el JSON de respuesta.
+   * Fuente secundaria: `dashboard_url` → link "Abrir en pestaña" con token one-shot.
    */
   function applyDashboardFromChatResponse(out) {
     if (!out) return;
+
+    // 1. Renderizado inline (sin iframe, sin token, sin problema cross-origin)
+    var opt = out.echarts_option || out.echartsOption || null;
+    if (opt && typeof opt === 'object' && Object.keys(opt).length > 0) {
+      renderLiveChart(opt); // guarda en historial y dibuja
+    }
+
+    // 2. Actualizar link "Abrir en pestaña" con la URL tokenizada del API
     var url = out.dashboard_url || out.dashboardUrl;
     if (!url && out.artifacts && out.artifacts.length) {
       for (var i = 0; i < out.artifacts.length; i++) {
         var a = out.artifacts[i];
-        if (a && String(a.type).toLowerCase() === 'dashboard' && a.url) {
-          url = a.url;
-          break;
-        }
+        if (a && String(a.type).toLowerCase() === 'dashboard' && a.url) { url = a.url; break; }
       }
     }
-    if (!url) return;
-    var tok = tokenFromDashboardUrl(url);
-    if (!tok) return;
-    saveDashboardToken(tok);
-    setLiveDashboardIframe(tok);
+    var openA = el('powerups-edge-dashboard-open');
+    if (url && openA) { openA.href = url; openA.hidden = false; }
+    var tok = url ? tokenFromDashboardUrl(url) : null;
+    if (tok) saveDashboardToken(tok);
+    updatePortalLinks();
+  }
+
+  /** Redimensiona el chart ECharts cuando el panel del widget cambia de tamaño. */
+  function resizeLiveChart() {
+    if (_echartInstance) { try { _echartInstance.resize(); } catch (e) {} }
   }
 
   function checkoutUrl() {
@@ -493,6 +534,7 @@
       if (!root.classList.contains('is-open')) return;
       if (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 480px)').matches) return;
       if (root.classList.contains('is-resizing')) return;
+      resizeLiveChart(); // mantener el chart ECharts responsivo al redimensionar el panel
       if (panelResizeSaveTimer) clearTimeout(panelResizeSaveTimer);
       panelResizeSaveTimer = setTimeout(function () {
         try {
@@ -757,11 +799,13 @@
       }
     });
 
+    // El listener de token_refresh ya no es necesario (ECharts es inline, no en iframe externo).
+    // Se mantiene como no-op por compatibilidad con instancias antiguas en caché.
     window.addEventListener('message', function (ev) {
       try {
         var d = ev.data;
-        if (!d || d.type !== 'insightflow-dashboard' || d.action !== 'token_refresh') return;
-        requestDashboardTokenRefresh();
+        if (!d || d.type !== 'insightflow-dashboard') return;
+        // no-op: el visor en vivo ya no usa iframe/token externo
       } catch (e) {}
     });
 

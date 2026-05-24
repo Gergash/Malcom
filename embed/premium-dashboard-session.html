@@ -194,11 +194,21 @@
   <script>
 (function () {
   /**
-   * Misma base que el widget: vacío = mismo origen (servido por la API Go).
-   * Si publicas este HTML en otro dominio, define antes:
-   * window.POWERUPS_API_BASE = 'https://tu-api.powerups.com.co';
+   * Prioridad para resolver la URL base de la API:
+   *  1. window.POWERUPS_API_BASE definido en el HTML anfitrión (WordPress)
+   *  2. localStorage['powerups_edge_api_base'] escrito por el widget al arrancar
+   *  3. Parámetro ?api= en la URL (para enlaces compartidos)
+   *  4. Cadena vacía → mismo origen (solo funciona si la API sirve este HTML)
    */
-  var API_BASE = (typeof window.POWERUPS_API_BASE === 'string' ? window.POWERUPS_API_BASE.replace(/\/$/, '') : '');
+  var _apiFromStorage = '';
+  try { _apiFromStorage = (localStorage.getItem('powerups_edge_api_base') || ''); } catch(e) {}
+  var _apiFromParam   = new URLSearchParams(window.location.search).get('api') || '';
+  var API_BASE = (
+    (typeof window.POWERUPS_API_BASE === 'string' && window.POWERUPS_API_BASE) ||
+    _apiFromParam ||
+    _apiFromStorage ||
+    ''
+  ).replace(/\/$/, '');
 
   var params = new URLSearchParams(window.location.search);
   var token = params.get('token');

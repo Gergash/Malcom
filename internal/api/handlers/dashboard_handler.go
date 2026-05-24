@@ -14,14 +14,15 @@ import (
 
 // DashboardHandler sirve la SPA mínima del tablero y el JSON de sesión.
 type DashboardHandler struct {
-	tokens  *TokenStore
-	users   repositories.UserRepository
-	dataDir string
+	tokens          *TokenStore
+	users           repositories.UserRepository
+	dataDir         string
+	devForcePremium bool // SOLO DEV: si true, omite el gate is_premium en DB
 }
 
 // NewDashboardHandler construye el handler.
-func NewDashboardHandler(tokens *TokenStore, users repositories.UserRepository, dataDir string) *DashboardHandler {
-	return &DashboardHandler{tokens: tokens, users: users, dataDir: dataDir}
+func NewDashboardHandler(tokens *TokenStore, users repositories.UserRepository, dataDir string, devForcePremium bool) *DashboardHandler {
+	return &DashboardHandler{tokens: tokens, users: users, dataDir: dataDir, devForcePremium: devForcePremium}
 }
 
 // SessionJSON devuelve el JSON de la sesión (incluye echarts_option) para el token dashboard.
@@ -36,11 +37,15 @@ func (h *DashboardHandler) SessionJSON(c *gin.Context) {
 	if !ok || asset.PayloadJSON == nil || *asset.PayloadJSON == "" {
 		if chatID, metaOk := h.tokens.LookupDashboardTokenChatID(token); metaOk {
 			ctx := c.Request.Context()
-			premium, err := h.users.IsPremiumForChat(ctx, chatID)
-			if err != nil {
-				slog.Error("dashboard session premium check", "error", err, "chat_id", chatID)
-				c.JSON(http.StatusInternalServerError, types.ErrorResponse{Detail: "No se pudo validar el acceso."})
-				return
+			premium := h.devForcePremium
+			if !premium {
+				var err error
+				premium, err = h.users.IsPremiumForChat(ctx, chatID)
+				if err != nil {
+					slog.Error("dashboard session premium check", "error", err, "chat_id", chatID)
+					c.JSON(http.StatusInternalServerError, types.ErrorResponse{Detail: "No se pudo validar el acceso."})
+					return
+				}
 			}
 			if !premium {
 				slog.Warn("dashboard session forbidden", "chat_id", chatID, "reason", "not_premium")
@@ -77,11 +82,15 @@ func (h *DashboardHandler) SessionJSON(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-	premium, err := h.users.IsPremiumForChat(ctx, asset.ChatID)
-	if err != nil {
-		slog.Error("dashboard session premium check", "error", err, "chat_id", asset.ChatID)
-		c.JSON(http.StatusInternalServerError, types.ErrorResponse{Detail: "No se pudo validar el acceso."})
-		return
+	premium := h.devForcePremium
+	if !premium {
+		var err error
+		premium, err = h.users.IsPremiumForChat(ctx, asset.ChatID)
+		if err != nil {
+			slog.Error("dashboard session premium check", "error", err, "chat_id", asset.ChatID)
+			c.JSON(http.StatusInternalServerError, types.ErrorResponse{Detail: "No se pudo validar el acceso."})
+			return
+		}
 	}
 	if !premium {
 		slog.Warn("dashboard session forbidden", "chat_id", asset.ChatID, "reason", "not_premium")

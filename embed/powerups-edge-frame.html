@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>InsightFlow · Widget</title>
   <link rel="stylesheet" href="powerups-edge-widget.css" />
+  <!-- ECharts para el tablero en vivo (renderizado inline, sin iframe secundario). -->
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
   <!-- Carga dentro de iframe: fondo transparente; solo el bloque .powerups-edge recibe clics (no tapa la página padre). -->
   <style>
     html, body {
@@ -80,7 +82,10 @@
         </div>
       </div>
       <div class="powerups-edge__dashboard-frame-wrap" id="powerups-edge-dashboard-frame-wrap">
-        <iframe class="powerups-edge__dashboard-iframe" id="powerups-edge-dashboard-iframe" title="Dashboard InsightFlow Premium" sandbox="allow-scripts allow-same-origin allow-popups" hidden></iframe>
+        <!-- Contenedor ECharts inline (reemplaza el iframe para evitar bloqueo cross-origin de ngrok/CSP). -->
+        <div class="powerups-edge__chart-canvas" id="powerups-edge-chart-canvas" hidden></div>
+        <!-- Navegación entre gráficas acumuladas (← 2/4 →). Se muestra cuando hay > 1 gráfica. -->
+        <div class="powerups-edge__chart-nav" id="powerups-edge-chart-nav" hidden></div>
         <div class="powerups-edge__dashboard-placeholder" id="powerups-edge-dashboard-placeholder">
           Cuando pidas un análisis con datos, el tablero interactivo aparecerá aquí. Prueba: «gráfico de barras por mes», «mapa de calor por categoría» o «evolución en línea».
         </div>

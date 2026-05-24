@@ -71,7 +71,7 @@ func main() {
 	}
 	billingHandler := handlers.NewBillingHandler(userRepo, paymentRepo, cfg.WompiEventSecret, cfg.BoldWebhookSecret)
 	downloadHandler := handlers.NewDownloadHandler(tokenStore, userRepo, cfg.DataDir)
-	dashboardHandler := handlers.NewDashboardHandler(tokenStore, userRepo, cfg.DataDir)
+	dashboardHandler := handlers.NewDashboardHandler(tokenStore, userRepo, cfg.DataDir, cfg.DevForcePremium)
 
 	router := gin.Default()
 	router.MaxMultipartMemory = uploadMaxBytes
