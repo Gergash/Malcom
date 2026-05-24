@@ -8,7 +8,7 @@ ModelManager: gestión centralizada de modelos con soporte híbrido Gemini + Oll
 """
 import time
 import logging
-import json
+import os
 from typing import Any, Dict, List, Optional
 
 import google.generativeai as genai
@@ -76,8 +76,8 @@ class ModelManager:
         embedding_model: str = DEFAULT_EMBEDDING_MODEL,
         cooldown_seconds: int = DEFAULT_COOLDOWN_SECONDS,
         # Ollama params
-        ollama_model: str = OLLAMA_DEFAULT_MODEL,
-        ollama_base_url: str = OLLAMA_DEFAULT_BASE_URL,
+        ollama_model: Optional[str] = None,
+        ollama_base_url: Optional[str] = None,
     ):
         if api_key:
             genai.configure(api_key=api_key)
@@ -96,9 +96,16 @@ class ModelManager:
         }
         self._cooldown_until: Dict[str, float] = {name: 0.0 for name in self._model_names}
 
-        # Ollama
-        self._ollama_model = ollama_model
-        self._ollama_base_url = ollama_base_url.rstrip("/")
+        # Ollama (configurable por .env para soportar host local o nube sin cambiar código)
+        env_ollama_model = os.getenv("OLLAMA_MODEL", "").strip()
+        env_ollama_base = os.getenv("OLLAMA_BASE_URL", "").strip()
+        env_ollama_timeout = os.getenv("OLLAMA_TIMEOUT_SEC", "").strip()
+
+        self._ollama_model = (ollama_model or env_ollama_model or OLLAMA_DEFAULT_MODEL).strip()
+        self._ollama_base_url = (ollama_base_url or env_ollama_base or OLLAMA_DEFAULT_BASE_URL).strip().rstrip("/")
+        self._ollama_timeout = OLLAMA_TIMEOUT
+        if env_ollama_timeout.isdigit():
+            self._ollama_timeout = max(5, int(env_ollama_timeout))
         self._system_instruction = system_instruction
 
     # ── health helpers (Gemini) ────────────────────────────────────────
@@ -128,6 +135,10 @@ class ModelManager:
 
     # ── Routing logic ─────────────────────────────────────────────────
 
+    def _all_gemini_unhealthy(self) -> bool:
+        """True si todos los modelos Gemini están en cooldown (rate limit)."""
+        return all(not self.is_healthy(name) for name in self._model_names)
+
     def _should_route_to_local(
         self,
         content: Any,
@@ -135,23 +146,23 @@ class ModelManager:
         sovereignty_mode: bool = False,
     ) -> bool:
         """
-        Decide si usar Ollama (local) o Gemini (cloud).
-        Prioridad local para tareas de datos, scripts Pandas, soberanía.
+        Política de enrutamiento actualizada (Mayo 2026):
+
+        - Gemini es el modelo prioritario.
+        - Solo se usa Ollama cuando:
+            a) el usuario fuerza `force_local=True` o `sovereignty_mode=True`, o
+            b) todos los modelos Gemini alcanzaron su límite de tasa (429)
+               y están en cooldown.
         """
         if force_local or sovereignty_mode:
             return True
 
-        text = str(content).lower()
-        if any(kw in text for kw in LOCAL_PRIORITY_KEYWORDS):
-            return True
-
-        # Estimación simple de tokens
-        token_estimate = len(text.split())
-        if token_estimate > 2800:  # ventana eficiente de modelos locales pequeños
+        # Si todavía hay al menos un modelo Gemini disponible → usarlo primero
+        if not self._all_gemini_unhealthy():
             return False
 
-        # Por defecto, Gemini para razonamiento conceptual complejo
-        return False
+        # Todos los Gemini están en cooldown → fallback a Ollama
+        return True
 
     # ── Ollama call (aislamiento total) ───────────────────────────────
 
@@ -175,7 +186,7 @@ class ModelManager:
         }
 
         try:
-            resp = requests.post(url, json=payload, timeout=OLLAMA_TIMEOUT)
+            resp = requests.post(url, json=payload, timeout=self._ollama_timeout)
             resp.raise_for_status()
             data = resp.json()
             text = data.get("response", "").strip()
@@ -194,33 +205,35 @@ class ModelManager:
 
     def generate_content(self, content: Any, **kwargs) -> Any:
         """
-        Genera contenido con enrutamiento híbrido inteligente.
+        Política de enrutamiento (Mayo 2026):
 
-        Parámetros de routing:
-            force_local (bool): fuerza uso de Ollama.
-            sovereignty_mode (bool): modo de soberanía de datos (prioriza local).
+        1. Gemini es el proveedor principal.
+        2. Solo se cae a Ollama cuando:
+           - el usuario fuerza `force_local` / `sovereignty_mode`, o
+           - todos los modelos Gemini han alcanzado su límite de tasa (429)
+             y están en cooldown.
         """
         force_local = kwargs.pop("force_local", False)
         sovereignty_mode = kwargs.pop("sovereignty_mode", False)
 
+        # ── Caso 1: usuario obliga a usar Ollama ─────────────────────
         if self._should_route_to_local(content, force_local, sovereignty_mode):
-            print(f"DEBUG ModelManager: enrutando a Ollama ({self._ollama_model}) - soberanía local")
+            print(f"DEBUG ModelManager: enrutando a Ollama ({self._ollama_model})")
             return self._generate_ollama(content, **kwargs)
 
-        # ── Gemini path (solo si no es local) ─────────────────────────
+        # ── Caso 2: Gemini primero ───────────────────────────────────
         last_error: Optional[Exception] = None
 
         for attempt in range(2):
             for name in self._model_names:
                 if not self.is_healthy(name):
-                    logger.debug("ModelManager: %s en cooldown, omitiendo.", name)
                     continue
                 try:
                     print(f"DEBUG ModelManager: llamando a {name} (cloud)...")
                     return self._models[name].generate_content(content, **kwargs)
                 except Exception as exc:
                     if _is_rate_limit_error(exc):
-                        print(f"DEBUG ModelManager: 429 en {name}, probando siguiente...")
+                        print(f"DEBUG ModelManager: 429 en {name}, marcando cooldown...")
                         self._mark_unhealthy(name)
                         last_error = exc
                         continue
@@ -228,6 +241,11 @@ class ModelManager:
 
             if attempt == 0:
                 self._wait_for_next_available()
+
+        # ── Caso 3: todos los Gemini están en cooldown → fallback Ollama ─
+        if self._all_gemini_unhealthy():
+            print(f"DEBUG ModelManager: todos los modelos Gemini en cooldown → fallback Ollama ({self._ollama_model})")
+            return self._generate_ollama(content, **kwargs)
 
         if last_error is not None:
             raise last_error

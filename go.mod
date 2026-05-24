@@ -1,6 +1,6 @@
 module github.com/powerups/insightflow-malcom
 
-go 1.25.0
+go 1.23.0
 
 require (
 	github.com/gabriel-vasile/mimetype v1.4.3
@@ -10,7 +10,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
 	github.com/tidwall/gjson v1.18.0
-	golang.org/x/time v0.15.0
+	golang.org/x/time v0.5.0
 	gorm.io/driver/postgres v1.5.9
 	gorm.io/gorm v1.25.10
 )
