@@ -212,6 +212,8 @@
 
   var params = new URLSearchParams(window.location.search);
   var token = params.get('token');
+  var CHAT_ID_KEY = 'powerups_edge_chat_id_v1';
+  var CHARTS_PREFIX = 'powerups_edge_charts_';
   var chartEl = document.getElementById('chart-main');
   var loadingEl = document.getElementById('loading');
   var btnPng = document.getElementById('btn-png');
@@ -315,9 +317,85 @@
     if (chart) chart.resize();
   }
 
+  function getLocalChartsArray() {
+    try {
+      var chatId = localStorage.getItem(CHAT_ID_KEY);
+      if (!chatId) return [];
+      var raw = localStorage.getItem(CHARTS_PREFIX + String(chatId));
+      if (!raw) return [];
+      var arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr.filter(function(o){ return o && typeof o === 'object'; }) : [];
+    } catch (e) { return []; }
+  }
+  function getLatestLocalOption() {
+    var arr = getLocalChartsArray();
+    return arr.length ? arr[0] : null;
+  }
+
+  var _localIdx = 0;
+  var _localNavEl = null;
+
+  function ensureLocalNav() {
+    if (_localNavEl) return _localNavEl;
+    var nav = document.createElement('div');
+    nav.id = 'local-nav';
+    nav.style.cssText = 'position:absolute;left:50%;transform:translateX(-50%);bottom:14px;z-index:4;display:flex;gap:8px;align-items:center;padding:6px 10px;border-radius:999px;border:1px solid #2a3344;background:rgba(22,27,36,.94);color:#e8edf5;font-size:12px;';
+    nav.innerHTML =
+      '<button type="button" id="local-prev" style="background:transparent;border:1px solid #2a3344;color:#e8edf5;border-radius:6px;padding:2px 8px;cursor:pointer;">←</button>' +
+      '<span id="local-counter">1 / 1</span>' +
+      '<button type="button" id="local-next" style="background:transparent;border:1px solid #2a3344;color:#e8edf5;border-radius:6px;padding:2px 8px;cursor:pointer;">→</button>';
+    var surface = chartEl && chartEl.parentElement;
+    if (surface) surface.appendChild(nav);
+    _localNavEl = nav;
+    nav.querySelector('#local-prev').addEventListener('click', function(){ showLocalAt(_localIdx + 1); });
+    nav.querySelector('#local-next').addEventListener('click', function(){ showLocalAt(_localIdx - 1); });
+    return nav;
+  }
+  function showLocalAt(idx) {
+    var arr = getLocalChartsArray();
+    if (!arr.length) return;
+    if (idx < 0) idx = 0;
+    if (idx >= arr.length) idx = arr.length - 1;
+    _localIdx = idx;
+    renderOption({ echarts_option: arr[idx] });
+    showLocalModeNotice();
+    ensureLocalNav();
+    var lbl = document.getElementById('local-counter');
+    if (lbl) lbl.textContent = (idx + 1) + ' / ' + arr.length;
+    var prev = document.getElementById('local-prev');
+    var next = document.getElementById('local-next');
+    if (prev) prev.disabled = idx >= arr.length - 1;
+    if (next) next.disabled = idx <= 0;
+    _localNavEl.style.display = arr.length > 1 ? 'flex' : 'none';
+  }
+
+  function showLocalModeNotice() {
+    var box = document.createElement('div');
+    box.style.cssText = 'position:absolute;right:12px;top:12px;z-index:3;padding:6px 10px;border-radius:8px;border:1px solid #2a3344;background:rgba(22,27,36,.92);color:#8b98a8;font-size:11px;';
+    box.textContent = 'Modo local: mostrando gráficas guardadas en este navegador.';
+    var surface = chartEl && chartEl.parentElement;
+    if (!surface) return;
+    var old = document.getElementById('local-mode-notice');
+    if (old && old.parentElement) old.parentElement.removeChild(old);
+    box.id = 'local-mode-notice';
+    surface.appendChild(box);
+  }
+
+  function tryFallbackToLocal(reason) {
+    var arr = getLocalChartsArray();
+    if (!arr.length) {
+      showError('No se pudo cargar el tablero (' + (reason || 'sin datos') + ') y no hay caché local.');
+      return false;
+    }
+    showLocalAt(0);
+    return true;
+  }
+
   function load() {
     if (!token) {
-      showError('Falta el parámetro <code>token</code> en la URL. Ejemplo: <code>?token=…</code>');
+      if (!tryFallbackToLocal('sin token')) {
+        showError('Falta el parámetro <code>token</code> en la URL y no hay gráficas locales guardadas todavía.');
+      }
       return;
     }
     loadingEl.hidden = false;
@@ -326,6 +404,7 @@
     fetchSession(token)
       .then(function (data) {
         if (data && data.__pending404) {
+          if (tryFallbackToLocal('sesión 404')) return;
           showPreparing('No hay una sesión de gráfica lista todavía. Vuelve al chat y pide un análisis con datos.');
           if (window.parent !== window) {
             try {
@@ -335,6 +414,7 @@
           return;
         }
         if (data && data.__pending) {
+          if (tryFallbackToLocal('preparando')) return;
           showPreparing(data.message);
           return;
         }
@@ -343,12 +423,23 @@
         renderOption(data);
       })
       .catch(function (e) {
+        // Cualquier fallo de red/CORS (incluido "Failed to fetch") cae al caché local.
+        if (tryFallbackToLocal(e.message || 'fetch error')) return;
         showError('No se pudo cargar el tablero: ' + (e.message || String(e)));
       });
   }
 
   btnReload.addEventListener('click', function () {
-    if (!token) return;
+    if (!token) {
+      var localOpt = getLatestLocalOption();
+      if (!localOpt) {
+        showPreparing('Aún no hay gráficas locales. Genera una desde el chat.');
+        return;
+      }
+      renderOption({ echarts_option: localOpt });
+      showLocalModeNotice();
+      return;
+    }
     chartEl.innerHTML = '';
     loadingEl.hidden = false;
     if (chart) {

@@ -45,7 +45,15 @@ try:
         aggregate_and_build_option,
         dataframe_to_echarts_option,
         build_bar_option,
+        build_line_option,
+        build_pie_option,
+        build_horizontal_bar_option,
+        build_scatter_option,
+        build_heatmap_option,
+        build_stacked_bar_option,
+        correlation_heatmap_from_df,
     )
+    from app.agents.report_generator import generar_reporte_premium_pdf
 except ModuleNotFoundError:
     # Cuando se ejecuta dentro de `app/`: `python main.py`
     from executor import safe_exec
@@ -53,7 +61,15 @@ except ModuleNotFoundError:
         aggregate_and_build_option,
         dataframe_to_echarts_option,
         build_bar_option,
+        build_line_option,
+        build_pie_option,
+        build_horizontal_bar_option,
+        build_scatter_option,
+        build_heatmap_option,
+        build_stacked_bar_option,
+        correlation_heatmap_from_df,
     )
+    from agents.report_generator import generar_reporte_premium_pdf
 
 load_dotenv()
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
@@ -535,14 +551,30 @@ class AnalystAgent:
             "   - Si el origen viene concatenado por '|' o ';', la expansión ya ocurre en la función de carga.\n"
             "   - La limpieza de NaN debe ser silenciosa: NO pidas aclaraciones al usuario por esto.\n"
             "14. REGLA DE DASHBOARD ECHARTS (OBLIGATORIA cuando hay DataFrame):\n"
-            "   Al final del script, SIEMPRE genera el option ECharts del insight más representativo del análisis:\n"
-            "   a) Elige la columna categórica más relevante (la que aparezca en tu análisis principal).\n"
-            "   b) Llama: `_ec_opt = aggregate_and_build_option(df, '<columna>', title='<título descriptivo>')`\n"
-            "   c) Si retorna un valor no-None, imprímelo EXACTAMENTE así:\n"
-            "      `import json; print('ECHARTS_JSON_OUTPUT:' + json.dumps(_ec_opt))`\n"
-            "   d) Si aggregate_and_build_option falla o retorna None, intenta con la segunda columna relevante.\n"
-            "   e) NO uses plt ni matplotlib para este paso; es solo la llamada a aggregate_and_build_option.\n"
-            "   IMPORTANTE: esta línea de print es lo que alimenta el dashboard interactivo del usuario."
+            "   Al final del script, SIEMPRE genera el option ECharts del insight más representativo. "
+            "   Tienes AUTONOMÍA TOTAL para elegir el tipo de visualización adecuado al dato. "
+            "   Helpers disponibles ya inyectados (NO los importes, úsalos directo):\n"
+            "     • aggregate_and_build_option(df, col, agg='count'|'sum'|'mean', value_column=..., chart_type='bar'|'line'|'pie'|'horizontal_bar', title='...')\n"
+            "     • build_line_option(categories, values, title='...', series_name='...')\n"
+            "     • build_pie_option(categories, values, title='...')\n"
+            "     • build_horizontal_bar_option(categories, values, title='...')\n"
+            "     • build_scatter_option(xs, ys, title='...', x_label='...', y_label='...')\n"
+            "     • build_heatmap_option(matrix, x_labels=..., y_labels=..., title='...')\n"
+            "     • correlation_heatmap_from_df(df, title='Matriz de Correlación') ← usa esto si el insight es de correlación\n"
+            "     • build_stacked_bar_option(categories, {nombre: valores, ...}, title='...')\n"
+            "   GUÍA RÁPIDA DE ELECCIÓN (decide en función del DATO, no por defecto barras):\n"
+            "     - Serie temporal o tendencia (fechas/meses/años) → build_line_option o aggregate_and_build_option(..., chart_type='line').\n"
+            "     - Proporción / share de mercado / composición (≤10 categorías) → build_pie_option o chart_type='pie'.\n"
+            "     - Ranking con etiquetas largas o muchas categorías → build_horizontal_bar_option o chart_type='horizontal_bar'.\n"
+            "     - Correlación entre variables numéricas → correlation_heatmap_from_df(df).\n"
+            "     - Dos variables continuas → build_scatter_option.\n"
+            "     - Composición por categoría con sub-segmentos → build_stacked_bar_option.\n"
+            "     - Conteo simple por categoría sin matiz temporal → bar (default) está bien.\n"
+            "   FORMATO DE SALIDA OBLIGATORIO (esta es la línea que alimenta el visor):\n"
+            "      `print('ECHARTS_JSON_OUTPUT:' + json.dumps(_ec_opt))`\n"
+            "   Donde `_ec_opt` es el dict devuelto por el helper elegido. Si tu primer intento devuelve None, "
+            "   prueba otro helper o cambia la columna; NO te rindas en silencio. NO uses matplotlib para esto.\n"
+            "   PROHIBIDO siempre usar el mismo helper: cada análisis distinto debe justificar su tipo de gráfica."
         )
         doc_block = ""
         if document_context:
@@ -595,10 +627,17 @@ class AnalystAgent:
                 clean_path,
                 csv_encoding=csv_encoding,
             ),
-            # ECharts helpers: disponibles en el sandbox para generar option JSON directamente.
+            # ECharts helpers: disponibles en el sandbox para que el LLM elija el tipo más adecuado.
             "aggregate_and_build_option": aggregate_and_build_option,
             "dataframe_to_echarts_option": dataframe_to_echarts_option,
             "build_bar_option": build_bar_option,
+            "build_line_option": build_line_option,
+            "build_pie_option": build_pie_option,
+            "build_horizontal_bar_option": build_horizontal_bar_option,
+            "build_scatter_option": build_scatter_option,
+            "build_heatmap_option": build_heatmap_option,
+            "build_stacked_bar_option": build_stacked_bar_option,
+            "correlation_heatmap_from_df": correlation_heatmap_from_df,
         }
         print(f"DEBUG: Ejecutando análisis local sobre {clean_path}...")
         prev_cwd = os.getcwd()
@@ -669,6 +708,29 @@ class AnalystAgent:
         )
         if compliance_block:
             text = f"{text.strip()}\n\n{compliance_block.strip()}"
+
+        # ── Re-render del PDF/Excel con la narrativa REAL ya generada ───────────
+        # El LLM generó el PDF/Excel ANTES de tener la narrativa (solo tenía el
+        # contexto documental). Aquí lo sobreescribimos con el informe premium
+        # que incluye: narrativa + diagnóstico compliance + gráfica matplotlib.
+        try:
+            charts_for_pdf: List[str] = []
+            if ruta_img and os.path.isfile(ruta_img):
+                charts_for_pdf.append(os.path.abspath(ruta_img))
+            if self._pending_pdf_report_path and os.path.isfile(self._pending_pdf_report_path):
+                narrativa_para_pdf = (
+                    f"Consulta del usuario: {user_query}\n\n"
+                    f"{text.strip()}"
+                )
+                generar_reporte_premium_pdf(
+                    narrativa_para_pdf,
+                    ruta_salida=self._pending_pdf_report_path,
+                    rutas_graficas=charts_for_pdf or None,
+                    report_config=report_config,
+                )
+        except Exception as e:
+            print(f"DEBUG: re-render premium PDF falló (se conserva el original): {e}")
+
         return self._cap(text), opt
 
     # ── Punto de entrada principal ───────────────────────────────────────
