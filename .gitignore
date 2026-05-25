@@ -16,3 +16,10 @@ env/
 
 # --- Otros ---
 .DS_Store
+# Datos de salud / archivos estadísticos grandes (Stata, SPSS, CSV masivos)
+Test/DBF-ECV-Salud-2025/
+*.DTA
+*.dta
+*.sav
+*.SAV
+*.csv
