@@ -30,6 +30,7 @@ xlsxwriter               # motor ExcelWriter para reportes .xlsx
 matplotlib               # gráficas
 seaborn                  # visualizaciones estadísticas avanzadas
 numpy                    # similitud coseno en búsqueda vectorial
+rapidfuzz                # armonización canónica por fuzzy matching de alta velocidad
 
 # ── Generación de reportes ────────────────────────────────────────────────────
 fpdf2                    # reportes PDF estilizados

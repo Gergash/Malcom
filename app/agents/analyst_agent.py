@@ -19,6 +19,7 @@ from dotenv import load_dotenv
 try:
     from app.agents.model_manager import ModelManager
     from app.agents.compliance_agent import ComplianceAgent
+    from app.agents.data_cleaner import clean_structured_dataframe
     from app.agents.knowledge_agent import KnowledgeAgent, DOC_EXTENSIONS
     from app.agents.report_generator import (
         generar_reporte_excel_avanzado,
@@ -30,6 +31,7 @@ try:
 except ModuleNotFoundError:
     from agents.model_manager import ModelManager
     from agents.compliance_agent import ComplianceAgent
+    from agents.data_cleaner import clean_structured_dataframe
     from agents.knowledge_agent import KnowledgeAgent, DOC_EXTENSIONS
     from agents.report_generator import (
         generar_reporte_excel_avanzado,
@@ -219,41 +221,42 @@ def _read_raw_dataframe(file_path: str, csv_encoding: Optional[str]) -> pd.DataF
     return pd.read_csv(file_path, **base_kwargs)
 
 
-def load_structured_dataframe(file_path: str, csv_encoding: Optional[str] = None) -> pd.DataFrame:
+def _load_sidecar_metadata_context(file_path: str) -> str:
+    """
+    Carga metadata sidecar generado por data_cleaner (archivo .meta.json) para
+    enriquecer ComplianceAgent sin tocar el DataFrame limpio.
+    """
+    try:
+        data_dir = os.path.dirname(os.path.abspath(file_path))
+        base = os.path.splitext(os.path.basename(file_path))[0]
+        specific = os.path.join(data_dir, f"{base}.meta.json")
+        generic = os.path.join(data_dir, ".meta.json")
+        target = specific if os.path.isfile(specific) else generic
+        if not os.path.isfile(target):
+            return ""
+        with open(target, "r", encoding="utf-8") as f:
+            obj = json.load(f)
+        if not isinstance(obj, dict):
+            return ""
+        return "METADATA SIDECAR (data_cleaner):\n" + json.dumps(obj, ensure_ascii=False, indent=2)
+    except Exception:
+        return ""
+
+
+def load_structured_dataframe(
+    file_path: str,
+    csv_encoding: Optional[str] = None,
+    chat_id: Optional[int] = None,
+) -> pd.DataFrame:
     """
     Pipeline silencioso de ingesta:
     1) Detecta y descarta metadatos previos al encabezado real.
     2) Expande columnas cuando el archivo llegó concatenado por '|' o ';'.
     3) Limpia nulos redundantes sin interacción con el usuario.
     """
-    raw = _read_raw_dataframe(file_path, csv_encoding)
-    raw = _expand_complex_delimiters(raw)
-    raw = raw.apply(lambda s: s.map(lambda x: x.strip() if isinstance(x, str) else x))
-    raw = raw.replace(r"^\s*$", pd.NA, regex=True)
-    raw = raw.dropna(axis=0, how="all").dropna(axis=1, how="all").reset_index(drop=True)
-    if raw.empty:
-        return raw
-
-    scan_limit = min(len(raw), _HEADER_SCAN_LIMIT)
-    best_idx = 0
-    best_score = -1
-    for i in range(scan_limit):
-        row = raw.iloc[i].tolist()
-        score = _score_header_candidate(row)
-        if score > best_score:
-            best_idx = i
-            best_score = score
-
-    header_row = raw.iloc[best_idx].tolist()
-    headers = _dedupe_headers([_normalize_header_name(v, idx) for idx, v in enumerate(header_row)])
-    data = raw.iloc[best_idx + 1 :].copy().reset_index(drop=True)
-    data.columns = headers
-
-    data = data.replace(r"^\s*$", pd.NA, regex=True)
-    data = data.dropna(axis=0, how="all").dropna(axis=1, how="all")
-    # Limpieza silenciosa final: dejamos string vacío para no romper prompts/cálculos básicos.
-    data = data.fillna("")
-    return data
+    # Delegamos el pipeline robusto al módulo especializado app/agents/data_cleaner.py
+    # para mantener la ingeniería de datos determinista separada del orquestador.
+    return clean_structured_dataframe(file_path, csv_encoding=csv_encoding, chat_id=chat_id)
 
 
 
@@ -693,6 +696,7 @@ class AnalystAgent:
         self,
         codigo_python: str,
         user_query: str,
+        chat_id: Optional[int],
         clean_path: str,
         csv_encoding: Optional[str],
         document_context: str,
@@ -722,6 +726,7 @@ class AnalystAgent:
                 load_structured_dataframe,
                 clean_path,
                 csv_encoding=csv_encoding,
+                chat_id=chat_id,
             ),
             # ECharts helpers: disponibles en el sandbox para que el LLM elija el tipo más adecuado.
             "aggregate_and_build_option": aggregate_and_build_option,
@@ -804,10 +809,17 @@ class AnalystAgent:
         if generate_echarts and opt is None:
             opt = self._request_echarts_option_dedicated(resultados)
 
+        sidecar_meta = _load_sidecar_metadata_context(clean_path)
+        compliance_context = document_context or ""
+        if sidecar_meta:
+            compliance_context = (
+                f"{compliance_context}\n\n{sidecar_meta}" if compliance_context else sidecar_meta
+            )
+
         compliance_block = self._compliance_agent.build_diagnostic(
             user_query=user_query,
             analysis_stdout=resultados,
-            document_context=document_context,
+            document_context=compliance_context,
         )
         if compliance_block:
             text = f"{text.strip()}\n\n{compliance_block.strip()}"
@@ -943,6 +955,7 @@ class AnalystAgent:
             return self._run_code_and_summarize(
                 codigo_python,
                 user_query,
+                chat_id,
                 clean_path,
                 csv_encoding,
                 document_context,
@@ -968,6 +981,7 @@ class AnalystAgent:
                     return self._run_code_and_summarize(
                         codigo_corregido,
                         user_query,
+                        chat_id,
                         clean_path,
                         csv_encoding,
                         document_context,
