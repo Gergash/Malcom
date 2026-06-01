@@ -128,6 +128,22 @@ def _is_document_file(path: str) -> bool:
     return path.lower().endswith(DOC_EXTENSIONS)
 
 
+def _has_tabular_data(path: str) -> bool:
+    """True si un PDF o DOCX contiene tablas extraíbles con suficientes filas para analizar."""
+    try:
+        from app.agents.data_cleaner import _extract_pdf_as_dataframe, _extract_docx_as_dataframe
+    except ModuleNotFoundError:
+        from agents.data_cleaner import _extract_pdf_as_dataframe, _extract_docx_as_dataframe
+    ext = path.lower()
+    if ext.endswith(".pdf"):
+        df = _extract_pdf_as_dataframe(path)
+        return df is not None and not df.empty and len(df) >= 3
+    if ext.endswith((".docx", ".doc")):
+        df = _extract_docx_as_dataframe(path)
+        return df is not None and not df.empty and len(df) >= 3
+    return False
+
+
 def _get_latest_data_file_in_folder(user_data_folder: str) -> Optional[str]:
     """Ruta del archivo CSV/XLSX más reciente por mtime en la carpeta del usuario."""
     if not user_data_folder or not os.path.isdir(user_data_folder):
@@ -890,6 +906,10 @@ class AnalystAgent:
             data_file_path = local_file_path
         if not data_file_path and user_data_folder:
             data_file_path = _get_latest_data_file_in_folder(user_data_folder)
+        # PDF/DOCX con tablas extraíbles también se enrutan como datos estructurados
+        if not data_file_path and local_file_path and _is_document_file(local_file_path):
+            if _has_tabular_data(local_file_path):
+                data_file_path = local_file_path
 
         # Sin archivo de datos → respuesta basada solo en documentos o conversacional
         if not data_file_path or not os.path.exists(data_file_path):

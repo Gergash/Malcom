@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import unicodedata
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -24,6 +25,20 @@ try:
     from rapidfuzz import process as rf_process  # type: ignore
 except Exception:  # pragma: no cover - fallback si rapidfuzz no está instalado
     rf_process = None
+
+try:
+    import pdfplumber as _pdfplumber  # type: ignore
+    _PDFPLUMBER_AVAILABLE = True
+except Exception:
+    _pdfplumber = None
+    _PDFPLUMBER_AVAILABLE = False
+
+try:
+    from docx import Document as _DocxDocument  # type: ignore
+    _DOCX_AVAILABLE = True
+except Exception:
+    _DocxDocument = None
+    _DOCX_AVAILABLE = False
 
 _HEADER_KEYWORDS: frozenset[str] = frozenset(
     {
@@ -101,41 +116,59 @@ _DATE_HINTS = ("fecha", "presentacion", "presentación", "declaracion", "declara
 
 _CANONICAL_CATALOG: Dict[str, List[str]] = {
     "ciudades": [
-        "BOGOTA",
-        "MEDELLIN",
-        "CALI",
-        "BARRANQUILLA",
-        "CARTAGENA",
-        "BUCARAMANGA",
-        "PEREIRA",
+        "BOGOTA", "MEDELLIN", "CALI", "BARRANQUILLA", "CARTAGENA",
+        "BUCARAMANGA", "PEREIRA", "MANIZALES", "CUCUTA", "IBAGUE",
+        "SANTA MARTA", "VILLAVICENCIO", "ARMENIA", "NEIVA", "POPAYAN",
+        "VALLEDUPAR", "MONTERIA", "SINCELEJO", "TUNJA", "PASTO",
+        "RIOHACHA", "QUIBDO", "FLORENCIA", "MOCOA", "LETICIA",
+        "INIRIDA", "MITU", "PUERTO CARRENO", "SAN JOSE DEL GUAVIARE",
     ],
     "departamentos": [
-        "CUNDINAMARCA",
-        "ANTIOQUIA",
-        "VALLE DEL CAUCA",
-        "ATLANTICO",
-        "BOLIVAR",
-        "SANTANDER",
+        "CUNDINAMARCA", "ANTIOQUIA", "VALLE DEL CAUCA", "ATLANTICO",
+        "BOLIVAR", "SANTANDER", "NORTE DE SANTANDER", "RISARALDA",
+        "CALDAS", "QUINDIO", "TOLIMA", "HUILA", "NARINO", "BOYACA",
+        "CESAR", "CORDOBA", "SUCRE", "META", "MAGDALENA", "CAUCA",
+        "CASANARE", "ARAUCA", "PUTUMAYO", "CAQUETA", "LA GUAJIRA",
+        "CHOCO", "VICHADA", "GUAINIA", "VAUPES", "AMAZONAS", "GUAVIARE",
+        "ARCHIPIELAGO DE SAN ANDRES",
     ],
     "puertos": [
-        "PUERTO DE CARTAGENA",
-        "PUERTO DE BUENAVENTURA",
-        "PUERTO DE BARRANQUILLA",
-        "PUERTO DE SANTA MARTA",
+        "PUERTO DE CARTAGENA", "PUERTO DE BUENAVENTURA",
+        "PUERTO DE BARRANQUILLA", "PUERTO DE SANTA MARTA",
+        "PUERTO DE TUMACO", "TERMINAL MARITIMO DE CARTAGENA",
+        "ZONA FRANCA DE BOGOTA", "ZONA FRANCA DE BARRANQUILLA",
+        "ZONA FRANCA DE CUCUTA", "ZONA FRANCA PALMASECA",
+        "ZONA FRANCA LA CANDELARIA", "ZONA FRANCA DEL PACIFICO",
+        "ZONA FRANCA DE PEREIRA", "ZONA FRANCA DE BUENAVENTURA",
+        "ZONA FRANCA PARQUE INDUSTRIAL DE BARRANQUILLA",
     ],
     "aduanas": [
-        "ADUANA DE EL DORADO",
-        "ADUANA DE BUENAVENTURA",
-        "ADUANA DE CARTAGENA",
-        "ADUANA DE BARRANQUILLA",
-        "ADUANA DE MEDELLIN",
+        "ADUANA DE EL DORADO", "ADUANA DE BUENAVENTURA",
+        "ADUANA DE CARTAGENA", "ADUANA DE BARRANQUILLA",
+        "ADUANA DE MEDELLIN", "ADUANA DE SANTA MARTA",
+        "ADUANA DE CUCUTA", "ADUANA DE IPIALES",
+        "ADUANA DE PALMIRA", "ADUANA DE BOGOTA",
+        "ADUANA DE RIOHACHA", "ADUANA DE TUMACO",
+        "AEROPUERTO EL DORADO", "AEROPUERTO JOSE MARIA CORDOVA RIONEGRO",
+        "AEROPUERTO ERNESTO CORTISSOZ BARRANQUILLA",
+        "AEROPUERTO SIMON BOLIVAR SANTA MARTA",
+        "AEROPUERTO RAFAEL NUNEZ CARTAGENA",
     ],
     "bancos": [
-        "BANCOLOMBIA",
-        "BANCO DE BOGOTA",
-        "BANCO DAVIVIENDA",
-        "BANCO BBVA COLOMBIA",
-        "BANCO POPULAR",
+        "BANCOLOMBIA", "BANCO DE BOGOTA", "BANCO DAVIVIENDA",
+        "BANCO BBVA COLOMBIA", "BANCO POPULAR", "BANCO AV VILLAS",
+        "BANCO CAJA SOCIAL", "BANCO OCCIDENTE", "BANCO AGRARIO",
+        "BANCO ITAU", "SCOTIABANK COLPATRIA", "BANCO FINANDINA",
+        "BANCO W", "BANCAMIA", "COOFINEP", "BANCO GNB SUDAMERIS",
+        "BANCO FALABELLA", "BANCO PICHINCHA", "BANCO SERFINANZA",
+    ],
+    "regimenes": [
+        "IMPORTACION ORDINARIA", "EXPORTACION DEFINITIVA",
+        "TRANSITO ADUANERO", "DEPOSITO ADUANERO",
+        "ZONA FRANCA", "ADMISION TEMPORAL", "REIMPORTACION",
+        "EXPORTACION TEMPORAL", "TRANSFORMACION Y ENSAMBLE",
+        "DECLARACION DE IMPORTACION", "DECLARACION DE EXPORTACION",
+        "LICENCIA DE IMPORTACION", "REGISTRO DE IMPORTACION",
     ],
 }
 
@@ -193,10 +226,59 @@ def _dedupe_headers(headers: List[str]) -> List[str]:
     return out
 
 
+def _extract_pdf_as_dataframe(path: str) -> Optional[pd.DataFrame]:
+    """Extrae la tabla más grande de un PDF usando pdfplumber (si está instalado)."""
+    if not _PDFPLUMBER_AVAILABLE or _pdfplumber is None:
+        return None
+    try:
+        frames: List[pd.DataFrame] = []
+        with _pdfplumber.open(path) as pdf:
+            for page in pdf.pages:
+                tables = page.extract_tables()
+                for table in (tables or []):
+                    if not table or len(table) < 2:
+                        continue
+                    df = pd.DataFrame(table).astype(str)
+                    if not df.empty:
+                        frames.append(df)
+        if not frames:
+            return None
+        return max(frames, key=lambda d: len(d)).reset_index(drop=True)
+    except Exception as exc:
+        print(f"DEBUG _extract_pdf_as_dataframe: {exc}")
+        return None
+
+
+def _extract_docx_as_dataframe(path: str) -> Optional[pd.DataFrame]:
+    """Extrae la tabla más grande de un archivo Word (.docx) usando python-docx."""
+    if not _DOCX_AVAILABLE or _DocxDocument is None:
+        return None
+    try:
+        doc = _DocxDocument(path)
+        frames: List[pd.DataFrame] = []
+        for table in doc.tables:
+            rows = [[cell.text.strip() for cell in row.cells] for row in table.rows]
+            if len(rows) < 2:
+                continue
+            frames.append(pd.DataFrame(rows).astype(str))
+        if not frames:
+            return None
+        return max(frames, key=lambda d: len(d)).reset_index(drop=True)
+    except Exception as exc:
+        print(f"DEBUG _extract_docx_as_dataframe: {exc}")
+        return None
+
+
 def _read_raw(path: str, csv_encoding: Optional[str]) -> Tuple[pd.DataFrame, str]:
-    is_excel = path.lower().endswith((".xlsx", ".xls"))
-    if is_excel:
+    ext = path.lower()
+    if ext.endswith((".xlsx", ".xls")):
         return pd.read_excel(path, header=None, dtype=str), "utf-8"
+    if ext.endswith(".pdf"):
+        df = _extract_pdf_as_dataframe(path)
+        return (df if df is not None else pd.DataFrame()), "utf-8"
+    if ext.endswith((".docx", ".doc")):
+        df = _extract_docx_as_dataframe(path)
+        return (df if df is not None else pd.DataFrame()), "utf-8"
 
     encodings = [e for e in [csv_encoding, "utf-8", "latin-1", "cp1252", "iso-8859-1"] if e]
     for enc in encodings:
@@ -258,7 +340,26 @@ def _normalize_cop_number(value: Any) -> float:
     if not s:
         return float("nan")
     s = re.sub(r"[^0-9,.\-]", "", s)
-    s = s.replace(".", "").replace(",", ".")
+    dot_count = s.count(".")
+    comma_count = s.count(",")
+    if dot_count > 1:
+        # Múltiples puntos → todos son separadores de miles COP: 10.500.000 → 10500000
+        s = s.replace(".", "").replace(",", ".")
+    elif dot_count == 1 and comma_count == 0:
+        # Un solo punto: si exactamente 3 dígitos después es separador de miles, si no es decimal
+        m = re.match(r"^-?(\d+)\.(\d{3})$", s)
+        if m:
+            s = s.replace(".", "")  # miles: 10.500 → 10500
+        # else: decimal: 100.5 → 100.5 (sin cambio)
+    elif dot_count == 1 and comma_count >= 1:
+        # COP híbrido: 10.500,50 → 10500.50
+        s = s.replace(".", "").replace(",", ".")
+    elif dot_count == 0 and comma_count == 1:
+        # Solo coma → separador decimal: 10500,50 → 10500.50
+        s = s.replace(",", ".")
+    elif dot_count == 0 and comma_count > 1:
+        # Múltiples comas → miles: 10,500,000 → 10500000
+        s = s.replace(",", "")
     return float(s) if s not in {"", "-", ".", ","} else float("nan")
 
 
@@ -294,37 +395,47 @@ def _sanitize_local_types(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _strip_accents(s: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
+
+
 def _best_match(value: str, choices: List[str]) -> Tuple[str, int]:
-    val = value.upper().strip()
+    val = _strip_accents(value.upper().strip())
     if not val:
         return "", 0
+    norm_choices = [_strip_accents(c) for c in choices]
     if rf_process is not None:
-        m = rf_process.extractOne(val, choices)
+        m = rf_process.extractOne(val, norm_choices)
         if not m:
             return "", 0
-        return str(m[0]), int(m[1])
+        idx = norm_choices.index(str(m[0]))
+        return choices[idx], int(m[1])
     best_term = ""
     best_score = 0
-    for term in choices:
+    for i, term in enumerate(norm_choices):
         score = int(100 * SequenceMatcher(None, val, term).ratio())
         if score > best_score:
             best_score = score
-            best_term = term
+            best_term = choices[i]
     return best_term, best_score
 
 
 def _column_catalog(col_name: str) -> Optional[List[str]]:
     name = col_name.lower()
-    if any(k in name for k in ("ciudad", "municipio")):
+    if any(k in name for k in ("ciudad", "municipio", "localidad")):
         return _CANONICAL_CATALOG["ciudades"]
     if "departamento" in name:
         return _CANONICAL_CATALOG["departamentos"]
-    if any(k in name for k in ("puerto", "zona franca", "terminal")):
+    if any(k in name for k in ("zona franca", "zona_franca", "zonafranca")):
         return _CANONICAL_CATALOG["puertos"]
-    if "aduana" in name:
+    if any(k in name for k in ("puerto", "terminal maritimo", "terminal portuario")):
+        return _CANONICAL_CATALOG["puertos"]
+    if any(k in name for k in ("aduana", "aeropuerto")):
         return _CANONICAL_CATALOG["aduanas"]
-    if any(k in name for k in ("banco", "entidad financiera")):
+    if any(k in name for k in ("banco", "entidad financiera", "entidad bancaria")):
         return _CANONICAL_CATALOG["bancos"]
+    if any(k in name for k in ("regimen", "régimen", "modalidad", "tipo declaracion")):
+        return _CANONICAL_CATALOG["regimenes"]
     return None
 
 
@@ -492,6 +603,7 @@ def clean_structured_dataframe(path: str, csv_encoding: Optional[str] = None, ch
 def smart_read_schema(path: str) -> ReadResult:
     """
     API legacy para mostrar esquema. Reusa el pipeline robusto en modo muestra.
+    clean_structured_dataframe ya maneja metadata + sidecar internamente; aquí solo lo leemos.
     """
     raw, encoding = _read_raw(path, None)
     if raw.empty:
@@ -505,11 +617,21 @@ def smart_read_schema(path: str) -> ReadResult:
             metadata_path=None,
         )
     header_row = _find_best_header_row(raw)
-    metadata_text = _rows_to_metadata_context(raw, header_row)
-    payload = _extract_metadata_with_ollama(metadata_text)
-    mpath = _write_sidecar(path, payload)
-
+    # El pipeline completo (incluyendo extracción de metadata y escritura del sidecar) ocurre aquí.
     cleaned = clean_structured_dataframe(path, csv_encoding=encoding)
+    # Leer el sidecar que clean_structured_dataframe acaba de crear (sin volver a llamar a Ollama).
+    payload: Dict[str, Any] = {}
+    mpath: Optional[str] = None
+    data_dir = os.path.dirname(os.path.abspath(path))
+    base = os.path.splitext(os.path.basename(path))[0]
+    sidecar_path = os.path.join(data_dir, f"{base}.meta.json")
+    if os.path.isfile(sidecar_path):
+        try:
+            with open(sidecar_path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            mpath = sidecar_path
+        except Exception:
+            pass
     sample = cleaned.head(5).copy() if not cleaned.empty else cleaned
     return ReadResult(
         df=sample,
