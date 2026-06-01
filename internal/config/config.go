@@ -84,7 +84,7 @@ func Load() (*Config, error) {
 		}
 	}
 
-	freeLimit := 7
+	freeLimit := 15
 	if v := strings.TrimSpace(os.Getenv("FREE_MESSAGE_LIMIT")); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			freeLimit = n

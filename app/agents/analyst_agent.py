@@ -468,6 +468,102 @@ class AnalystAgent:
             print(f"DEBUG _request_echarts_option_dedicated falló: {e}")
         return None
 
+    def _build_echarts_from_namespace(
+        self, namespace: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Fallback determinístico post-sandbox: compila un ECharts option desde los
+        DataFrames que el código generado dejó en el namespace del sandbox.
+
+        Estrategia:
+          1. Busca DataFrames ya agregados (resumen, resultado, top, ranking…);
+             si tienen columna categórica + numérica los serializa directamente.
+          2. Si no, toma el DataFrame principal 'df' y lo agrupa internamente.
+          3. Elige tipo de gráfica según cardinalidad y presencia de columna de fecha.
+        Paleta corporativa: #ff6d00 (DEFAULT_BAR_COLOR de echarts_builder).
+        """
+        _DATE_KEYWORDS = (
+            "fecha", "date", "mes", "month", "año", "year",
+            "periodo", "period", "semana", "trimestre", "quarter",
+        )
+        _AGG_VAR_NAMES = (
+            "resumen", "resultado", "summary", "result",
+            "top", "ranking", "grouped", "agrupado",
+            "ventas_por", "totales", "conteo",
+        )
+
+        def _has_date_hint(col: str) -> bool:
+            return any(kw in str(col).lower() for kw in _DATE_KEYWORDS)
+
+        def _best_cat(df: pd.DataFrame, exclude: Optional[str] = None) -> Optional[str]:
+            for c in df.columns:
+                if c == exclude:
+                    continue
+                if not pd.api.types.is_numeric_dtype(df[c]) and 2 <= df[c].nunique() <= 50:
+                    return c
+            return None
+
+        def _best_num(df: pd.DataFrame, exclude: Optional[str] = None) -> Optional[str]:
+            for c in df.columns:
+                if c != exclude and pd.api.types.is_numeric_dtype(df[c]):
+                    return c
+            return None
+
+        def _try_build(
+            df: pd.DataFrame, aggregated: bool, tag: str
+        ) -> Optional[Dict[str, Any]]:
+            if not isinstance(df, pd.DataFrame) or df.empty or len(df) < 2:
+                return None
+            date_col = next((c for c in df.columns if _has_date_hint(c)), None)
+            group_col = date_col or _best_cat(df)
+            if group_col is None:
+                return None
+            num_col = _best_num(df, exclude=group_col)
+            has_date = group_col == date_col
+            nuniq = df[group_col].nunique()
+            if has_date:
+                chart_type, title_pfx = "line", "Evolución"
+            elif nuniq <= 7:
+                chart_type, title_pfx = "pie", "Distribución"
+            elif nuniq > 15:
+                chart_type, title_pfx = "horizontal_bar", "Ranking"
+            else:
+                chart_type, title_pfx = "bar", "Distribución"
+            title = f"{title_pfx} por {group_col}"
+            try:
+                if aggregated:
+                    return dataframe_to_echarts_option(
+                        df, title=title, category_column=group_col, value_column=num_col
+                    )
+                return aggregate_and_build_option(
+                    df,
+                    group_col,
+                    value_column=num_col,
+                    agg="sum" if num_col else "count",
+                    chart_type=chart_type,
+                    title=title,
+                )
+            except Exception as exc:
+                print(f"DEBUG _build_echarts_from_namespace({tag}): {exc}")
+                return None
+
+        # Paso 1 — DataFrames ya agregados (resultado de un groupby en el sandbox)
+        for key in _AGG_VAR_NAMES:
+            val = namespace.get(key)
+            if isinstance(val, pd.DataFrame) and not val.empty and 2 <= len(val) <= 200:
+                opt = _try_build(val, aggregated=True, tag=key)
+                if opt:
+                    return opt
+
+        # Paso 2 — DataFrame principal 'df' (datos en bruto; se agrupa aquí)
+        df_main: Optional[pd.DataFrame] = namespace.get("df")
+        if not isinstance(df_main, pd.DataFrame) or df_main.empty:
+            for v in namespace.values():
+                if isinstance(v, pd.DataFrame) and not v.empty and len(v) >= 2:
+                    df_main = v
+                    break
+        return _try_build(df_main, aggregated=False, tag="df")  # type: ignore[arg-type]
+
     def _build_read_instruction(self, clean_path: str, path_lower: str, csv_encoding: Optional[str]) -> str:
         enc_note = (
             f" Se detectó encoding '{csv_encoding}' en el muestreo." if csv_encoding and csv_encoding != "utf-8" else ""
@@ -696,6 +792,13 @@ class AnalystAgent:
         if generate_echarts and opt is None:
             text, opt = self._extract_echarts_json(text)
 
+        # Intento 1.5 — fallback determinístico con echarts_builder.
+        # Inspecciona el namespace post-safe_exec: agrupa el DataFrame transaccional y
+        # compila el option directamente con aggregate_and_build_option / dataframe_to_echarts_option.
+        # Más rápido y fiable que el segundo LLM call cuando las columnas son claras.
+        if generate_echarts and opt is None:
+            opt = self._build_echarts_from_namespace(namespace)
+
         # Intento 2: si todavía no hay option, hacer un segundo LLM call corto y enfocado SOLO en ECharts.
         # Esto evita el conflicto con LENGTH_INSTRUCTION que impide al LLM emitir el bloque en el call principal.
         if generate_echarts and opt is None:
@@ -709,25 +812,39 @@ class AnalystAgent:
         if compliance_block:
             text = f"{text.strip()}\n\n{compliance_block.strip()}"
 
-        # ── Re-render del PDF/Excel con la narrativa REAL ya generada ───────────
-        # El LLM generó el PDF/Excel ANTES de tener la narrativa (solo tenía el
-        # contexto documental). Aquí lo sobreescribimos con el informe premium
-        # que incluye: narrativa + diagnóstico compliance + gráfica matplotlib.
+        # ── Re-render del PDF con la narrativa REAL ya generada ─────────────────
+        # El LLM generó el PDF pasando `contexto_documentos` (vacío o solo docs
+        # indexados) como texto. Ahora sobrescribimos con la narrativa completa:
+        # consulta + análisis + compliance + gráfica matplotlib.
         try:
-            charts_for_pdf: List[str] = []
-            if ruta_img and os.path.isfile(ruta_img):
-                charts_for_pdf.append(os.path.abspath(ruta_img))
-            if self._pending_pdf_report_path and os.path.isfile(self._pending_pdf_report_path):
-                narrativa_para_pdf = (
-                    f"Consulta del usuario: {user_query}\n\n"
-                    f"{text.strip()}"
-                )
-                generar_reporte_premium_pdf(
-                    narrativa_para_pdf,
-                    ruta_salida=self._pending_pdf_report_path,
-                    rutas_graficas=charts_for_pdf or None,
-                    report_config=report_config,
-                )
+            # Resolver la ruta de la gráfica: el sandbox la creó en data/{chat_id}/
+            chart_abs = None
+            if ruta_img:
+                _check = os.path.join(os.path.dirname(os.path.abspath(clean_path)), os.path.basename(ruta_img))
+                if os.path.isfile(_check):
+                    chart_abs = _check
+                elif os.path.isfile(ruta_img):
+                    chart_abs = os.path.abspath(ruta_img)
+            charts_for_pdf: List[str] = [chart_abs] if chart_abs else []
+
+            narrativa_para_pdf = (
+                f"Consulta del usuario: {user_query}\n\n"
+                f"{text.strip()}"
+            )
+
+            # Si el LLM generó un PDF, sobreescribirlo con la versión premium.
+            # Si NO generó uno, crearlo igualmente para que el usuario lo reciba.
+            pdf_output = self._pending_pdf_report_path
+            if not pdf_output:
+                pdf_output = report_pdf_path
+            generar_reporte_premium_pdf(
+                narrativa_para_pdf,
+                ruta_salida=pdf_output,
+                rutas_graficas=charts_for_pdf or None,
+                report_config=report_config,
+            )
+            self._pending_pdf_report_path = pdf_output
+            print(f"DEBUG: PDF premium re-generado en {pdf_output} ({len(narrativa_para_pdf)} chars de narrativa, {len(charts_for_pdf)} gráficas)")
         except Exception as e:
             print(f"DEBUG: re-render premium PDF falló (se conserva el original): {e}")
 

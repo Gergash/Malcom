@@ -32,7 +32,7 @@ class User(Base):
     # Paywall
     is_premium: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     message_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    free_message_limit: Mapped[int] = mapped_column(Integer, default=7, nullable=False)
+    free_message_limit: Mapped[int] = mapped_column(Integer, default=15, nullable=False)
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

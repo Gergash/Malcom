@@ -414,7 +414,7 @@
       fill.style.width = '0%';
       return;
     }
-    var limit = state.free_message_limit || 7;
+    var limit = state.free_message_limit || 15;
     if (state.is_premium) {
       textEl.textContent = 'Plan premium activo · mensajes ilimitados';
       fill.style.width = '100%';

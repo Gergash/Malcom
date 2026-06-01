@@ -1,21 +1,16 @@
 """
-credits.py: lógica de créditos / paywall por usuario (chat_id).
+credits.py: value object de créditos / paywall por usuario.
 
-- No depende de AnalystAgent: separa lógica comercial del análisis.
-- La persistencia vive en app/database/quota_manager.py (SQLite).
+La persistencia vive exclusivamente en PostgreSQL a través de
+app/database/repositories/user_repo.UserRepository.bump_and_check().
+Este módulo solo define el dataclass UserCredits para uso como DTO.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
-try:
-    # `python -m app.main`
-    from app.database.quota_manager import DEFAULT_FREE_MESSAGE_LIMIT, QuotaManager
-except ModuleNotFoundError:
-    # `python main.py` desde `app/`
-    from database.quota_manager import DEFAULT_FREE_MESSAGE_LIMIT, QuotaManager
+DEFAULT_FREE_MESSAGE_LIMIT = 15
 
 
 @dataclass
@@ -29,21 +24,4 @@ class UserCredits:
 
     def bump_message_count(self, n: int = 1) -> None:
         self.message_count = max(0, int(self.message_count) + int(n))
-
-
-def check_and_bump(
-    quota: QuotaManager,
-    chat_id: int,
-    *,
-    free_message_limit: int = DEFAULT_FREE_MESSAGE_LIMIT,
-    bump_by: int = 1,
-) -> Optional[str]:
-    """
-    Retorna un string de bloqueo si aplica paywall, si no: incrementa el contador y retorna None.
-    Persistencia en SQLite.
-    """
-    # La tabla tiene su propio free_message_limit; mantenemos free_message_limit aquí
-    # como configuración por defecto (se puede extender luego).
-    paywalled = quota.bump_and_check(chat_id=int(chat_id), bump_by=int(bump_by))
-    return "PAYWALL_TRIGGER" if paywalled else None
 

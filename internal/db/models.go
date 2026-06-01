@@ -11,7 +11,7 @@ type User struct {
 	Username         *string `gorm:"size:255"`
 	IsPremium        bool `gorm:"not null;default:false"`
 	MessageCount     int  `gorm:"not null;default:0"`
-	FreeMessageLimit int  `gorm:"not null;default:7"`
+	FreeMessageLimit int  `gorm:"not null;default:15"`
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 	PremiumSince     *time.Time

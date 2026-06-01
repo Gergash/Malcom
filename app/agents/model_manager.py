@@ -28,7 +28,7 @@ DEFAULT_COOLDOWN_SECONDS: int = 60
 # ── Ollama configuration ─────────────────────────────────────────────
 OLLAMA_DEFAULT_BASE_URL = "http://localhost:11434"
 OLLAMA_DEFAULT_MODEL = "llama3.1"
-OLLAMA_TIMEOUT = 180
+OLLAMA_TIMEOUT = 300  # 5 minutos por defecto (antes 180 s)
 
 LOCAL_PRIORITY_KEYWORDS = (
     "pandas",

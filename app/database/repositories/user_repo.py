@@ -1,7 +1,7 @@
 """
 user_repo.py: operaciones CRUD sobre la tabla `users`.
 
-Reemplaza QuotaManager (SQLite) con PostgreSQL async.
+Persistencia async sobre PostgreSQL (asyncpg + SQLAlchemy 2.0).
 Soporta identidad dual: chat_id (Telegram) + email (web/pago).
 """
 
@@ -146,7 +146,7 @@ class UserRepository:
         Middleware de cuota: incrementa el contador y evalúa el paywall.
 
         Regla de negocio:
-            if not user.is_premium and user.message_count >= 7:
+            if not user.is_premium and user.message_count >= user.free_message_limit:
                 return PAYWALL_TRIGGER
 
         Retorna:
