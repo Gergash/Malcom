@@ -38,4 +38,5 @@ fpdf2                    # reportes PDF estilizados
 # ── Extracción de documentos ──────────────────────────────────────────────────
 pypdf                    # extracción de texto de PDF
 pymupdf                  # respaldo para PDFs complejos
-python-docx              # extracción de texto de DOCX
+python-docx              # extracción de texto y tablas de DOCX
+pdfplumber               # extracción de tablas estructuradas de PDF (data_cleaner)

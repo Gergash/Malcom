@@ -122,6 +122,29 @@ _TRANSACTIONAL_HEADER_KEYWORDS = (
 )
 _COMPLEX_DELIMITERS = ("|", ";")
 
+# Palabras clave que señalan datos aduaneros / tributarios / DIAN.
+# Si ninguna aparece en los nombres de columna → dominio general_analytics.
+_FINANCIAL_COMPLIANCE_KEYWORDS: frozenset[str] = frozenset({
+    "dian", "fob", "cif", "arancel", "rips", "factura", "iva",
+    "nandina", "partida", "subpartida", "regimen", "aduana",
+    "declaracion", "importacion", "exportacion", "nit", "gravamen",
+    "liquidacion", "tributo", "incoterm", "poliza", "endoso",
+    "fletes", "seguro cif", "valor cif", "valor fob", "cuota",
+    "impuesto", "retención", "retencion", "renta", "predial",
+})
+
+
+def classify_domain(columns: List[str]) -> str:
+    """
+    Clasifica el dominio del dataset a partir de los nombres de sus columnas.
+    Retorna 'financial_compliance' si detecta vocabulario DIAN / aduanero / tributario;
+    'general_analytics' en cualquier otro caso (encuestas, HR, ventas, etc.).
+    """
+    text = " ".join(str(c) for c in columns).lower()
+    if any(kw in text for kw in _FINANCIAL_COMPLIANCE_KEYWORDS):
+        return "financial_compliance"
+    return "general_analytics"
+
 
 def _is_document_file(path: str) -> bool:
     """True si el archivo es un documento indexable (PDF, DOCX, TXT) que NO se puede leer con pandas."""
@@ -583,13 +606,14 @@ class AnalystAgent:
                     break
         return _try_build(df_main, aggregated=False, tag="df")  # type: ignore[arg-type]
 
-    def _build_read_instruction(self, clean_path: str, path_lower: str, csv_encoding: Optional[str]) -> str:
+    def _build_read_instruction(self, clean_path: str, path_lower: str, csv_encoding: Optional[str], domain: str = "financial_compliance") -> str:
         enc_note = (
             f" Se detectó encoding '{csv_encoding}' en el muestreo." if csv_encoding and csv_encoding != "utf-8" else ""
         )
+        header_hint = "heurística de encabezado (DIAN/RIPS)" if domain == "financial_compliance" else "heurística de encabezado complejo"
         return (
             f"Para cargar SIEMPRE usa: df = cargar_dataframe_limpio(). "
-            f"Esa función ya apunta a '{clean_path}', aplica heurística de encabezado (DIAN/RIPS), "
+            f"Esa función ya apunta a '{clean_path}', aplica {header_hint}, "
             f"expansión de delimitadores complejos ('|',';') y limpieza silenciosa de nulos.{enc_note}"
         )
 
@@ -605,6 +629,7 @@ class AnalystAgent:
         report_excel_path: str,
         report_config: Optional[ReportConfig] = None,
         require_strict_data: bool = False,
+        domain: str = "financial_compliance",
     ) -> str:
         strict_prefix = ""
         if require_strict_data:
@@ -614,8 +639,21 @@ class AnalystAgent:
                 "del archivo indicado abajo o de contexto_documentos. Si no alcanza, detente y explica qué falta y pregunta al usuario; "
                 "no rellenes con datos supuestos.\n\n"
             )
-        system = strict_prefix + (
-            "Eres el cerebro analítico de InsightFlow basado en Gemini.\n"
+        if domain == "general_analytics":
+            role_header = (
+                "Eres el cerebro analítico de InsightFlow basado en Gemini.\n"
+                "MODO ACTIVO: Científico de Datos Puro — dominio general (encuestas, HR, satisfacción, ventas, etc.).\n"
+                "El archivo NO contiene datos aduaneros ni regulatorios de la DIAN. "
+                "PROHIBIDO asumir terminología aduanera ni tributaria en tus conclusiones o gráficas.\n"
+                "Enfócate en distribuciones, frecuencias, correlaciones y tendencias propias del dataset.\n"
+            )
+        else:
+            role_header = (
+                "Eres el cerebro analítico de InsightFlow basado en Gemini.\n"
+                "MODO ACTIVO: Ingeniero de Datos Senior especializado en comercio exterior colombiano "
+                "(DIAN, RIPS, extractos bancarios, declaraciones de importación/exportación).\n"
+            )
+        system = strict_prefix + role_header + (
             "TU OBJETIVO: Generar código Python para analizar archivos locales masivos.\n"
             "REGLAS CRÍTICAS:\n"
             "1. El archivo es muy grande. NO intentes leerlo tú. Genera código para que mi sistema lo lea.\n"
@@ -721,6 +759,7 @@ class AnalystAgent:
         plot_filename: str,
         report_config: Optional[ReportConfig] = None,
         generate_echarts: bool = False,
+        domain: str = "financial_compliance",
     ) -> Tuple[str, Optional[Dict[str, Any]]]:
         """Ejecuta el código generado, captura stdout y pide al modelo un resumen cruzado."""
         ruta_img = plot_filename or None
@@ -825,20 +864,23 @@ class AnalystAgent:
         if generate_echarts and opt is None:
             opt = self._request_echarts_option_dedicated(resultados)
 
-        sidecar_meta = _load_sidecar_metadata_context(clean_path)
-        compliance_context = document_context or ""
-        if sidecar_meta:
-            compliance_context = (
-                f"{compliance_context}\n\n{sidecar_meta}" if compliance_context else sidecar_meta
+        # ComplianceAgent solo tiene sentido en datos aduaneros / tributarios.
+        # Para dominios generales (encuestas, HR, etc.) se omite completamente
+        # para evitar alertas regulatorias falsas que contaminen el análisis.
+        if domain == "financial_compliance":
+            sidecar_meta = _load_sidecar_metadata_context(clean_path)
+            compliance_context = document_context or ""
+            if sidecar_meta:
+                compliance_context = (
+                    f"{compliance_context}\n\n{sidecar_meta}" if compliance_context else sidecar_meta
+                )
+            compliance_block = self._compliance_agent.build_diagnostic(
+                user_query=user_query,
+                analysis_stdout=resultados,
+                document_context=compliance_context,
             )
-
-        compliance_block = self._compliance_agent.build_diagnostic(
-            user_query=user_query,
-            analysis_stdout=resultados,
-            document_context=compliance_context,
-        )
-        if compliance_block:
-            text = f"{text.strip()}\n\n{compliance_block.strip()}"
+            if compliance_block:
+                text = f"{text.strip()}\n\n{compliance_block.strip()}"
 
         # ── Re-render del PDF con la narrativa REAL ya generada ─────────────────
         # El LLM generó el PDF pasando `contexto_documentos` (vacío o solo docs
@@ -934,9 +976,12 @@ class AnalystAgent:
         except Exception as e:
             return f"Error al leer la estructura del archivo local: {e}", None
 
+        domain = classify_domain(list(df_sample.columns))
+        print(f"DEBUG: dominio clasificado → {domain} | columnas: {list(df_sample.columns)[:8]}")
+
         clean_path = data_file_path.replace("\\", "/")
         path_lower = clean_path.lower()
-        read_instruction = self._build_read_instruction(clean_path, path_lower, csv_encoding)
+        read_instruction = self._build_read_instruction(clean_path, path_lower, csv_encoding, domain=domain)
         plot_filename = f"output_plot_{chat_id}.png" if chat_id else "output_plot.png"
         report_pdf_path = (
             os.path.join(os.path.abspath(user_data_folder), "reporte_final.pdf")
@@ -959,6 +1004,7 @@ class AnalystAgent:
             report_excel_path.replace("\\", "/"),
             report_config=report_config,
             require_strict_data=require_strict_data,
+            domain=domain,
         )
 
         try:
@@ -984,6 +1030,7 @@ class AnalystAgent:
                 plot_filename,
                 report_config=report_config,
                 generate_echarts=generate_echarts,
+                domain=domain,
             )
         except Exception as e:
             print(f"Error ejecutando código local: {e}")
@@ -1010,6 +1057,7 @@ class AnalystAgent:
                         plot_filename,
                         report_config=report_config,
                         generate_echarts=generate_echarts,
+                        domain=domain,
                     )
             except Exception as e2:
                 print(f"Error en reintento de corrección: {e2}")
