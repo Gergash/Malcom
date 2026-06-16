@@ -48,3 +48,5 @@ El iframe tiene dos estados de tamaño:
 - Cerrado (inicial): 240×70 px — solo la burbuja flotante.
 - Abierto: min(960px,100vw) × min(92vh,100vh) — panel completo del asistente.
 El widget avisa al loader con postMessage { type: 'insightflow-widget', action: 'resize', open: true|false }.
+Si el widget.js en Medios está en caché vieja, el loader también observa la clase .is-open en el iframe
+(mismo origen) como respaldo.

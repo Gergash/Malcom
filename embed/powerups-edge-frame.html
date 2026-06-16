@@ -19,6 +19,13 @@
     }
     #powerups-edge-chat { pointer-events: auto; }
   </style>
+  <script>
+    try {
+      if (window.parent !== window) {
+        document.documentElement.classList.add('powerups-edge-in-iframe');
+      }
+    } catch (e) {}
+  </script>
 </head>
 <body>
 <!-- Marcado copiado desde powerups-edge-widget-markup.html (mantener en sync). -->

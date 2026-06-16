@@ -29,12 +29,14 @@
   var BUBBLE_H = 70;
   var HOST_INSET = "18px";
 
-  function cerrarInsightFlow(host) {
+  function cerrarInsightFlow(host, w, h) {
     if (!host) return;
-    host.style.width = BUBBLE_W + "px";
-    host.style.height = BUBBLE_H + "px";
-    host.style.maxWidth = BUBBLE_W + "px";
-    host.style.maxHeight = BUBBLE_H + "px";
+    var bw = w && w > 0 ? Math.ceil(w) : BUBBLE_W;
+    var bh = h && h > 0 ? Math.ceil(h) : BUBBLE_H;
+    host.style.width = bw + "px";
+    host.style.height = bh + "px";
+    host.style.maxWidth = bw + "px";
+    host.style.maxHeight = bh + "px";
     host.setAttribute("data-powerups-open", "false");
   }
 
@@ -47,13 +49,48 @@
     host.setAttribute("data-powerups-open", "true");
   }
 
-  function wireIframeResize(host) {
+  function handleResizeMessage(host, ifr, ev) {
+    var data = ev.data;
+    if (!data || data.type !== "insightflow-widget" || data.action !== "resize") return;
+    if (ifr && ifr.contentWindow && ev.source && ev.source !== ifr.contentWindow) return;
+    if (data.open) abrirInsightFlow(host);
+    else cerrarInsightFlow(host, data.width, data.height);
+  }
+
+  function wireIframeResize(host, ifr) {
     window.addEventListener("message", function (ev) {
-      var data = ev.data;
-      if (!data || data.type !== "insightflow-widget" || data.action !== "resize") return;
-      if (data.open) abrirInsightFlow(host);
-      else cerrarInsightFlow(host);
+      handleResizeMessage(host, ifr, ev);
     });
+  }
+
+  /** Mismo origen (WP uploads): observa .is-open si postMessage falla o hay caché vieja del widget. */
+  function wireIframeOpenStateSync(host, ifr) {
+    function syncFromRoot(root) {
+      if (!root) return;
+      if (root.classList.contains("is-open")) abrirInsightFlow(host);
+      else cerrarInsightFlow(host);
+    }
+    function attach(doc) {
+      if (!doc) return;
+      var root = doc.getElementById("powerups-edge-chat");
+      if (!root) return;
+      syncFromRoot(root);
+      if (typeof MutationObserver === "undefined") return;
+      new MutationObserver(function () { syncFromRoot(root); }).observe(root, {
+        attributes: true,
+        attributeFilter: ["class"],
+      });
+    }
+    ifr.addEventListener("load", function () {
+      try {
+        attach(ifr.contentDocument || (ifr.contentWindow && ifr.contentWindow.document));
+      } catch (e) { /* cross-origin */ }
+    });
+    try {
+      if (ifr.contentDocument && ifr.contentDocument.getElementById("powerups-edge-chat")) {
+        attach(ifr.contentDocument);
+      }
+    } catch (e) { /* not loaded */ }
   }
 
   var script = document.currentScript;
@@ -142,7 +179,8 @@
   wrap.appendChild(ifr);
 
   cerrarInsightFlow(wrap);
-  wireIframeResize(wrap);
+  wireIframeResize(wrap, ifr);
+  wireIframeOpenStateSync(wrap, ifr);
 
   window.POWERUPS_WIDGET_LOADER_API = window.POWERUPS_WIDGET_LOADER_API || {};
   window.POWERUPS_WIDGET_LOADER_API.abrirInsightFlow = function () { abrirInsightFlow(wrap); };

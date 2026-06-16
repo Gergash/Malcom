@@ -51,14 +51,31 @@
 
   function el(id) { return document.getElementById(id); }
 
+  function isEmbedHost() {
+    try { return window.parent !== window; } catch (e) { return false; }
+  }
+
+  function measureBubbleHostSize() {
+    var toggle = el('powerups-edge-toggle');
+    if (!toggle) return { w: 240, h: 70 };
+    var r = toggle.getBoundingClientRect();
+    return {
+      w: Math.max(160, Math.ceil(r.width) + 12),
+      h: Math.max(48, Math.ceil(r.height) + 12),
+    };
+  }
+
   /** Notifica al host (widget-loader) que redimensione el iframe: pequeño = burbuja, grande = panel abierto. */
   function notifyParentFrameSize(open) {
-    if (window.parent === window) return;
+    if (!isEmbedHost()) return;
+    var payload = { type: 'insightflow-widget', action: 'resize', open: !!open };
+    if (!open) {
+      var m = measureBubbleHostSize();
+      payload.width = m.w;
+      payload.height = m.h;
+    }
     try {
-      window.parent.postMessage(
-        { type: 'insightflow-widget', action: 'resize', open: !!open },
-        '*'
-      );
+      window.parent.postMessage(payload, '*');
     } catch (e) { /* cross-origin */ }
   }
 
@@ -517,7 +534,10 @@
 
   function applySavedPanelSize() {
     var panel = el('powerups-edge-panel');
+    var root = el('powerups-edge-chat');
     if (!panel) return;
+    if (!root || !root.classList.contains('is-open')) return;
+    if (isEmbedHost() && window.innerHeight < 200) return;
     if (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 480px)').matches) {
       panel.style.width = '';
       panel.style.height = '';
@@ -733,24 +753,35 @@
     var sendBtn = el('powerups-edge-send');
     var file = el('powerups-edge-file');
 
-    applySavedPanelSize();
+    if (isEmbedHost()) {
+      document.documentElement.classList.add('powerups-edge-in-iframe');
+    }
+
     wirePanelResizePersistence();
     wirePanelDragResize();
     wirePanelViewportClamp();
     updatePortalLinks();
     notifyParentFrameSize(false);
+    setTimeout(function () { notifyParentFrameSize(false); }, 120);
+    setTimeout(function () { notifyParentFrameSize(false); }, 480);
 
     toggle.addEventListener('click', function () {
       var open = !root.classList.contains('is-open');
-      root.classList.toggle('is-open', open);
-      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-      panel.setAttribute('aria-hidden', open ? 'false' : 'true');
-      notifyParentFrameSize(open);
       if (open) {
+        notifyParentFrameSize(true);
+        root.classList.add('is-open');
+        toggle.setAttribute('aria-expanded', 'true');
+        panel.setAttribute('aria-hidden', 'false');
+        applySavedPanelSize();
         updatePortalLinks();
         hydrateFromStorage();
         refreshCredits();
         setTimeout(function () { input.focus(); }, 280);
+      } else {
+        root.classList.remove('is-open');
+        toggle.setAttribute('aria-expanded', 'false');
+        panel.setAttribute('aria-hidden', 'true');
+        notifyParentFrameSize(false);
       }
     });
     closeBtn.addEventListener('click', function () {
