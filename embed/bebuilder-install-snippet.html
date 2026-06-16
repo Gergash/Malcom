@@ -35,6 +35,37 @@
   var baseDir = String(LOADER.assetsBase || "").trim().replace(/\/?$/, "/");
   if (!baseDir) return;
 
+  var BUBBLE_W = 240;
+  var BUBBLE_H = 70;
+  var HOST_INSET = "18px";
+
+  function cerrarInsightFlow(host) {
+    if (!host) return;
+    host.style.width = BUBBLE_W + "px";
+    host.style.height = BUBBLE_H + "px";
+    host.style.maxWidth = BUBBLE_W + "px";
+    host.style.maxHeight = BUBBLE_H + "px";
+    host.setAttribute("data-powerups-open", "false");
+  }
+
+  function abrirInsightFlow(host) {
+    if (!host) return;
+    host.style.width = "min(960px, 100vw)";
+    host.style.height = "min(92vh, 100vh)";
+    host.style.maxWidth = "100vw";
+    host.style.maxHeight = "100vh";
+    host.setAttribute("data-powerups-open", "true");
+  }
+
+  function wireIframeResize(host) {
+    window.addEventListener("message", function (ev) {
+      var data = ev.data;
+      if (!data || data.type !== "insightflow-widget" || data.action !== "resize") return;
+      if (data.open) abrirInsightFlow(host);
+      else cerrarInsightFlow(host);
+    });
+  }
+
   var frameHref = LOADER.frameUrl || (baseDir + "powerups-edge-frame.html");
   var u;
   try {
@@ -65,9 +96,18 @@
   }
   wrap.setAttribute("data-powerups-widget-host", "");
   wrap.style.cssText = [
-    "position:fixed", "inset:0", "width:100%", "height:100%",
-    "border:0", "margin:0", "padding:0", "pointer-events:none",
-    "z-index:" + String(z), "background:transparent",
+    "position:fixed",
+    "right:" + HOST_INSET,
+    "bottom:" + HOST_INSET,
+    "left:auto",
+    "top:auto",
+    "border:0",
+    "margin:0",
+    "padding:0",
+    "pointer-events:none",
+    "z-index:" + String(z),
+    "background:transparent",
+    "overflow:visible",
   ].join(";");
 
   var ifr = document.createElement("iframe");
@@ -79,12 +119,20 @@
   ifr.setAttribute("allow", "clipboard-write");
   ifr.referrerPolicy = "strict-origin-when-cross-origin";
   ifr.style.cssText = [
-    "position:absolute", "right:0", "bottom:0", "left:auto", "top:auto",
-    "width:min(960px,100vw)", "height:min(92vh,100vh)", "max-height:100vh",
-    "border:0", "margin:0", "padding:0", "background:transparent",
+    "position:absolute",
+    "inset:0",
+    "width:100%",
+    "height:100%",
+    "border:0",
+    "margin:0",
+    "padding:0",
+    "background:transparent",
     "pointer-events:auto",
   ].join(";");
   ifr.src = u.toString();
   wrap.appendChild(ifr);
+
+  cerrarInsightFlow(wrap);
+  wireIframeResize(wrap);
 })();
 </script>

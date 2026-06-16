@@ -51,6 +51,17 @@
 
   function el(id) { return document.getElementById(id); }
 
+  /** Notifica al host (widget-loader) que redimensione el iframe: pequeño = burbuja, grande = panel abierto. */
+  function notifyParentFrameSize(open) {
+    if (window.parent === window) return;
+    try {
+      window.parent.postMessage(
+        { type: 'insightflow-widget', action: 'resize', open: !!open },
+        '*'
+      );
+    } catch (e) { /* cross-origin */ }
+  }
+
   function apiOriginBase() {
     return String(CONFIG.API_BASE || '').replace(/\/$/, '');
   }
@@ -727,12 +738,14 @@
     wirePanelDragResize();
     wirePanelViewportClamp();
     updatePortalLinks();
+    notifyParentFrameSize(false);
 
     toggle.addEventListener('click', function () {
       var open = !root.classList.contains('is-open');
       root.classList.toggle('is-open', open);
       toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
       panel.setAttribute('aria-hidden', open ? 'false' : 'true');
+      notifyParentFrameSize(open);
       if (open) {
         updatePortalLinks();
         hydrateFromStorage();
@@ -744,6 +757,7 @@
       root.classList.remove('is-open');
       toggle.setAttribute('aria-expanded', 'false');
       panel.setAttribute('aria-hidden', 'true');
+      notifyParentFrameSize(false);
     });
 
     el('powerups-edge-paywall-pay').addEventListener('click', function () {

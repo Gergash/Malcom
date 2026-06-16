@@ -1,14 +1,15 @@
 /**
  * Host (WordPress / BeBuilder): coloca este script al final del body (hook "Bottom").
- * No pegues el iframe aquí: el loader crea un lienzo a pantalla completa; el documento
- * del iframe (#powerups-edge-chat) recoge los clics; el resto deja pasar los eventos
- * según powerups-edge-frame.html (body transparente).
+ *
+ * El iframe inicia PEQUEÑO (solo la burbuja, ~240×70) para no bloquear clics en la página.
+ * Cuando el usuario abre el asistente, powerups-edge-widget.js envía postMessage y el
+ * iframe crece a min(960px,100vw) × min(92vh,100vh).
  *
  * Opcional antes de este script:
  *   window.POWERUPS_WIDGET_CONFIG = { API_BASE: '…', CHECKOUT_URL: '…', … };
  *   window.POWERUPS_WIDGET_LOADER = {
  *     frameUrl: 'https://cdn…/powerups-edge-frame.html',
- *     assetsBase: 'https://…/uploads/2026/05/',  // misma carpeta que frame/css/js (p. ej. WordPress Medios)
+ *     assetsBase: 'https://…/uploads/2026/05/',
  *     zIndex: 2147483000
  *   };
  */
@@ -23,6 +24,37 @@
   var cfg = window.POWERUPS_WIDGET_CONFIG && typeof window.POWERUPS_WIDGET_CONFIG === "object"
     ? window.POWERUPS_WIDGET_CONFIG
     : {};
+
+  var BUBBLE_W = 240;
+  var BUBBLE_H = 70;
+  var HOST_INSET = "18px";
+
+  function cerrarInsightFlow(host) {
+    if (!host) return;
+    host.style.width = BUBBLE_W + "px";
+    host.style.height = BUBBLE_H + "px";
+    host.style.maxWidth = BUBBLE_W + "px";
+    host.style.maxHeight = BUBBLE_H + "px";
+    host.setAttribute("data-powerups-open", "false");
+  }
+
+  function abrirInsightFlow(host) {
+    if (!host) return;
+    host.style.width = "min(960px, 100vw)";
+    host.style.height = "min(92vh, 100vh)";
+    host.style.maxWidth = "100vw";
+    host.style.maxHeight = "100vh";
+    host.setAttribute("data-powerups-open", "true");
+  }
+
+  function wireIframeResize(host) {
+    window.addEventListener("message", function (ev) {
+      var data = ev.data;
+      if (!data || data.type !== "insightflow-widget" || data.action !== "resize") return;
+      if (data.open) abrirInsightFlow(host);
+      else cerrarInsightFlow(host);
+    });
+  }
 
   var script = document.currentScript;
   var baseDir = "";
@@ -74,15 +106,17 @@
   wrap.setAttribute("data-powerups-widget-host", "");
   wrap.style.cssText = [
     "position:fixed",
-    "inset:0",
-    "width:100%",
-    "height:100%",
+    "right:" + HOST_INSET,
+    "bottom:" + HOST_INSET,
+    "left:auto",
+    "top:auto",
     "border:0",
     "margin:0",
     "padding:0",
     "pointer-events:none",
     "z-index:" + String(z),
     "background:transparent",
+    "overflow:visible",
   ].join(";");
 
   var ifr = document.createElement("iframe");
@@ -93,17 +127,11 @@
   );
   ifr.setAttribute("allow", "clipboard-write");
   ifr.referrerPolicy = "strict-origin-when-cross-origin";
-  /* Solo la esquina inferior derecha: evita iframe 100%×100% con body pointer-events:none,
-   * que en Chrome/Safari hace que los clics «atraviesen» al padre y la burbuja no reciba el evento. */
   ifr.style.cssText = [
     "position:absolute",
-    "right:0",
-    "bottom:0",
-    "left:auto",
-    "top:auto",
-    "width:min(960px,100vw)",
-    "height:min(92vh,100vh)",
-    "max-height:100vh",
+    "inset:0",
+    "width:100%",
+    "height:100%",
     "border:0",
     "margin:0",
     "padding:0",
@@ -112,4 +140,11 @@
   ].join(";");
   ifr.src = u.toString();
   wrap.appendChild(ifr);
+
+  cerrarInsightFlow(wrap);
+  wireIframeResize(wrap);
+
+  window.POWERUPS_WIDGET_LOADER_API = window.POWERUPS_WIDGET_LOADER_API || {};
+  window.POWERUPS_WIDGET_LOADER_API.abrirInsightFlow = function () { abrirInsightFlow(wrap); };
+  window.POWERUPS_WIDGET_LOADER_API.cerrarInsightFlow = function () { cerrarInsightFlow(wrap); };
 })();

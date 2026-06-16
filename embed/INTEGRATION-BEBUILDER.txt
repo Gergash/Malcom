@@ -16,8 +16,10 @@ No. En BeBuilder no hace falta (ni conviene) un bloque con <iframe> en la secci�
 El hook "Bottom" (o un único bloque HTML al pie) incluye solo:
   1) script opcional con window.POWERUPS_WIDGET_CONFIG
   2) <script src=".../widget-loader.js" defer>
-El loader crea el iframe a pantalla completa encima del sitio. El documento interno usa fondo transparente
-y pointer-events para que solo la burbuja/panel capture clics cuando toca (ver powerups-edge-frame.html).
+El loader crea un contenedor fijo en la esquina inferior derecha. El iframe inicia PEQUEÑO
+(240×70 px, solo la burbuja) y crece a min(960px,100vw)×min(92vh,100vh) cuando el usuario
+abre el chat (postMessage desde powerups-edge-widget.js). Así no bloquea clics en el resto
+de la página mientras el asistente está cerrado.
 
 Origen y localStorage
 ---------------------
@@ -42,6 +44,7 @@ subir ese .html a Medios (si lo abres en el navegador puede verse en blanco: es 
 de cargar widget-loader.js por HTTP. En Medios deben existir al menos:
 powerups-edge-frame.html, powerups-edge-widget.js, powerups-edge-widget.css (misma carpeta).
 
-El iframe ya no es 100%×100%: solo cubre la esquina inferior derecha (~960×92vh),
-para que la burbuja reciba clics (un iframe a pantalla completa con body pointer-events:none
-hacía que muchos navegadores enviaran el clic al padre).
+El iframe tiene dos estados de tamaño:
+- Cerrado (inicial): 240×70 px — solo la burbuja flotante.
+- Abierto: min(960px,100vw) × min(92vh,100vh) — panel completo del asistente.
+El widget avisa al loader con postMessage { type: 'insightflow-widget', action: 'resize', open: true|false }.
