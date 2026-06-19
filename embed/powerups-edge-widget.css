@@ -6,6 +6,11 @@
 .powerups-edge-in-iframe .powerups-edge:not(.is-open) .powerups-edge__panel {
   display: none !important;
 }
+.powerups-edge-in-iframe,
+.powerups-edge-in-iframe body {
+  overflow: hidden !important;
+  overscroll-behavior: none;
+}
 
 .powerups-edge {
   --pu-bg: #0e1116;

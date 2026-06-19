@@ -1,7 +1,7 @@
 /**
  * Host (WordPress / BeBuilder): coloca este script al final del body (hook "Bottom").
  *
- * El iframe inicia PEQUEÑO (solo la burbuja, ~240×70) para no bloquear clics en la página.
+ * El iframe inicia PEQUEÑO (solo la burbuja, ~280×80) para no bloquear clics en la página.
  * Cuando el usuario abre el asistente, powerups-edge-widget.js envía postMessage y el
  * iframe crece a min(960px,100vw) × min(92vh,100vh).
  *
@@ -9,7 +9,7 @@
  *   window.POWERUPS_WIDGET_CONFIG = { API_BASE: '…', CHECKOUT_URL: '…', … };
  *   window.POWERUPS_WIDGET_LOADER = {
  *     frameUrl: 'https://cdn…/powerups-edge-frame.html',
- *     assetsBase: 'https://…/uploads/2026/05/',
+ *     assetsBase: 'https://…/uploads/2026/06/',
  *     zIndex: 2147483000
  *   };
  */
@@ -25,18 +25,26 @@
     ? window.POWERUPS_WIDGET_CONFIG
     : {};
 
-  var BUBBLE_W = 240;
-  var BUBBLE_H = 70;
+  var BUBBLE_W = 280;
+  var BUBBLE_H = 80;
   var HOST_INSET = "18px";
+  var DEFAULT_ASSETS_BASE = "https://www.powerupsagencia.com/wp-content/uploads/2026/06/";
+
+  function clampBubbleSize(w, h) {
+    return {
+      w: Math.max(BUBBLE_W, w && w > 0 ? Math.ceil(w) : BUBBLE_W),
+      h: Math.max(BUBBLE_H, h && h > 0 ? Math.ceil(h) : BUBBLE_H),
+    };
+  }
 
   function cerrarInsightFlow(host, w, h) {
     if (!host) return;
-    var bw = w && w > 0 ? Math.ceil(w) : BUBBLE_W;
-    var bh = h && h > 0 ? Math.ceil(h) : BUBBLE_H;
-    host.style.width = bw + "px";
-    host.style.height = bh + "px";
-    host.style.maxWidth = bw + "px";
-    host.style.maxHeight = bh + "px";
+    var size = clampBubbleSize(w, h);
+    host.style.width = size.w + "px";
+    host.style.height = size.h + "px";
+    host.style.maxWidth = size.w + "px";
+    host.style.maxHeight = size.h + "px";
+    host.style.overflow = "hidden";
     host.setAttribute("data-powerups-open", "false");
   }
 
@@ -46,7 +54,20 @@
     host.style.height = "min(92vh, 100vh)";
     host.style.maxWidth = "100vw";
     host.style.maxHeight = "100vh";
+    host.style.overflow = "visible";
     host.setAttribute("data-powerups-open", "true");
+  }
+
+  function measureBubbleFromIframe(ifr) {
+    try {
+      var doc = ifr.contentDocument || (ifr.contentWindow && ifr.contentWindow.document);
+      var toggle = doc && doc.getElementById("powerups-edge-toggle");
+      if (!toggle) return null;
+      var r = toggle.getBoundingClientRect();
+      return clampBubbleSize(r.width + 12, r.height + 12);
+    } catch (e) {
+      return null;
+    }
   }
 
   function handleResizeMessage(host, ifr, ev) {
@@ -68,22 +89,32 @@
     function syncFromRoot(root) {
       if (!root) return;
       if (root.classList.contains("is-open")) abrirInsightFlow(host);
-      else cerrarInsightFlow(host);
+      else {
+        var m = measureBubbleFromIframe(ifr);
+        cerrarInsightFlow(host, m && m.w, m && m.h);
+      }
     }
     function attach(doc) {
-      if (!doc) return;
+      if (!doc) return false;
       var root = doc.getElementById("powerups-edge-chat");
-      if (!root) return;
+      if (!root) return false;
       syncFromRoot(root);
-      if (typeof MutationObserver === "undefined") return;
+      if (typeof MutationObserver === "undefined") return true;
       new MutationObserver(function () { syncFromRoot(root); }).observe(root, {
         attributes: true,
         attributeFilter: ["class"],
       });
+      return true;
     }
     ifr.addEventListener("load", function () {
       try {
-        attach(ifr.contentDocument || (ifr.contentWindow && ifr.contentWindow.document));
+        var doc = ifr.contentDocument || (ifr.contentWindow && ifr.contentWindow.document);
+        if (!attach(doc)) {
+          console.error(
+            "[InsightFlow] El iframe no cargó powerups-edge-frame.html. " +
+            "Revise frameUrl/assetsBase (actual: " + String(ifr.src || "") + ").",
+          );
+        }
       } catch (e) { /* cross-origin */ }
     });
     try {
@@ -100,6 +131,9 @@
   }
   if (!baseDir && LOADER.assetsBase) {
     baseDir = String(LOADER.assetsBase).trim().replace(/\/?$/, "/");
+  }
+  if (!baseDir) {
+    baseDir = DEFAULT_ASSETS_BASE;
   }
 
   var frameHref;
@@ -158,6 +192,7 @@
 
   var ifr = document.createElement("iframe");
   ifr.setAttribute("title", LOADER.frameTitle || "InsightFlow asistente");
+  ifr.setAttribute("scrolling", "no");
   ifr.setAttribute(
     "sandbox",
     "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads allow-top-navigation-by-user-activation",
@@ -173,6 +208,7 @@
     "margin:0",
     "padding:0",
     "background:transparent",
+    "overflow:hidden",
     "pointer-events:auto",
   ].join(";");
   ifr.src = u.toString();

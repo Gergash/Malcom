@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>InsightFlow · Widget</title>
-  <link rel="stylesheet" href="powerups-edge-widget.css" />
+  <link rel="stylesheet" href="powerups-edge-widget.css?v=4" />
   <!-- ECharts para el tablero en vivo (renderizado inline, sin iframe secundario). -->
   <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
   <!-- Carga dentro de iframe: fondo transparente; solo el bloque .powerups-edge recibe clics (no tapa la página padre). -->
@@ -14,10 +14,31 @@
       width: 100%;
       height: 100%;
       background: transparent !important;
-      overflow: hidden;
+      overflow: hidden !important;
       pointer-events: none;
+      overscroll-behavior: none;
     }
     #powerups-edge-chat { pointer-events: auto; }
+    /* Crítico en iframe: evita que el tema WP pise el botón y recorte la burbuja */
+    .powerups-edge-in-iframe .powerups-edge:not(.is-open) {
+      right: 0 !important;
+      bottom: 0 !important;
+      left: auto !important;
+      top: auto !important;
+    }
+    .powerups-edge-in-iframe .powerups-edge:not(.is-open) .powerups-edge__panel {
+      display: none !important;
+    }
+    .powerups-edge-in-iframe .powerups-edge__toggle {
+      appearance: none;
+      -webkit-appearance: none;
+      background: linear-gradient(145deg, #161b24, #0f141d) !important;
+      color: #e8edf5 !important;
+      border: 1px solid #2a3344 !important;
+      border-radius: 999px !important;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45) !important;
+      font-family: system-ui, "Segoe UI", Roboto, Arial, sans-serif !important;
+    }
   </style>
   <script>
     try {
@@ -138,6 +159,6 @@
 </div>
 
   <script>window.POWERUPS_WIDGET_CONFIG = window.POWERUPS_WIDGET_CONFIG || {};</script>
-  <script src="powerups-edge-widget.js" defer></script>
+  <script src="powerups-edge-widget.js?v=4" defer></script>
 </body>
 </html>

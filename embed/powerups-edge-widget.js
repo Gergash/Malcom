@@ -57,11 +57,11 @@
 
   function measureBubbleHostSize() {
     var toggle = el('powerups-edge-toggle');
-    if (!toggle) return { w: 240, h: 70 };
+    if (!toggle) return { w: 280, h: 80 };
     var r = toggle.getBoundingClientRect();
     return {
-      w: Math.max(160, Math.ceil(r.width) + 12),
-      h: Math.max(48, Math.ceil(r.height) + 12),
+      w: Math.max(280, Math.ceil(r.width) + 12),
+      h: Math.max(80, Math.ceil(r.height) + 12),
     };
   }
 
