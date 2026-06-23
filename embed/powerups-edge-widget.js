@@ -56,13 +56,74 @@
   }
 
   function measureBubbleHostSize() {
+    var root = el('powerups-edge-chat');
+    var launcher = el('powerups-edge-launcher');
     var toggle = el('powerups-edge-toggle');
-    if (!toggle) return { w: 280, h: 80 };
-    var r = toggle.getBoundingClientRect();
+    var hint = el('powerups-edge-bubble-hint');
+    var target = launcher || toggle;
+    if (!target) return { w: 336, h: 96 };
+    var r = target.getBoundingClientRect();
+    var w = Math.ceil(r.width) + 16;
+    var h = Math.ceil(r.height) + 16;
+    if (root && hint && root.classList.contains('is-hint-visible') && !root.classList.contains('is-open')) {
+      var hr = hint.getBoundingClientRect();
+      w = Math.ceil(r.width + hr.width + 28);
+      h = Math.max(h, Math.ceil(Math.max(r.height, hr.height) + 16));
+    }
     return {
-      w: Math.max(280, Math.ceil(r.width) + 12),
-      h: Math.max(80, Math.ceil(r.height) + 12),
+      w: Math.max(336, w),
+      h: Math.max(96, h),
     };
+  }
+
+  function wireBubbleHint(root) {
+    var launcher = el('powerups-edge-launcher');
+    if (!launcher || !root) return;
+    var hintTimer = null;
+    var HINT_DELAY_MS = 5000;
+
+    function showHint() {
+      if (root.classList.contains('is-open')) return;
+      root.classList.add('is-hint-visible');
+      notifyParentFrameSize(false);
+    }
+    function hideHint() {
+      root.classList.remove('is-hint-visible');
+      notifyParentFrameSize(false);
+    }
+    function scheduleHint() {
+      if (hintTimer) clearTimeout(hintTimer);
+      hintTimer = setTimeout(showHint, HINT_DELAY_MS);
+    }
+    function clearHintSchedule() {
+      if (hintTimer) clearTimeout(hintTimer);
+      hintTimer = null;
+    }
+
+    scheduleHint();
+
+    launcher.addEventListener('mouseenter', function () {
+      clearHintSchedule();
+      showHint();
+    });
+    launcher.addEventListener('mouseleave', function () {
+      hideHint();
+      scheduleHint();
+    });
+    launcher.addEventListener('focusin', function () {
+      clearHintSchedule();
+      showHint();
+    });
+    launcher.addEventListener('focusout', function () {
+      hideHint();
+      scheduleHint();
+    });
+
+    root.__powerupsClearBubbleHint = function () {
+      clearHintSchedule();
+      hideHint();
+    };
+    root.__powerupsScheduleBubbleHint = scheduleHint;
   }
 
   /** Notifica al host (widget-loader) que redimensione el iframe: pequeño = burbuja, grande = panel abierto. */
@@ -761,6 +822,7 @@
     wirePanelDragResize();
     wirePanelViewportClamp();
     updatePortalLinks();
+    wireBubbleHint(root);
     notifyParentFrameSize(false);
     setTimeout(function () { notifyParentFrameSize(false); }, 120);
     setTimeout(function () { notifyParentFrameSize(false); }, 480);
@@ -768,6 +830,7 @@
     toggle.addEventListener('click', function () {
       var open = !root.classList.contains('is-open');
       if (open) {
+        if (root.__powerupsClearBubbleHint) root.__powerupsClearBubbleHint();
         notifyParentFrameSize(true);
         root.classList.add('is-open');
         toggle.setAttribute('aria-expanded', 'true');
@@ -789,6 +852,7 @@
       toggle.setAttribute('aria-expanded', 'false');
       panel.setAttribute('aria-hidden', 'true');
       notifyParentFrameSize(false);
+      if (root.__powerupsScheduleBubbleHint) root.__powerupsScheduleBubbleHint();
     });
 
     el('powerups-edge-paywall-pay').addEventListener('click', function () {

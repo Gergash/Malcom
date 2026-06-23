@@ -1,3 +1,294 @@
-German Vargas danielmoncada@gmail.com 310 6429310 cedula de ciudadanía 1167321395
-Daniel Pedraza camilomena@gmail.com 322 8911285 cedula de ciudadanía 1216531793
-Camila mendoza melomania@gmail.om 324 4126969 cedula de ciudadanía 1735120328
+# Arquitectura actual de InsightFlow (Malcom)
+
+InsightFlow es la plataforma de **Business Intelligence conversacional** de Power Ups. Permite que organizaciones y gobiernos suban datos (CSV, Excel, PDF, etc.), hagan preguntas en lenguaje natural y reciban análisis, cumplimiento normativo colombiano, gráficas interactivas y reportes PDF/Excel. El núcleo técnico vive en el repositorio **Malcom**, con una arquitectura híbrida **Go + Python** orquestada por Docker.
+
+---
+
+## 1. Visión general
+
+El sistema separa responsabilidades en tres capas:
+
+| Capa | Rol | Tecnología |
+|------|-----|------------|
+| **Borde público** | API REST, seguridad, pagos, archivos, tokens | Go (Gin + GORM) |
+| **Cerebro analítico** | Agentes de IA, sandbox Python, reportes | Python (FastAPI) |
+| **Canales de entrada** | Widget web, Telegram | JS vanilla + python-telegram-bot |
+
+La API Go es el **único servicio expuesto al exterior** (`:8080`). El worker Python (**brain**) corre en red interna Docker y no publica puertos al host.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  CANALES DE ENTRADA                                                 │
+│  • Widget WordPress/BeBuilder (embed/)                              │
+│  • Bot Telegram (app/main.py)                                       │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │ HTTPS
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  API GO — Malcom (:8080)                                            │
+│  Rate limit · CORS · Paywall · Upload · Billing · Tokens dashboard  │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │ HTTP interno (WORKER_URL)
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  BRAIN — Worker Python (:8001, solo red Docker)                      │
+│  Orchestrator → Analyst / Predictor / Knowledge / Compliance        │
+│  Gemini 2.5-flash (+ fallback Ollama) · Sandbox · Reportes          │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+              ┌──────────────┴──────────────┐
+              ▼                             ▼
+       PostgreSQL :5432              data/{chat_id}/
+       (usuarios, chats, pagos)      (archivos, gráficas, RAG)
+```
+
+---
+
+## 2. Servicios en runtime (Docker Compose)
+
+Cuatro contenedores principales:
+
+| Servicio | Puerto | Función |
+|----------|--------|---------|
+| **postgres** | 5432 | Base de datos relacional |
+| **api** | 8080 | API pública Go |
+| **brain** | 8001 (interno) | Motor de agentes FastAPI |
+| **bot** | — | Bot de Telegram (long-polling) |
+
+El volumen `./data` se monta en **api** y **brain** para compartir archivos por `chat_id`. En desarrollo, **ngrok** apunta al puerto 8080 del host para exponer la API a WordPress.
+
+---
+
+## 3. API Go — borde y gobierno del producto
+
+Punto de entrada: `cmd/api/main.go`.
+
+### Responsabilidades
+- **Autenticación implícita por `chat_id`**: cada sesión de widget/Telegram tiene un identificador numérico persistido en `localStorage` o en el bot.
+- **Paywall y créditos**: usuarios free tienen límite de mensajes (por defecto **15**); premium desbloquea PDF, Excel y ECharts.
+- **Subida de archivos**: validación de tamaño, almacenamiento en `data/{chat_id}/`, delegación al brain para ingesta.
+- **Orquestación**: la API no ejecuta IA; llama al brain vía `internal/worker/client.go`.
+- **Pagos**: webhooks Wompi y Bold; activación premium en PostgreSQL.
+- **Artefactos**: tokens de descarga, sesiones de dashboard ECharts, rutas seguras `/download/:token`.
+
+### Endpoints principales (`/api/v1`)
+
+| Método | Ruta | Uso |
+|--------|------|-----|
+| POST | `/chat` | Enviar mensaje al agente |
+| POST | `/chat/upload` | Subir CSV/PDF/Excel |
+| GET | `/chat/:chat_id/credits` | Estado de créditos / premium |
+| POST | `/chat/token/refresh` | Token para dashboard ECharts |
+| GET | `/billing/status` | Estado de facturación |
+| POST | `/billing/webhook` | Webhook genérico de pago |
+| POST | `/billing/bold-webhook` | Webhook Bold (HMAC) |
+| GET | `/dashboard/session/:token` | JSON de sesión ECharts |
+| GET | `/health` | Health check |
+
+### Seguridad
+- Rate limiting por IP en chat.
+- CORS configurable.
+- Cabeceras de seguridad (CSP, frame-ancestors para embebidos).
+- Path jail en `internal/filesystem/` para acceso seguro a `data/`.
+- El brain **nunca** es accesible desde internet.
+
+---
+
+## 4. Brain Python — motor de inteligencia
+
+Servicio: `app/worker.py` (FastAPI, uvicorn).
+
+### Endpoints internos
+- `POST /internal/process-message` — procesa texto del usuario.
+- `POST /internal/ingest-file` — indexa o guarda archivos subidos.
+
+### Orchestrator (`app/core/orchestrator.py`)
+Enruta cada mensaje según intención y archivos disponibles en `data/{chat_id}/`:
+
+```
+Mensaje entrante
+      │
+      ├─ ¿Predicción/inventario? ──► PredictorAgent
+      │
+      └─ Análisis general ──► AnalystAgent
+                                    │
+                                    ├─ ComplianceAgent (normativa CO)
+                                    ├─ KnowledgeAgent (RAG en PDF/DOCX)
+                                    └─ Artefactos: PNG, PDF, Excel, ECharts
+```
+
+### Agentes
+
+| Agente | Archivo | Función |
+|--------|---------|---------|
+| **AnalystAgent** | `analyst_agent.py` | Análisis tabular; genera y ejecuta código Python en sandbox (`safe_exec`) |
+| **PredictorAgent** | `predictor_agent.py` | Forecast, inventario, recomendaciones |
+| **KnowledgeAgent** | `knowledge_agent.py` | RAG vectorial por chat (embeddings Gemini, almacén JSON local) |
+| **ComplianceAgent** | `compliance_agent.py` | Diagnóstico normativo/aduanero colombiano |
+| **ModelManager** | `model_manager.py` | Gemini 2.5-flash primario; fallback a Ollama local (soberanía de datos) |
+
+### Pipeline de datos (`data_cleaner.py`)
+Antes del LLM, limpieza determinista:
+1. Metadatos sidecar (`.meta.json` vía mini-prompt Ollama).
+2. Detección de headers y delimitadores (`|`, `;`).
+3. Anti-float en NIT/cédula.
+4. Normalización de monedas COP/USD.
+5. Fuzzy matching (ciudades, departamentos, aduanas, bancos).
+6. Cuarentena e imputación de nulos.
+
+### Salidas del análisis
+- Texto narrativo para el chat.
+- Gráfica matplotlib (`output_plot_{chat_id}.png`).
+- **ECharts option** (JSON) para dashboard premium inline.
+- PDF corporativo (`generar_reporte_premium_pdf`).
+- Excel con gráficas embebidas.
+
+Helpers en `app/core/echarts_builder.py`: barras, líneas, pie, heatmap, scatter, stacked bar, etc.
+
+---
+
+## 5. Capa de datos
+
+### PostgreSQL (GORM + SQLAlchemy)
+Modelos compartidos conceptualmente entre Go y Python:
+- **users** — plan, créditos, premium.
+- **conversations** — historial de mensajes.
+- **user_files** — metadatos de archivos subidos.
+- **payments** — transacciones y webhooks.
+- **download_tokens** — enlaces temporales de descarga.
+
+### Sistema de archivos (`data/{chat_id}/`)
+```
+data/{chat_id}/
+├── *.csv / *.xlsx / *.pdf     # Archivos del usuario
+├── *.meta.json                # Metadatos de limpieza
+├── output_plot_{chat_id}.png  # Gráfica matplotlib
+├── reporte_final.pdf / .xlsx  # Reportes generados
+└── vector_db/                 # Embeddings RAG (JSON)
+```
+
+Cada `chat_id` aísla datos entre usuarios/sesiones.
+
+---
+
+## 6. Embed web — widget en WordPress / BeBuilder
+
+Arquitectura **modular en iframe** (carpeta `embed/`).
+
+### Archivos y roles
+
+| Archivo | Dónde vive | Rol |
+|---------|------------|-----|
+| `bebuilder-install-snippet.html` | Hook Bottom WP (inline) | Loader + config |
+| `widget-loader.js` | Medios WP (opcional) | Misma lógica que el snippet |
+| `powerups-edge-frame.html` | Medios WP | Documento del iframe |
+| `powerups-edge-widget.js` | Medios WP | Lógica del chat |
+| `powerups-edge-widget.css` | Medios WP | Estilos |
+| `premium-portal.html` | Página WP | Portal premium |
+| `premium-dashboard-session.html` | Página WP | Visor ECharts en pestaña |
+
+Producción actual: `https://www.powerupsagencia.com/wp-content/uploads/2026/06/`
+
+### Flujo de carga en el sitio
+
+```
+Página WordPress (powerupsagencia.com)
+  │
+  ├─ Hook Bottom: POWERUPS_WIDGET_CONFIG + loader inline
+  │
+  └─ #powerups-edge-widget-host (contenedor fijo, esquina inferior derecha)
+        └─ <iframe src=".../powerups-edge-frame.html?apiBase=...">
+              ├─ powerups-edge-widget.css
+              ├─ ECharts CDN
+              └─ powerups-edge-widget.js
+```
+
+### Iframe en dos estados (fix reciente)
+| Estado | Tamaño del host | Comportamiento |
+|--------|-----------------|----------------|
+| **Cerrado** | ~280×80 px | Solo burbuja; no bloquea clics en la página |
+| **Abierto** | min(960px, 100vw) × min(92vh, 100vh) | Panel completo del chat |
+
+Sincronización host ↔ iframe:
+1. **postMessage** desde el widget: `{ type: 'insightflow-widget', action: 'resize', open: true|false }`
+2. **MutationObserver** en el loader (mismo origen): observa clase `.is-open` como respaldo.
+
+### Configuración cross-origin
+`POWERUPS_WIDGET_CONFIG` en la página padre no llega al iframe si son orígenes distintos. El loader copia `API_BASE`, `CHECKOUT_URL`, etc. a la **query string** del `src` del iframe; el widget las fusiona en `CONFIG`.
+
+### Funcionalidades del widget
+- Chat con historial en `localStorage` (origen del frame, no del sitio WP).
+- Subida de archivos vía `POST /api/v1/chat/upload`.
+- Barra de créditos y paywall ($40.000 COP).
+- **Tablero ECharts inline** (sin iframe secundario; evita bloqueos CSP/ngrok).
+- Historial de gráficas con navegación (← 2/4 →).
+- Links a portal premium y dashboard en pestaña nueva.
+- Acciones premium: PDF y Excel.
+
+---
+
+## 7. Telegram como canal paralelo
+
+`app/main.py` usa el mismo flujo que el widget:
+- Recibe mensajes/archivos del usuario.
+- Llama a `WORKER_URL/internal/process-message` (vía API o directamente según configuración).
+- Comparte orchestrator, agentes y almacenamiento `data/{chat_id}/`.
+
+Telegram y web son **canales distintos** que convergen en la misma arquitectura backend.
+
+---
+
+## 8. Modelo de negocio y premium
+
+| Tier | Límite | Capacidades |
+|------|--------|-------------|
+| **Free** | 15 mensajes | Análisis básico, gráfica matplotlib |
+| **Premium** | Ilimitado | PDF ejecutivo, Excel con gráficas, ECharts interactivo, dashboard en vivo |
+
+Flujo de pago:
+1. Usuario agota créditos → paywall en widget.
+2. Redirección a checkout WooCommerce (`CHECKOUT_URL` con `{chatId}`).
+3. Webhook Wompi/Bold → API Go activa premium en PostgreSQL.
+4. Widget refresca créditos y desbloquea acciones premium.
+
+---
+
+## 9. Despliegue típico en producción
+
+```
+Usuario (navegador)
+    → www.powerupsagencia.com (WordPress + widget iframe)
+    → ngrok / dominio público
+    → API Go :8080 (Docker)
+    → Brain :8001 (Docker, interno)
+    → PostgreSQL + data/
+
+Archivos estáticos del widget → WP Medios (2026/06/)
+API dinámica → ngrok → contenedor api
+```
+
+Variables críticas en `.env`:
+- `GEMINI_API_KEY`, `DATABASE_URL`, `WORKER_URL`
+- `FREE_MESSAGE_LIMIT=15`
+- `OLLAMA_TIMEOUT_SEC=300` (fallback local)
+- `CORS_ALLOWED_ORIGINS`, `CSP_FRAME_ANCESTORS` (dominios WP)
+- `PUBLIC_BASE_URL` (enlaces de descarga)
+
+---
+
+## 10. Principios de diseño
+
+1. **Separación Go/Python**: Go gobierna producto y seguridad; Python ejecuta IA y ciencia de datos.
+2. **Aislamiento por `chat_id`**: cada sesión tiene su carpeta y su RAG.
+3. **Soberanía de datos**: Ollama como fallback; datos en volumen local/Docker.
+4. **Embed no invasivo**: iframe pequeño cerrado, grande solo al abrir.
+5. **Artefactos accionables**: no solo texto; PDF, Excel y ECharts listos para decisión ejecutiva.
+6. **Cumplimiento Colombia**: ComplianceAgent + Ley 1581 mencionada en el widget.
+
+---
+
+## Resumen en una frase
+
+**InsightFlow es un sistema conversacional de BI** donde WordPress/Telegram capturan la intención del usuario, **Go** protege y factura, **Python** analiza con agentes especializados y multimodelo, y el **embed modular** entrega la experiencia en el sitio sin bloquear la navegación mientras el asistente está cerrado.
+
+Si quieres, en modo Agent puedo guardar esto como `docs/arquitectura.md` en el repositorio o ampliar alguna sección (agentes, pagos o embed).

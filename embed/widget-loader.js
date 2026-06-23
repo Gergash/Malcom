@@ -1,7 +1,7 @@
 /**
  * Host (WordPress / BeBuilder): coloca este script al final del body (hook "Bottom").
  *
- * El iframe inicia PEQUEÑO (solo la burbuja, ~280×80) para no bloquear clics en la página.
+ * El iframe inicia PEQUEÑO (solo la burbuja, ~336×96) para no bloquear clics en la página.
  * Cuando el usuario abre el asistente, powerups-edge-widget.js envía postMessage y el
  * iframe crece a min(960px,100vw) × min(92vh,100vh).
  *
@@ -25,8 +25,8 @@
     ? window.POWERUPS_WIDGET_CONFIG
     : {};
 
-  var BUBBLE_W = 280;
-  var BUBBLE_H = 80;
+  var BUBBLE_W = 336;
+  var BUBBLE_H = 96;
   var HOST_INSET = "18px";
   var DEFAULT_ASSETS_BASE = "https://www.powerupsagencia.com/wp-content/uploads/2026/06/";
 
@@ -61,7 +61,7 @@
   function measureBubbleFromIframe(ifr) {
     try {
       var doc = ifr.contentDocument || (ifr.contentWindow && ifr.contentWindow.document);
-      var toggle = doc && doc.getElementById("powerups-edge-toggle");
+      var toggle = doc && (doc.getElementById("powerups-edge-launcher") || doc.getElementById("powerups-edge-toggle"));
       if (!toggle) return null;
       var r = toggle.getBoundingClientRect();
       return clampBubbleSize(r.width + 12, r.height + 12);

@@ -36,8 +36,8 @@
   var baseDir = String(LOADER.assetsBase || DEFAULT_ASSETS_BASE).trim().replace(/\/?$/, "/");
   if (!baseDir) return;
 
-  var BUBBLE_W = 280;
-  var BUBBLE_H = 80;
+  var BUBBLE_W = 336;
+  var BUBBLE_H = 96;
   var HOST_INSET = "18px";
   var DEFAULT_ASSETS_BASE = "https://www.powerupsagencia.com/wp-content/uploads/2026/06/";
 
@@ -72,7 +72,7 @@
   function measureBubbleFromIframe(ifr) {
     try {
       var doc = ifr.contentDocument || (ifr.contentWindow && ifr.contentWindow.document);
-      var toggle = doc && doc.getElementById("powerups-edge-toggle");
+      var toggle = doc && (doc.getElementById("powerups-edge-launcher") || doc.getElementById("powerups-edge-toggle"));
       if (!toggle) return null;
       var r = toggle.getBoundingClientRect();
       return clampBubbleSize(r.width + 12, r.height + 12);

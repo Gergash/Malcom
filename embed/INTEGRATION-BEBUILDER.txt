@@ -45,7 +45,7 @@ de cargar widget-loader.js por HTTP. En Medios deben existir al menos:
 powerups-edge-frame.html, powerups-edge-widget.js, powerups-edge-widget.css (misma carpeta).
 
 El iframe tiene dos estados de tamaño:
-- Cerrado (inicial): 280×80 px — solo la burbuja flotante.
+- Cerrado (inicial): 336×96 px — burbuja (+20%) y micro-copy al hover o tras 5 s.
 - Abierto: min(960px,100vw) × min(92vh,100vh) — panel completo del asistente.
 El widget avisa al loader con postMessage { type: 'insightflow-widget', action: 'resize', open: true|false }.
 Si el widget.js en Medios está en caché vieja, el loader también observa la clase .is-open en el iframe

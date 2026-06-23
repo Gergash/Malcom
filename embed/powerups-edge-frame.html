@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>InsightFlow · Widget</title>
-  <link rel="stylesheet" href="powerups-edge-widget.css?v=4" />
+  <link rel="stylesheet" href="powerups-edge-widget.css?v=5" />
   <!-- ECharts para el tablero en vivo (renderizado inline, sin iframe secundario). -->
   <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
   <!-- Carga dentro de iframe: fondo transparente; solo el bloque .powerups-edge recibe clics (no tapa la página padre). -->
@@ -18,7 +18,7 @@
       pointer-events: none;
       overscroll-behavior: none;
     }
-    #powerups-edge-chat { pointer-events: auto; }
+    #powerups-edge-chat { pointer-events: auto; z-index: 2147483000 !important; }
     /* Crítico en iframe: evita que el tema WP pise el botón y recorte la burbuja */
     .powerups-edge-in-iframe .powerups-edge:not(.is-open) {
       right: 0 !important;
@@ -51,7 +51,11 @@
 <body>
 <!-- Marcado copiado desde powerups-edge-widget-markup.html (mantener en sync). -->
 <div id="powerups-edge-chat" class="powerups-edge" aria-live="polite">
-  <button type="button" class="powerups-edge__toggle" id="powerups-edge-toggle" aria-expanded="false" aria-controls="powerups-edge-panel" title="Abrir asistente InsightFlow">
+  <div class="powerups-edge__launcher" id="powerups-edge-launcher">
+    <p class="powerups-edge__bubble-hint" id="powerups-edge-bubble-hint" role="status" aria-live="polite">
+      ¿Necesitas analizar datos? Deja que Malcom lo haga por ti
+    </p>
+    <button type="button" class="powerups-edge__toggle" id="powerups-edge-toggle" aria-expanded="false" aria-controls="powerups-edge-panel" title="Abrir asistente InsightFlow">
     <span class="powerups-edge__sparkle-layer" aria-hidden="true">
       <svg viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M93.781 51.578C95 50.969 96 49.359 96 48c0-1.375-1-2.969-2.219-3.578 0 0-22.868-1.514-31.781-10.422-8.915-8.91-10.438-31.781-10.438-31.781C50.969 1 49.375 0 48 0s-2.969 1-3.594 2.219c0 0-1.5 22.87-10.406 31.781-8.908 8.913-31.781 10.422-31.781 10.422C1 45.031 0 46.625 0 48c0 1.359 1 2.969 2.219 3.578 0 0 22.873 1.51 31.781 10.422 8.906 8.911 10.406 31.781 10.406 31.781C45.031 95 46.625 96 48 96s2.969-1 3.562-2.219c0 0 1.523-22.871 10.438-31.781 8.913-8.908 31.781-10.422 31.781-10.422Z" fill="currentColor"/></svg>
       <svg viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M93.781 51.578C95 50.969 96 49.359 96 48c0-1.375-1-2.969-2.219-3.578 0 0-22.868-1.514-31.781-10.422-8.915-8.91-10.438-31.781-10.438-31.781C50.969 1 49.375 0 48 0s-2.969 1-3.594 2.219c0 0-1.5 22.87-10.406 31.781-8.908 8.913-31.781 10.422-31.781 10.422C1 45.031 0 46.625 0 48c0 1.359 1 2.969 2.219 3.578 0 0 22.873 1.51 31.781 10.422 8.906 8.911 10.406 31.781 10.406 31.781C45.031 95 46.625 96 48 96s2.969-1 3.562-2.219c0 0 1.523-22.871 10.438-31.781 8.913-8.908 31.781-10.422 31.781-10.422Z" fill="currentColor"/></svg>
@@ -69,6 +73,7 @@
       </span>
     </span>
   </button>
+  </div>
   <div class="powerups-edge__panel" id="powerups-edge-panel" aria-hidden="true" title="Arrastra los bordes izquierdo, derecho o inferior para cambiar el tamaño">
     <header class="powerups-edge__head">
       <div class="powerups-edge__brand">
@@ -159,6 +164,6 @@
 </div>
 
   <script>window.POWERUPS_WIDGET_CONFIG = window.POWERUPS_WIDGET_CONFIG || {};</script>
-  <script src="powerups-edge-widget.js?v=4" defer></script>
+  <script src="powerups-edge-widget.js?v=5" defer></script>
 </body>
 </html>
