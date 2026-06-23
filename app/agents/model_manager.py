@@ -24,6 +24,7 @@ DEFAULT_MODEL_NAMES: List[str] = [
 
 DEFAULT_EMBEDDING_MODEL: str = "models/gemini-embedding-001"
 DEFAULT_COOLDOWN_SECONDS: int = 60
+FRIENDLY_PROCESSING_MSG = "Estoy procesando tu solicitud, dame un segundo..."
 
 # ── Ollama configuration ─────────────────────────────────────────────
 OLLAMA_DEFAULT_BASE_URL = "http://localhost:11434"
@@ -164,6 +165,44 @@ class ModelManager:
         # Todos los Gemini están en cooldown → fallback a Ollama
         return True
 
+    def _friendly_response(self) -> Any:
+        """Respuesta amable cuando Ollama falla y Gemini no está disponible."""
+
+        class _FriendlyResponse:
+            text = FRIENDLY_PROCESSING_MSG
+
+        return _FriendlyResponse()
+
+    def _is_ollama_error(self, exc: Exception) -> bool:
+        msg = str(exc).lower()
+        return "ollama" in msg or isinstance(exc, requests.RequestException)
+
+    def _try_gemini_force(self, content: Any, **kwargs) -> Optional[Any]:
+        """Intenta Gemini aunque esté en cooldown (p. ej. tras fallo de Ollama)."""
+        for name in self._model_names:
+            try:
+                logger.info("ModelManager: reintento Gemini en %s tras fallo Ollama.", name)
+                return self._models[name].generate_content(content, **kwargs)
+            except Exception as exc:
+                if _is_rate_limit_error(exc):
+                    continue
+                logger.warning("ModelManager: Gemini %s falló en reintento: %s", name, exc)
+                continue
+        return None
+
+    def _generate_ollama_or_none(self, content: Any, **kwargs) -> Optional[Any]:
+        """Llama a Ollama; devuelve None si hay error de conexión (sin propagar al chat)."""
+        try:
+            return self._generate_ollama(content, **kwargs)
+        except RuntimeError as exc:
+            if self._is_ollama_error(exc):
+                logger.warning("Ollama no disponible (%s): %s", self._ollama_base_url, exc)
+                return None
+            raise
+        except requests.RequestException as exc:
+            logger.warning("Ollama connection error (%s): %s", self._ollama_base_url, exc)
+            return None
+
     # ── Ollama call (aislamiento total) ───────────────────────────────
 
     def _generate_ollama(self, content: Any, **kwargs) -> Any:
@@ -197,9 +236,17 @@ class ModelManager:
 
             return OllamaResponse(text)
         except requests.RequestException as e:
-            raise RuntimeError(f"Ollama connection error ({self._ollama_base_url}): {e}")
+            logger.warning("Ollama connection error (%s): %s", self._ollama_base_url, e)
+            raise RuntimeError(f"Ollama connection error ({self._ollama_base_url}): {e}") from e
         except Exception as e:
-            raise RuntimeError(f"Ollama generation error: {e}")
+            raise RuntimeError(f"Ollama generation error: {e}") from e
+
+    def _ollama_fallback_or_friendly(self, content: Any, **kwargs) -> Any:
+        """Tras fallo Ollama: Gemini forzado o mensaje amable (nunca error técnico al usuario)."""
+        forced = self._try_gemini_force(content, **kwargs)
+        if forced is not None:
+            return forced
+        return self._friendly_response()
 
     # ── generate_content con enrutamiento híbrido ─────────────────────
 
@@ -219,7 +266,10 @@ class ModelManager:
         # ── Caso 1: usuario obliga a usar Ollama ─────────────────────
         if self._should_route_to_local(content, force_local, sovereignty_mode):
             print(f"DEBUG ModelManager: enrutando a Ollama ({self._ollama_model})")
-            return self._generate_ollama(content, **kwargs)
+            ollama_result = self._generate_ollama_or_none(content, **kwargs)
+            if ollama_result is not None:
+                return ollama_result
+            return self._ollama_fallback_or_friendly(content, **kwargs)
 
         # ── Caso 2: Gemini primero ───────────────────────────────────
         last_error: Optional[Exception] = None
@@ -245,7 +295,10 @@ class ModelManager:
         # ── Caso 3: todos los Gemini están en cooldown → fallback Ollama ─
         if self._all_gemini_unhealthy():
             print(f"DEBUG ModelManager: todos los modelos Gemini en cooldown → fallback Ollama ({self._ollama_model})")
-            return self._generate_ollama(content, **kwargs)
+            ollama_result = self._generate_ollama_or_none(content, **kwargs)
+            if ollama_result is not None:
+                return ollama_result
+            return self._friendly_response()
 
         if last_error is not None:
             raise last_error

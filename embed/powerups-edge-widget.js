@@ -67,8 +67,8 @@
     var h = Math.ceil(r.height) + 16;
     if (root && hint && root.classList.contains('is-hint-visible') && !root.classList.contains('is-open')) {
       var hr = hint.getBoundingClientRect();
-      w = Math.ceil(r.width + hr.width + 28);
-      h = Math.max(h, Math.ceil(Math.max(r.height, hr.height) + 16));
+      w = Math.max(w, Math.ceil(Math.max(r.width, hr.width) + 16));
+      h = Math.ceil(r.height + hr.height + 28);
     }
     return {
       w: Math.max(336, w),
@@ -301,6 +301,7 @@
 
     _echartInstance = window.echarts.init(canvas, 'dark', { renderer: 'canvas' });
     _echartInstance.setOption(opt, true);
+    setPanelChartMode(true);
 
     var h = loadChartsHistory();
     var idx = noSave ? _chartHistoryIndex : 0;
@@ -315,6 +316,27 @@
     renderLiveChart(h[index], true);
   }
 
+  function setPanelChartMode(enabled) {
+    var panel = el('powerups-edge-panel');
+    if (!panel) return;
+    if (enabled) {
+      if (panel.classList.contains('has-chart')) return;
+      var baseW = panel.offsetWidth || 420;
+      panel.dataset.puPreChartW = String(baseW);
+      var maxW = Math.min(920, window.innerWidth - 24);
+      var expanded = Math.min(Math.round(baseW * 1.3), Math.round(maxW * 1.3));
+      panel.style.width = expanded + 'px';
+      panel.classList.add('has-chart');
+      setTimeout(resizeLiveChart, 420);
+    } else {
+      panel.classList.remove('has-chart');
+      if (panel.dataset.puPreChartW) {
+        panel.style.width = panel.dataset.puPreChartW + 'px';
+        delete panel.dataset.puPreChartW;
+      }
+    }
+  }
+
   function expandLiveDashboard() {
     var wrap = el('powerups-edge-dashboard-frame-wrap');
     var btn = el('powerups-edge-dashboard-toggle');
@@ -325,6 +347,7 @@
   }
 
   function showDashboardPlaceholder() {
+    setPanelChartMode(false);
     var canvas = el('powerups-edge-chart-canvas');
     var nav = el('powerups-edge-chart-nav');
     var ph = el('powerups-edge-dashboard-placeholder');
@@ -520,9 +543,13 @@
     textEl.textContent = 'Mensajes usados: ' + used + '/' + limit;
     var pct = Math.min(100, Math.round((used / limit) * 100));
     fill.style.width = pct + '%';
-    var wall = !!state.paywall;
+    var wall = !!state.paywall && used >= limit;
     banner.hidden = !wall;
     setComposerLocked(wall);
+    var premiumRow = document.querySelector('.powerups-edge__premium-row');
+    var portalRow = document.querySelector('.powerups-edge__portal-row');
+    if (premiumRow) premiumRow.hidden = wall;
+    if (portalRow) portalRow.hidden = wall;
     var dashLiveFree = el('powerups-edge-dashboard-live');
     if (dashLiveFree) dashLiveFree.hidden = true;
   }
