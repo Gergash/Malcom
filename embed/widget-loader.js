@@ -37,7 +37,18 @@
     };
   }
 
-  function cerrarInsightFlow(host, w, h) {
+  function abrirInsightFlow(host, ifr) {
+    if (!host) return;
+    host.style.width = "min(960px, 100vw)";
+    host.style.height = "min(92vh, 100vh)";
+    host.style.maxWidth = "100vw";
+    host.style.maxHeight = "100vh";
+    host.style.overflow = "visible";
+    host.setAttribute("data-powerups-open", "true");
+    if (ifr) ifr.style.overflow = "visible";
+  }
+
+  function cerrarInsightFlow(host, ifr, w, h) {
     if (!host) return;
     var size = clampBubbleSize(w, h);
     host.style.width = size.w + "px";
@@ -46,16 +57,7 @@
     host.style.maxHeight = size.h + "px";
     host.style.overflow = "hidden";
     host.setAttribute("data-powerups-open", "false");
-  }
-
-  function abrirInsightFlow(host) {
-    if (!host) return;
-    host.style.width = "min(960px, 100vw)";
-    host.style.height = "min(92vh, 100vh)";
-    host.style.maxWidth = "100vw";
-    host.style.maxHeight = "100vh";
-    host.style.overflow = "visible";
-    host.setAttribute("data-powerups-open", "true");
+    if (ifr) ifr.style.overflow = "hidden";
   }
 
   function measureBubbleFromIframe(ifr) {
@@ -74,8 +76,16 @@
     var data = ev.data;
     if (!data || data.type !== "insightflow-widget" || data.action !== "resize") return;
     if (ifr && ifr.contentWindow && ev.source && ev.source !== ifr.contentWindow) return;
-    if (data.open) abrirInsightFlow(host);
-    else cerrarInsightFlow(host, data.width, data.height);
+    if (data.open) {
+      abrirInsightFlow(host, ifr);
+      return;
+    }
+    try {
+      var doc = ifr && (ifr.contentDocument || (ifr.contentWindow && ifr.contentWindow.document));
+      var chatRoot = doc && doc.getElementById("powerups-edge-chat");
+      if (chatRoot && chatRoot.classList.contains("is-open")) return;
+    } catch (e) { /* cross-origin */ }
+    cerrarInsightFlow(host, ifr, data.width, data.height);
   }
 
   function wireIframeResize(host, ifr) {
@@ -88,10 +98,10 @@
   function wireIframeOpenStateSync(host, ifr) {
     function syncFromRoot(root) {
       if (!root) return;
-      if (root.classList.contains("is-open")) abrirInsightFlow(host);
+      if (root.classList.contains("is-open")) abrirInsightFlow(host, ifr);
       else {
         var m = measureBubbleFromIframe(ifr);
-        cerrarInsightFlow(host, m && m.w, m && m.h);
+        cerrarInsightFlow(host, ifr, m && m.w, m && m.h);
       }
     }
     function attach(doc) {
@@ -214,11 +224,14 @@
   ifr.src = u.toString();
   wrap.appendChild(ifr);
 
-  cerrarInsightFlow(wrap);
+  cerrarInsightFlow(wrap, ifr);
   wireIframeResize(wrap, ifr);
   wireIframeOpenStateSync(wrap, ifr);
 
   window.POWERUPS_WIDGET_LOADER_API = window.POWERUPS_WIDGET_LOADER_API || {};
-  window.POWERUPS_WIDGET_LOADER_API.abrirInsightFlow = function () { abrirInsightFlow(wrap); };
-  window.POWERUPS_WIDGET_LOADER_API.cerrarInsightFlow = function () { cerrarInsightFlow(wrap); };
+  window.POWERUPS_WIDGET_LOADER_API.abrirInsightFlow = function () { abrirInsightFlow(wrap, ifr); };
+  window.POWERUPS_WIDGET_LOADER_API.cerrarInsightFlow = function () {
+    wrap.setAttribute("data-powerups-open", "false");
+    cerrarInsightFlow(wrap, ifr);
+  };
 })();

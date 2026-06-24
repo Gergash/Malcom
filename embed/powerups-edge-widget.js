@@ -89,7 +89,7 @@
     }
     function hideHint() {
       root.classList.remove('is-hint-visible');
-      notifyParentFrameSize(false);
+      if (!root.classList.contains('is-open')) notifyParentFrameSize(false);
     }
     function scheduleHint() {
       if (hintTimer) clearTimeout(hintTimer);
@@ -107,6 +107,7 @@
       showHint();
     });
     launcher.addEventListener('mouseleave', function () {
+      if (root.classList.contains('is-open')) return;
       hideHint();
       scheduleHint();
     });
@@ -115,13 +116,14 @@
       showHint();
     });
     launcher.addEventListener('focusout', function () {
+      if (root.classList.contains('is-open')) return;
       hideHint();
       scheduleHint();
     });
 
     root.__powerupsClearBubbleHint = function () {
       clearHintSchedule();
-      hideHint();
+      root.classList.remove('is-hint-visible');
     };
     root.__powerupsScheduleBubbleHint = scheduleHint;
   }
@@ -129,6 +131,8 @@
   /** Notifica al host (widget-loader) que redimensione el iframe: pequeño = burbuja, grande = panel abierto. */
   function notifyParentFrameSize(open) {
     if (!isEmbedHost()) return;
+    var root = el('powerups-edge-chat');
+    if (!open && root && root.classList.contains('is-open')) return;
     var payload = { type: 'insightflow-widget', action: 'resize', open: !!open };
     if (!open) {
       var m = measureBubbleHostSize();
@@ -138,6 +142,13 @@
     try {
       window.parent.postMessage(payload, '*');
     } catch (e) { /* cross-origin */ }
+  }
+
+  function ensureParentFrameOpen() {
+    notifyParentFrameSize(true);
+    if (!isEmbedHost()) return;
+    requestAnimationFrame(function () { notifyParentFrameSize(true); });
+    setTimeout(function () { notifyParentFrameSize(true); }, 80);
   }
 
   function apiOriginBase() {
@@ -851,17 +862,21 @@
     updatePortalLinks();
     wireBubbleHint(root);
     notifyParentFrameSize(false);
-    setTimeout(function () { notifyParentFrameSize(false); }, 120);
-    setTimeout(function () { notifyParentFrameSize(false); }, 480);
+    setTimeout(function () {
+      if (!root.classList.contains('is-open')) notifyParentFrameSize(false);
+    }, 120);
+    setTimeout(function () {
+      if (!root.classList.contains('is-open')) notifyParentFrameSize(false);
+    }, 480);
 
     toggle.addEventListener('click', function () {
       var open = !root.classList.contains('is-open');
       if (open) {
         if (root.__powerupsClearBubbleHint) root.__powerupsClearBubbleHint();
-        notifyParentFrameSize(true);
         root.classList.add('is-open');
         toggle.setAttribute('aria-expanded', 'true');
         panel.setAttribute('aria-hidden', 'false');
+        ensureParentFrameOpen();
         applySavedPanelSize();
         updatePortalLinks();
         hydrateFromStorage();

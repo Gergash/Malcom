@@ -1,0 +1,76 @@
+<!--
+  ELEMENTO HTML — BeBuilder / Betheme
+  ─────────────────────────────────────────────────────────────────────
+  Pega TODO este bloque en un "Elemento HTML" (o "HTML Block") de BeBuilder.
+  Colócalo en tantos lugares de la página como quieras.
+
+  CHECKOUT URL:
+    Reemplaza el valor de data-checkout-url si cambias de proveedor.
+    Actualmente apunta a la página premium de Power Ups (Bold/pasarela
+    configurable). La URL base es la misma que usa el widget flotante.
+  ─────────────────────────────────────────────────────────────────────
+-->
+
+<div class="pu-pro-card"
+     data-checkout-url="https://www.powerupsagencia.com/premium-edge-bi/">
+
+  <div class="pu-pro-card__body">
+    <h3 class="pu-pro-card__title">Potencia tu estrategia con InsightFlow Pro</h3>
+    <p class="pu-pro-card__desc">
+      Acceso ilimitado a tableros ECharts, reportes ejecutivos en PDF/Excel
+      y análisis técnico avanzado.
+    </p>
+    <a class="pu-pro-card__cta" href="https://www.powerupsagencia.com/premium-edge-bi/">
+      Activar análisis Pro por $40.000
+    </a>
+  </div>
+
+</div>
+
+<style>
+/* ── InsightFlow Pro Card — BeBuilder snippet ───────────────────────── */
+.pu-pro-card {
+  background-color: #1e2432;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 24px;
+  text-align: center;
+  margin: 20px 0;
+  box-sizing: border-box;
+}
+
+.pu-pro-card__title {
+  color: #ffffff;
+  font-size: 1.1rem;
+  margin: 0 0 8px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.pu-pro-card__desc {
+  color: #a0aec0;
+  font-size: 0.95rem;
+  margin: 0 0 20px;
+  line-height: 1.5;
+}
+
+.pu-pro-card__cta {
+  display: inline-block;
+  background-color: #2da2a6;
+  color: #ffffff;
+  padding: 14px 28px;
+  border-radius: 6px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.95rem;
+  transition: background 0.25s ease, transform 0.2s ease;
+}
+
+.pu-pro-card__cta:hover {
+  background-color: #25878a;
+  transform: translateY(-2px);
+  color: #ffffff;
+  text-decoration: none;
+}
+/* ──────────────────────────────────────────────────────────────────── */
+</style>

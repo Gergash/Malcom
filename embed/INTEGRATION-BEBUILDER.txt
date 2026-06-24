@@ -1,52 +1,189 @@
-InsightFlow · embed modular (BeBuilder / WordPress)
-===================================================
+InsightFlow · Embed modular (BeBuilder / WordPress)
+====================================================
+Última actualización: 2026-06-23
 
-Archivos en esta carpeta
-------------------
-- widget-loader.js          → único script en la página del sitio (hook Bottom).
-- powerups-edge-frame.html  → documento del iframe (carga CSS + marcado + JS del widget).
-- powerups-edge-widget.js   → lógica del chat.
-- powerups-edge-widget.css  → estilos.
-- powerups-edge-widget-markup.html → fragmento HTML de referencia; mantener alineado con el bloque dentro de powerups-edge-frame.html.
-- powerups-edge-chat-widget.html   → monolito legacy (todo en uno); usar embed modular en producción.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+INVENTARIO DE ARCHIVOS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-¿Iframe en la misma sección que la burbuja?
--------------------------------------------
-No. En BeBuilder no hace falta (ni conviene) un bloque con <iframe> en la sección del diseño.
-El hook "Bottom" (o un único bloque HTML al pie) incluye solo:
-  1) script opcional con window.POWERUPS_WIDGET_CONFIG
-  2) <script src=".../widget-loader.js" defer>
-El loader crea un contenedor fijo en la esquina inferior derecha. El iframe inicia PEQUEÑO
-(240×70 px, solo la burbuja) y crece a min(960px,100vw)×min(92vh,100vh) cuando el usuario
-abre el chat (postMessage desde powerups-edge-widget.js). Así no bloquea clics en el resto
-de la página mientras el asistente está cerrado.
+WIDGET FLOTANTE (van a wp-content/uploads/2026/06/)
+─────────────────────────────────────────────────────
+powerups-edge-frame.html
+    Documento del iframe. Carga el CSS, el marcado del chat y el JS del widget.
+    Es el único HTML que el iframe renderiza. Recibe la config via query string.
 
-Origen y localStorage
----------------------
-El localStorage es el del origen del powerups-edge-frame.html (misma URL que sirve el iframe).
-Si el frame está en tu CDN, las claves del chat viven en ese origen, no en el dominio de WordPress.
+powerups-edge-widget.js  (v=7 en el <script> del frame)
+    Lógica completa del chat: CONFIG, llamadas a la API, ECharts inline, barra
+    de uso, paywall, resize, postMessage al host, localStorage.
 
-Config desde WordPress
-----------------------
-window.POWERUPS_WIDGET_CONFIG en la página principal no llega al interior del iframe si el frame
-está en otro origen. widget-loader.js copia API_BASE, CHECKOUT_URL, etc. a query string del src del iframe;
-powerups-edge-widget.js las lee y fusiona en CONFIG.
+powerups-edge-widget.css  (v=7 en el <link> del frame)
+    Todos los estilos del panel, burbuja, composer y estados del widget.
 
-Despliegue
-----------
-Publica los cuatro archivos obligatorios en la misma ruta base.
+powerups-edge-widget-markup.html
+    Fragmento HTML de referencia. Debe mantenerse sincronizado con el bloque
+    <body> de powerups-edge-frame.html. No se sube solo a producción.
 
-WordPress «Biblioteca de medios»: las URLs son .../wp-content/uploads/AÑO/MES/fichero.
+LOADERS (solo uno activo en producción)
+─────────────────────────────────────────────────────
+bebuilder-install-snippet.html  ← LOADER RECOMENDADO (inline)
+    Plantilla de instalación. Copia su bloque <script>…</script> a
+    Theme Options → Hooks → Bottom. NO subir este .html a Medios;
+    si lo abres en el navegador puede verse en blanco (es normal: es JS puro).
+    Ventaja: no depende de cargar widget-loader.js por HTTP; evita 404 por
+    caché agresiva en Medios.
+    Incluye window.POWERUPS_WIDGET_CONFIG y window.POWERUPS_WIDGET_LOADER
+    ya pre-configurados con assetsBase, frameUrl, API_BASE, CHECKOUT_URL,
+    PREMIUM_PORTAL_URL y DASHBOARD_SESSION_URL.
 
-bebuilder-install-snippet.html: copia su bloque <script> al hook Bottom; no hace falta
-subir ese .html a Medios (si lo abres en el navegador puede verse en blanco: es normal;
-«Ver código fuente» para leer el JS). La plantilla actual lleva el loader INLINE: no depende
-de cargar widget-loader.js por HTTP. En Medios deben existir al menos:
-powerups-edge-frame.html, powerups-edge-widget.js, powerups-edge-widget.css (misma carpeta).
+widget-loader.js  ← loader alternativo como archivo externo
+    Mismo comportamiento que el inline, pero se referencia con
+    <script src=".../widget-loader.js" defer>.
+    Detecta su propia URL (document.currentScript.src) para auto-resolver
+    el baseDir y construir el frameUrl sin config manual.
+    Expone window.POWERUPS_WIDGET_LOADER_API con:
+      · abrirInsightFlow()  — abre el panel programáticamente
+      · cerrarInsightFlow() — cierra el panel programáticamente
 
-El iframe tiene dos estados de tamaño:
-- Cerrado (inicial): 336×96 px — burbuja (+20%) y micro-copy al hover o tras 5 s.
-- Abierto: min(960px,100vw) × min(92vh,100vh) — panel completo del asistente.
-El widget avisa al loader con postMessage { type: 'insightflow-widget', action: 'resize', open: true|false }.
-Si el widget.js en Medios está en caché vieja, el loader también observa la clase .is-open en el iframe
-(mismo origen) como respaldo.
+PÁGINAS PREMIUM (WordPress → Crear página → Pegar HTML como bloque "HTML personalizado" o en el editor de código)
+─────────────────────────────────────────────────────
+premium-portal.html
+    Portal "Mis tableros". Lee desde localStorage las últimas gráficas ECharts
+    generadas en el chat (clave: powerups_edge_charts_{chatId}) y las muestra
+    en un grid con descarga PNG individual. Si no hay tableros muestra estado
+    vacío + demo animada con datos de ejemplo. También tiene:
+      · Sección "Qué incluye tu plan" (beneficios)
+      · Campo de acceso por token (legacy / enlace externo compartido)
+    Se actualiza automáticamente via evento storage cuando el widget genera
+    una nueva gráfica mientras la página está abierta.
+    URL de producción esperada: https://www.powerupsagencia.com/portal-premium/
+
+premium-dashboard-session.html
+    Visor de tablero individual en pantalla completa. Carga la gráfica ECharts
+    desde el endpoint GET /api/v1/dashboard/session/{token}.
+    Flujo:
+      1. Lee ?token= de la URL.
+      2. Fetch al API. Si 202 → "preparando", si 404 → fallback a localStorage.
+      3. Cualquier fallo de red/CORS → fallback a gráficas locales del mismo
+         chat (localStorage powerups_edge_charts_{chatId}).
+      4. Modo local: navegación ← n/N → entre gráficas acumuladas.
+    Acciones: Descargar PNG (resolución ×2), Recargar datos, enlace al Portal.
+    URL de producción esperada:
+      https://www.powerupsagencia.com/dashboard-premium-echarts/
+
+SNIPPETS PARA ELEMENTOS HTML DE BEBUILDER
+─────────────────────────────────────────────────────
+bebuilder-pro-card-snippet.html
+    Tarjeta CTA de conversión "InsightFlow Pro" lista para pegar en un
+    elemento HTML de BeBuilder. Se puede reutilizar en múltiples secciones
+    de la página. Incluye HTML + <style> autocontenidos.
+    Reemplaza el botón de pago que antes estaba en la burbuja flotante.
+    URL del botón: https://www.powerupsagencia.com/premium-edge-bi/
+    Clases prefijadas pu-pro-card__* para evitar colisión con el tema.
+    Si BeBuilder objeta el <style> duplicado al usar la tarjeta en varios
+    bloques, mover el bloque <style> una sola vez a
+    Theme Options → Custom CSS.
+
+LEGACY (no usar en producción)
+─────────────────────────────────────────────────────
+powerups-edge-chat-widget.html
+    Monolito antiguo (todo en un solo HTML). Mantenido como referencia.
+    En producción usar el embed modular descrito arriba.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ARQUITECTURA DEL WIDGET FLOTANTE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+No necesitas un bloque <iframe> en el diseño de BeBuilder.
+El loader (inline o widget-loader.js) crea un div#powerups-edge-widget-host
+fijo en la esquina inferior derecha y monta el iframe desde JS.
+
+Estados de tamaño del contenedor host (div fijo):
+  · Cerrado (inicial):   336 × 96 px  — solo la burbuja con el botón
+  · Abierto (chat):      min(960px, 100vw) × min(92vh, 100vh) — panel completo
+
+Comunicación host ↔ iframe:
+  · El widget envía postMessage { type: 'insightflow-widget', action: 'resize',
+    open: true|false, width, height } cuando el usuario abre o cierra el panel.
+  · El loader escucha ese mensaje y ajusta el div host en consecuencia.
+  · Respaldo (mismo origen): MutationObserver sobre la clase .is-open del
+    #powerups-edge-chat dentro del iframe, por si hay caché vieja del widget.js.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FLUJO DE CONFIGURACIÓN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+WordPress (hook Bottom)
+  └─ window.POWERUPS_WIDGET_CONFIG = { API_BASE, CHECKOUT_URL, … }
+  └─ Loader (inline o widget-loader.js)
+        └─ Construye src del iframe con query string:
+             ?apiBase=…&checkoutUrl=…&premiumPortalUrl=…
+             &dashboardSessionUrl=…&username=…
+        └─ powerups-edge-frame.html (en Medios)
+              └─ powerups-edge-widget.js
+                    └─ Lee query string → Object.assign sobre DEFAULT_CONFIG
+                    └─ Guarda API_BASE en localStorage['powerups_edge_api_base']
+                       para que premium-dashboard-session.html lo recupere
+
+window.POWERUPS_WIDGET_CONFIG → NO llega automáticamente al interior del iframe
+cuando el frame está en otro origen (uploads vs. dominio WP). El loader lo copia
+explícitamente como query string del src.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CLAVES DE localStorage (origen del iframe)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+powerups_edge_chat_id_v1          → chat_id del usuario
+powerups_edge_history_v1          → historial de mensajes
+powerups_edge_charts_{chatId}     → array de opciones ECharts (max 6, LIFO)
+powerups_edge_dash_tok_{chatId}   → token del último tablero de la sesión
+powerups_edge_panel_size_v1       → tamaño redimensionado del panel (usuario)
+powerups_edge_api_base            → API_BASE para que el visor pueda recuperarla
+
+IMPORTANTE: el localStorage pertenece al ORIGEN de powerups-edge-frame.html
+(wp-content/uploads/…). Las páginas premium y el visor leen del mismo origen
+solo si también están servidas desde ese dominio. Si el frame migra de
+CDN/subdominio hay que actualizar las URLs de portal y dashboard.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DESPLIEGUE — CHECKLIST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Archivos que VAN a Medios (misma carpeta base):
+  ✓ powerups-edge-frame.html
+  ✓ powerups-edge-widget.js
+  ✓ powerups-edge-widget.css
+  ✓ widget-loader.js            (opcional si usas loader inline)
+
+Archivos que NO van a Medios:
+  · bebuilder-install-snippet.html  → su <script> va al hook Bottom
+  · premium-portal.html             → crear página WordPress y pegar HTML
+  · premium-dashboard-session.html  → crear página WordPress y pegar HTML
+  · bebuilder-pro-card-snippet.html → elemento HTML en BeBuilder (multiple)
+  · powerups-edge-chat-widget.html  → legacy, no desplegar
+  · INTEGRATION-BEBUILDER.txt       → solo referencia local
+
+Carpeta actual en producción:
+  https://www.powerupsagencia.com/wp-content/uploads/2026/06/
+
+URLs esperadas de páginas WordPress:
+  https://www.powerupsagencia.com/portal-premium/
+  https://www.powerupsagencia.com/dashboard-premium-echarts/
+  https://www.powerupsagencia.com/premium-edge-bi/   ← checkout / upgrade
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ENDPOINTS DE API USADOS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+GET  /api/v1/dashboard/session/{token}
+     → Devuelve { echarts_option: { … } }  (200 OK)
+     → 202 Accepted si el tablero aún se está generando
+     → 404 si no existe sesión (el visor hace fallback a localStorage)
+     → 401/403/409 → el visor manda postMessage token_refresh al padre
+
+Todos los demás endpoints (chat, upload, quota, PDF, Excel) los maneja
+powerups-edge-widget.js. Ver DEFAULT_CONFIG en ese archivo para el API_BASE.
