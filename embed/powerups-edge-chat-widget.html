@@ -47,7 +47,13 @@
     </div>
     <div class="powerups-edge__paywall-banner" id="powerups-edge-paywall" hidden>
       <strong>Desbloquea el análisis total por $40.000 COP</strong>
-      <button type="button" class="powerups-edge__cta" id="powerups-edge-paywall-pay">Continuar al pago seguro</button>
+      <script
+        data-bold-button
+        data-api-key="021NBIV2D3"
+        data-description="Pago a traves de Embedded Checkout"
+        data-redirection-url="https://www.powerupsagencia.com/portal-premium/"
+        data-render-mode="embedded"
+      ></script>
     </div>
     <div class="powerups-edge__premium-row">
       <button type="button" class="powerups-edge__chip" id="powerups-edge-btn-pdf" title="Requiere plan premium">Generar Informe PDF Premium</button>
@@ -544,18 +550,6 @@
   gap: 8px;
 }
 .powerups-edge__paywall-banner strong { color: #f0d0d0; }
-.powerups-edge__cta {
-  align-self: flex-start;
-  padding: 8px 14px;
-  border-radius: 8px;
-  border: 1px solid var(--pu-accent);
-  background: var(--pu-accent);
-  color: #fff;
-  font-weight: 600;
-  cursor: pointer;
-  font-size: 13px;
-}
-.powerups-edge__cta:hover { background: var(--pu-accent-bright); border-color: var(--pu-accent-bright); }
 .powerups-edge__premium-row {
   display: flex;
   flex-wrap: wrap;
@@ -1510,7 +1504,7 @@
     try {
       var bill = await fetchBillingStatus();
       if (!bill.is_premium) {
-        window.location.href = checkoutUrl();
+        el('powerups-edge-paywall').hidden = false;
         return;
       }
       appendMessage('user', '[Acción premium] ' + (prompt === CONFIG.PROMPT_PDF ? 'Generar Informe PDF Premium' : 'Exportar Excel con Gráficas'), null, null);
@@ -1561,9 +1555,6 @@
       panel.setAttribute('aria-hidden', 'true');
     });
 
-    el('powerups-edge-paywall-pay').addEventListener('click', function () {
-      window.location.href = checkoutUrl();
-    });
     el('powerups-edge-dashboard-toggle').addEventListener('click', function () {
       var wrap = el('powerups-edge-dashboard-frame-wrap');
       var btn = el('powerups-edge-dashboard-toggle');
