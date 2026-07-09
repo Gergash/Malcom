@@ -5,7 +5,7 @@
  */
 (function () {
   var DEFAULT_CONFIG = {
-    API_BASE: 'https://meroblastic-estefana-isoperimetrical.ngrok-free.dev',
+    API_BASE: 'https://nonconfidential-suprarational-sage.ngrok-free.dev',
     // Pasarela Wompi / ePayco / página de producto WooCommerce. Puedes usar {chatId} en la cadena.
     CHECKOUT_URL: 'https://tu-tienda.com/premium-edge-bi/?chat_id={chatId}',
     // Opcional: nombre para registro en el backend

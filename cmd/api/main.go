@@ -69,7 +69,16 @@ func main() {
 	if cfg.DevForcePremium {
 		log.Println("⚠️  DEV_FORCE_PREMIUM ACTIVO: todos los chats actuarán como premium. Desactivar en producción.")
 	}
-	billingHandler := handlers.NewBillingHandler(userRepo, paymentRepo, cfg.WompiEventSecret, cfg.BoldWebhookSecret, cfg.PremiumAmountCOP)
+	billingHandler := handlers.NewBillingHandler(
+		userRepo,
+		paymentRepo,
+		cfg.WompiEventSecret,
+		cfg.BoldWebhookSecret,
+		cfg.BoldAPIKey,
+		cfg.BoldIntegritySecret,
+		cfg.PremiumAmountCOP,
+		"https://www.powerupsagencia.com/portal-premium",
+	)
 	downloadHandler := handlers.NewDownloadHandler(tokenStore, userRepo, cfg.DataDir)
 	dashboardHandler := handlers.NewDashboardHandler(tokenStore, userRepo, cfg.DataDir, cfg.DevForcePremium)
 
@@ -107,6 +116,7 @@ func main() {
 		v1.GET("/dashboard/session/:token", dashboardHandler.SessionJSON)
 
 		v1.GET("/billing/status", billingHandler.BillingStatus)
+		v1.GET("/billing/bold-checkout", billingHandler.BoldCheckout)
 		v1.POST("/billing/webhook", middleware.BillingWebhookAuth(cfg.BillingWebhookSecret), billingHandler.PaymentWebhook)
 		v1.POST("/billing/bold-webhook", billingHandler.BoldWebhook)
 		v1.POST("/billing/link-email", billingHandler.LinkEmail)

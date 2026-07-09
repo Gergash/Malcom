@@ -13,7 +13,9 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/powerups/insightflow-malcom/internal/api/types"
@@ -24,11 +26,14 @@ import (
 
 // BillingHandler agrupa las dependencias de los endpoints de facturación.
 type BillingHandler struct {
-	userRepo          repositories.UserRepository
-	paymentRepo       repositories.PaymentRepository
-	wompiEventSecret  string
-	boldWebhookSecret string
-	premiumAmountCOP  int
+	userRepo            repositories.UserRepository
+	paymentRepo         repositories.PaymentRepository
+	wompiEventSecret    string
+	boldWebhookSecret   string
+	boldAPIKey          string
+	boldIntegritySecret string
+	premiumAmountCOP    int
+	premiumPortalURL    string
 }
 
 // NewBillingHandler construye el handler con sus dependencias.
@@ -37,14 +42,20 @@ func NewBillingHandler(
 	paymentRepo repositories.PaymentRepository,
 	wompiEventSecret string,
 	boldWebhookSecret string,
+	boldAPIKey string,
+	boldIntegritySecret string,
 	premiumAmountCOP int,
+	premiumPortalURL string,
 ) *BillingHandler {
 	return &BillingHandler{
-		userRepo:          userRepo,
-		paymentRepo:       paymentRepo,
-		wompiEventSecret:  wompiEventSecret,
-		boldWebhookSecret: boldWebhookSecret,
-		premiumAmountCOP:  premiumAmountCOP,
+		userRepo:            userRepo,
+		paymentRepo:         paymentRepo,
+		wompiEventSecret:    wompiEventSecret,
+		boldWebhookSecret:   boldWebhookSecret,
+		boldAPIKey:          boldAPIKey,
+		boldIntegritySecret: boldIntegritySecret,
+		premiumAmountCOP:    premiumAmountCOP,
+		premiumPortalURL:    strings.TrimRight(strings.TrimSpace(premiumPortalURL), "/"),
 	}
 }
 
@@ -344,6 +355,60 @@ func (h *BillingHandler) BoldWebhook(c *gin.Context) {
 		resp.IsPremium = result.User.IsPremium
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+// ── GET /api/v1/billing/bold-checkout ─────────────────────────────────────────
+
+// BoldCheckout devuelve los atributos firmados del botón Bold para un chat_id.
+// Con data-amount, Bold exige order-id + integrity-signature (llave secreta en servidor).
+func (h *BillingHandler) BoldCheckout(c *gin.Context) {
+	chatIDParam := strings.TrimSpace(c.Query("chat_id"))
+	if chatIDParam == "" {
+		c.JSON(http.StatusUnprocessableEntity, types.ErrorResponse{
+			Detail: "Se requiere chat_id en la query.",
+		})
+		return
+	}
+	chatID, err := strconv.ParseInt(chatIDParam, 10, 64)
+	if err != nil || chatID <= 0 {
+		c.JSON(http.StatusUnprocessableEntity, types.ErrorResponse{
+			Detail: "chat_id debe ser un entero positivo.",
+		})
+		return
+	}
+
+	if strings.TrimSpace(h.boldAPIKey) == "" || strings.TrimSpace(h.boldIntegritySecret) == "" {
+		c.JSON(http.StatusServiceUnavailable, types.ErrorResponse{
+			Detail: "Bold no configurado: faltan BOLD_API_KEY o BOLD_INTEGRITY_SECRET en el servidor.",
+		})
+		return
+	}
+
+	orderID := fmt.Sprintf("IF-%d-%d", chatID, time.Now().Unix())
+	amount := h.premiumAmountCOP
+	if amount <= 0 {
+		amount = 40000
+	}
+	currency := "COP"
+	description := fmt.Sprintf("InsightFlow Pro — chat_id=%d", chatID)
+	redirectURL := h.premiumPortalURL
+	if redirectURL == "" {
+		redirectURL = "https://www.powerupsagencia.com/portal-premium"
+	}
+	redirectURL = fmt.Sprintf("%s?chat_id=%d", redirectURL, chatID)
+
+	sig := bold.IntegritySignature(orderID, amount, currency, h.boldIntegritySecret)
+
+	c.JSON(http.StatusOK, types.BoldCheckoutResponse{
+		OrderID:            orderID,
+		AmountCOP:          amount,
+		Currency:           currency,
+		APIKey:             h.boldAPIKey,
+		IntegritySignature: sig,
+		Description:        description,
+		RedirectionURL:     redirectURL,
+		RenderMode:         "embedded",
+	})
 }
 
 // ── POST /api/v1/billing/link-email ──────────────────────────────────────────

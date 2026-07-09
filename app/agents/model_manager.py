@@ -59,6 +59,29 @@ def _is_rate_limit_error(exc: Exception) -> bool:
         return False
 
 
+def _is_gemini_auth_error(exc: Exception) -> bool:
+    """True si la API key de Gemini es inválida, revocada o reportada como filtrada."""
+    msg = str(exc).lower()
+    if any(
+        token in msg
+        for token in (
+            "403",
+            "leaked",
+            "api key",
+            "api_key",
+            "invalid",
+            "permission denied",
+            "not authorized",
+        )
+    ):
+        return True
+    code = getattr(exc, "code", None)
+    try:
+        return code is not None and int(code) == 403
+    except (TypeError, ValueError):
+        return False
+
+
 class ModelManager:
     """
     Administra modelos Gemini y Ollama con enrutamiento híbrido inteligente.
@@ -287,6 +310,18 @@ class ModelManager:
                         self._mark_unhealthy(name)
                         last_error = exc
                         continue
+                    if _is_gemini_auth_error(exc):
+                        logger.error(
+                            "ModelManager: Gemini rechazó la API key (%s). "
+                            "Rota GEMINI_API_KEY en .env y reinicia brain.",
+                            exc,
+                        )
+                        for n in self._model_names:
+                            self._mark_unhealthy(n)
+                        ollama_result = self._generate_ollama_or_none(content, **kwargs)
+                        if ollama_result is not None:
+                            return ollama_result
+                        return self._friendly_response()
                     raise
 
             if attempt == 0:
@@ -322,4 +357,10 @@ class ModelManager:
                     time.sleep(backoff)
                     backoff *= 2
                     continue
+                if _is_gemini_auth_error(exc):
+                    logger.error("embed_content: API key Gemini inválida o filtrada: %s", exc)
+                    raise RuntimeError(
+                        "GEMINI_API_KEY inválida o reportada como filtrada. "
+                        "Genera una nueva en Google AI Studio y actualiza .env."
+                    ) from exc
                 raise

@@ -48,6 +48,40 @@ func TestExtractChatIDFromDescriptionURL(t *testing.T) {
 	}
 }
 
+func TestExtractChatIDFromInsightFlowOrderID(t *testing.T) {
+	raw := []byte(`{"reference":"IF-88442211-1720564612","status":"succeeded","amount":40000}`)
+	id := ExtractChatID(raw)
+	if id == nil || *id != 88442211 {
+		t.Fatalf("expected chat_id from IF-order reference, got %v", id)
+	}
+}
+
+func TestIntegritySignatureOfficialExample(t *testing.T) {
+	// Ejemplo documentación Bold: ORD-UNICO-1722528769 + 30000 COP
+	sig := IntegritySignature("ORD-UNICO-1722528769", 30000, "COP", "9W4vjqvSoJFK96EV9c3tQg")
+	want := "df8ad4095229988b54a42024e70cbf642670e1fdeaa3e21f856829bd19d35062"
+	if sig != want {
+		t.Fatalf("hash Bold oficial no coincide:\n got  %s\n want %s", sig, want)
+	}
+}
+
+func TestIntegritySignaturePowerUpsPremium(t *testing.T) {
+	sig := IntegritySignature("IF-12345-1720564612", 40000, "COP", "9W4vjqvSoJFK96EV9c3tQg")
+	if len(sig) != 64 {
+		t.Fatalf("expected sha256 hex, got len %d", len(sig))
+	}
+}
+
+func TestIntegritySignatureDeterministic(t *testing.T) {
+	sig := IntegritySignature("IF-1-99", 40000, "COP", "test-secret")
+	if len(sig) != 64 {
+		t.Fatalf("expected sha256 hex length 64, got %d", len(sig))
+	}
+	if IntegritySignature("IF-1-99", 40000, "COP", "test-secret") != sig {
+		t.Fatal("integrity signature should be deterministic")
+	}
+}
+
 func TestParseEventIsSuccessful(t *testing.T) {
 	ev := ParseEvent([]byte(`{"type":"transaction.succeeded","status":"approved","amount":40000}`))
 	if !ev.IsSuccessful() {

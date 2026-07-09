@@ -1,27 +1,19 @@
 <!--
   ELEMENTO HTML — BeBuilder / Betheme
   ─────────────────────────────────────────────────────────────────────
-  Pega TODO este bloque en un "Elemento HTML" (o "HTML Block") de BeBuilder.
-  Colócalo en la página de checkout: /premium-edge-bi/
+  Pega SOLO el <div> + <style> en un Elemento HTML.
+  NO incluyas <script>: BeBuilder los elimina.
 
-  FLUJO:
-    1. El widget envía al usuario a esta página con ?chat_id=XXXX
-    2. El script abajo inyecta chat_id en el botón Bold (reference / description)
-    3. Tras pagar $40.000 COP, Bold llama al webhook de la API
-    4. La API activa premium para ese chat_id
+  El JS se carga desde Theme Options → Hooks → Bottom
+  (bebuilder-install-snippet.html actualizado), que detecta #pu-bold-mount.
 
-  BOLD (panel comercio):
-    - Crear link de pago fijo: $40.000 COP
-    - Webhook URL: https://<tu-dominio-api>/api/v1/billing/bold-webhook
-    - Copiar BOLD_WEBHOOK_SECRET al .env de la API
-
-  CHECKOUT URL del widget:
-    https://www.powerupsagencia.com/premium-edge-bi/?chat_id={chatId}
+  Archivo en Medios (2026/07/):
+  https://www.powerupsagencia.com/wp-content/uploads/2026/07/powerups-bold-checkout.js
   ─────────────────────────────────────────────────────────────────────
 -->
 
-<div class="pu-pro-card"
-     data-checkout-url="https://www.powerupsagencia.com/premium-edge-bi/">
+<div class="pu-pro-card" id="pu-pro-card"
+     data-api-base="https://nonconfidential-suprarational-sage.ngrok-free.dev">
 
   <div class="pu-pro-card__body">
     <h3 class="pu-pro-card__title">Potencia tu estrategia con InsightFlow Pro</h3>
@@ -29,47 +21,14 @@
       Acceso ilimitado a tableros ECharts, reportes ejecutivos en PDF/Excel
       y análisis técnico avanzado por <strong>$40.000 COP</strong>.
     </p>
-
-    <!-- SDK Bold (producción). Si usas sandbox, cambia la URL según tu panel Bold. -->
-    <script src="https://checkout.bold.co/library/boldPaymentButton.js"></script>
-
-    <script
-      id="pu-bold-checkout"
-      data-bold-button
-      data-api-key="z2n2stRsMP25F0ii4g7vhUysStT05ORO74VaI79X3YQ"
-      data-currency="COP"
-      data-amount="40000"
-      data-description="InsightFlow Pro — Power Ups"
-      data-redirection-url="https://www.powerupsagencia.com/portal-premium/"
-      data-render-mode="embedded"
-    ></script>
+    <div id="pu-bold-mount"></div>
+    <p class="pu-pro-card__hint" id="pu-bold-hint">Cargando botón de pago…</p>
+    <p class="pu-pro-card__error" id="pu-bold-error" hidden></p>
   </div>
 
 </div>
 
-<script>
-(function () {
-  var params = new URLSearchParams(window.location.search);
-  var chatId = (params.get('chat_id') || '').trim();
-  if (!chatId || !/^\d+$/.test(chatId)) return;
-
-  var btn = document.getElementById('pu-bold-checkout');
-  if (!btn) return;
-
-  // Bold envía reference/order_id en el webhook → la API lo usa como chat_id.
-  btn.setAttribute('data-order-id', chatId);
-  btn.setAttribute('data-description', 'InsightFlow Pro — chat_id=' + chatId);
-
-  var redirect = btn.getAttribute('data-redirection-url') || '';
-  if (redirect) {
-    var sep = redirect.indexOf('?') >= 0 ? '&' : '?';
-    btn.setAttribute('data-redirection-url', redirect + sep + 'chat_id=' + encodeURIComponent(chatId));
-  }
-})();
-</script>
-
 <style>
-/* ── InsightFlow Pro Card — BeBuilder snippet ───────────────────────── */
 .pu-pro-card {
   background-color: #1e2432;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -98,5 +57,23 @@
 .pu-pro-card__desc strong {
   color: #ff6d00;
 }
-/* ──────────────────────────────────────────────────────────────────── */
+
+.pu-pro-card__hint,
+.pu-pro-card__error {
+  color: #a0aec0;
+  font-size: 0.9rem;
+  margin: 12px 0 0;
+}
+
+.pu-pro-card__error {
+  color: #f56565;
+}
+
+#pu-bold-mount {
+  min-height: 48px;
+}
+
+#pu-bold-mount iframe {
+  max-width: 100%;
+}
 </style>

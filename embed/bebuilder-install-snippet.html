@@ -6,20 +6,24 @@
     es normal; el JS no se pinta como texto. Usa «Ver código fuente» si quieres leerlo.
   - Los archivos que SÍ deben estar en Medios (misma carpeta) son:
     powerups-edge-frame.html, powerups-edge-widget.js, powerups-edge-widget.css
+    powerups-bold-checkout.js   ← página /premium-edge-bi/ (botón Bold)
   - widget-loader.js es opcional si usas el loader INLINE aquí (recomendado si .js da 404 por caché o reglas).
 
-  Carpeta actual en producción:
+  Carpeta actual en producción (widget):
   https://www.powerupsagencia.com/wp-content/uploads/2026/06/
+  Checkout Bold (powerups-bold-checkout.js):
+  https://www.powerupsagencia.com/wp-content/uploads/2026/07/powerups-bold-checkout.js
 -->
 <script>
 (function () {
   window.POWERUPS_WIDGET_LOADER = {
     assetsBase: "https://www.powerupsagencia.com/wp-content/uploads/2026/06/",
     frameUrl: "https://www.powerupsagencia.com/wp-content/uploads/2026/06/powerups-edge-frame.html",
+    boldCheckoutUrl: "https://www.powerupsagencia.com/wp-content/uploads/2026/07/powerups-bold-checkout.js",
   };
   window.POWERUPS_WIDGET_CONFIG = Object.assign(
     {
-      API_BASE: "https://meroblastic-estefana-isoperimetrical.ngrok-free.dev",
+      API_BASE: "https://nonconfidential-suprarational-sage.ngrok-free.dev",
       CHECKOUT_URL: "https://www.powerupsagencia.com/premium-edge-bi/?chat_id={chatId}",
       PREMIUM_PORTAL_URL: "https://www.powerupsagencia.com/portal-premium/",
       DASHBOARD_SESSION_URL: "https://www.powerupsagencia.com/dashboard-premium-echarts/",
@@ -216,5 +220,28 @@
   cerrarInsightFlow(wrap, ifr);
   wireIframeResize(wrap, ifr);
   wireIframeOpenStateSync(wrap, ifr);
+})();
+
+(function () {
+  if (typeof document === 'undefined') return;
+
+  function loadBoldCheckout() {
+    if (!document.getElementById('pu-bold-mount')) return;
+    if (window.__PU_BOLD_CHECKOUT_LOADER) return;
+    window.__PU_BOLD_CHECKOUT_LOADER = true;
+
+    var boldUrl = (window.POWERUPS_WIDGET_LOADER && window.POWERUPS_WIDGET_LOADER.boldCheckoutUrl)
+      || 'https://www.powerupsagencia.com/wp-content/uploads/2026/07/powerups-bold-checkout.js';
+    var s = document.createElement('script');
+    s.src = String(boldUrl).split('?')[0] + '?v=4';
+    s.async = true;
+    document.head.appendChild(s);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', loadBoldCheckout);
+  } else {
+    loadBoldCheckout();
+  }
 })();
 </script>

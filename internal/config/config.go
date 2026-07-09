@@ -41,6 +41,10 @@ type Config struct {
 	WompiEventSecret string
 	// Secreto de webhook Bold: valida X-Bold-Signature con HMAC-SHA256 sobre el body crudo.
 	BoldWebhookSecret string
+	// Llave de identidad Bold (Botón de pagos) — pública en el frontend.
+	BoldAPIKey string
+	// Llave secreta Bold para el hash de integridad del botón (solo servidor).
+	BoldIntegritySecret string
 	// Monto fijo en COP para activar premium vía Bold (p. ej. 40000).
 	PremiumAmountCOP int
 
@@ -121,6 +125,8 @@ func Load() (*Config, error) {
 	webhookSecret := strings.TrimSpace(os.Getenv("BILLING_WEBHOOK_SECRET"))
 	wompiEvent := strings.TrimSpace(os.Getenv("WOMPI_EVENT_SECRET"))
 	boldWebhook := strings.TrimSpace(os.Getenv("BOLD_WEBHOOK_SECRET"))
+	boldAPIKey := strings.TrimSpace(os.Getenv("BOLD_API_KEY"))
+	boldIntegrity := strings.TrimSpace(os.Getenv("BOLD_INTEGRITY_SECRET"))
 
 	devForcePremium := false
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("DEV_FORCE_PREMIUM"))) {
@@ -151,6 +157,8 @@ func Load() (*Config, error) {
 		BillingWebhookSecret: webhookSecret,
 		WompiEventSecret:     wompiEvent,
 		BoldWebhookSecret:    boldWebhook,
+		BoldAPIKey:           boldAPIKey,
+		BoldIntegritySecret:  boldIntegrity,
 		PremiumAmountCOP:     premiumAmountCOP,
 		DevForcePremium:      devForcePremium,
 	}, nil

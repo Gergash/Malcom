@@ -10,6 +10,7 @@ import (
 )
 
 var chatIDPattern = regexp.MustCompile(`(?i)(?:^|[?&\s])chat_id[=:]([0-9]+)`)
+var insightFlowOrderPattern = regexp.MustCompile(`(?i)^IF-([0-9]+)-[0-9]+$`)
 
 // Event is the normalized subset of a Bold webhook needed by billing.
 type Event struct {
@@ -124,6 +125,11 @@ func ExtractChatID(raw []byte) *int64 {
 		text := strings.TrimSpace(gjson.GetBytes(raw, path).String())
 		if text == "" {
 			continue
+		}
+		if m := insightFlowOrderPattern.FindStringSubmatch(text); len(m) == 2 {
+			if id := parseInt64(m[1]); id != nil {
+				return id
+			}
 		}
 		if id := parseInt64(text); id != nil {
 			return id

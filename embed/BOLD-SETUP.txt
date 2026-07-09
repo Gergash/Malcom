@@ -6,8 +6,11 @@ Opción A (hoy): link fijo en Bold + webhook → activar premium automáticament
 1) WordPress / Elementor (5 min)
 --------------------------------
 - Página checkout: https://www.powerupsagencia.com/premium-edge-bi/
-- BeBuilder → Elemento HTML → pegar embed/bebuilder-pro-card-snippet.html
-- El widget ya redirige con ?chat_id= desde bebuilder-install-snippet.html
+- BeBuilder → Elemento HTML → pegar SOLO div+style de embed/bebuilder-pro-card-snippet.html
+- Subir embed/powerups-bold-checkout.js a Medios:
+  https://www.powerupsagencia.com/wp-content/uploads/2026/07/powerups-bold-checkout.js
+- Actualizar Hook Bottom con bebuilder-install-snippet.html (carga el JS si hay #pu-bold-mount)
+- BeBuilder ELIMINA <script> del bloque HTML; el loader va en Hook Bottom
 
 2) Panel Bold
 -------------
@@ -19,14 +22,20 @@ Opción A (hoy): link fijo en Bold + webhook → activar premium automáticament
 
   Ejemplo dev con ngrok:
 
-    https://abc123.ngrok-free.app/api/v1/billing/bold-webhook
+    https://nonconfidential-suprarational-sage.ngrok-free.dev/api/v1/billing/bold-webhook
 
 - Copiar el secreto del webhook → BOLD_WEBHOOK_SECRET en .env de la API
 
 3) Variables .env (API Go)
 --------------------------
+BOLD_API_KEY=<llave de identidad — Botón de pagos>
+BOLD_INTEGRITY_SECRET=<llave secreta — hash del botón, distinta de la API key>
+BOLD_WEBHOOK_SECRET=<secreto del webhook Bold>
 PREMIUM_AMOUNT_COP=40000
-BOLD_WEBHOOK_SECRET=<secreto del panel Bold>
+
+IMPORTANTE: si defines data-amount en el botón Bold, también son obligatorios
+data-order-id y data-integrity-signature. Sin ellos aparece el error BTN-001.
+El snippet llama GET /api/v1/billing/bold-checkout?chat_id= para obtenerlos firmados.
 
 Reiniciar API tras cambiar .env:
 

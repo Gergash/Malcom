@@ -128,6 +128,18 @@ type PaymentWebhookRequest struct {
 	PayerChatID   *int64  `json:"payer_chat_id,omitempty"`
 }
 
+// BoldCheckoutResponse — parámetros firmados para el botón Bold en WordPress.
+type BoldCheckoutResponse struct {
+	OrderID             string `json:"order_id"`
+	AmountCOP           int    `json:"amount_cop"`
+	Currency            string `json:"currency"`
+	APIKey              string `json:"api_key"`
+	IntegritySignature  string `json:"integrity_signature"`
+	Description         string `json:"description"`
+	RedirectionURL      string `json:"redirection_url"`
+	RenderMode          string `json:"render_mode"`
+}
+
 // PaymentWebhookResponse — respuesta de POST /api/v1/billing/webhook.
 type PaymentWebhookResponse struct {
 	Success          bool    `json:"success"`
