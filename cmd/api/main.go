@@ -51,9 +51,9 @@ func main() {
 	}
 	log.Println("Base de datos lista (GORM AutoMigrate).")
 
-	userRepo := repos.NewUserRepository(gdb, cfg.FreeMessageLimit)
+	userRepo := repos.NewUserRepository(gdb, cfg.FreeMessageLimit, cfg.QuotaTimezone)
 	convRepo := repos.NewConversationRepository(gdb)
-	paymentRepo := repos.NewPaymentRepository(gdb, cfg.FreeMessageLimit)
+	paymentRepo := repos.NewPaymentRepository(gdb, cfg.FreeMessageLimit, cfg.QuotaTimezone)
 
 	workerClient := worker.NewHTTPClient(cfg.WorkerURL)
 

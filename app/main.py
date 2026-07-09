@@ -60,7 +60,7 @@ async def _worker_process(chat_id: int, message: str) -> dict:
     async with httpx.AsyncClient(timeout=180.0) as client:
         resp = await client.post(
             f"{WORKER_URL}/internal/process-message",
-            json={"chat_id": chat_id, "message": message},
+            json={"chat_id": chat_id, "message": message, "generate_echarts": True},
         )
         resp.raise_for_status()
         return resp.json()
@@ -171,9 +171,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await context.bot.send_message(
                 chat_id=chat_id,
                 text=(
-                    "Has alcanzado el límite gratuito de análisis.\n\n"
-                    "Activa el plan premium para desbloquear análisis ilimitados "
-                    "y reportes avanzados (PDF/Excel)."
+                    "Has alcanzado los 15 mensajes gratuitos de hoy.\n\n"
+                    "Activa mensajes ilimitados por $40.000 COP. Portal y tableros ECharts "
+                    "siguen disponibles; el límite aplica solo a nuevas preguntas en el chat."
                 ),
             )
             return

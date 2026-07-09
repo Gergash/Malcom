@@ -28,7 +28,7 @@
   var BUBBLE_W = 336;
   var BUBBLE_H = 96;
   var HOST_INSET = "18px";
-  var DEFAULT_ASSETS_BASE = "https://www.powerupsagencia.com/wp-content/uploads/2026/06/";
+  var DEFAULT_ASSETS_BASE = "https://www.powerupsagencia.com/wp-content/uploads/2026/07/";
 
   function clampBubbleSize(w, h) {
     return {

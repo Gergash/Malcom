@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>InsightFlow · Widget</title>
-  <link rel="stylesheet" href="powerups-edge-widget.css?v=8" />
+  <link rel="stylesheet" href="powerups-edge-widget.css?v=9" />
   <!-- ECharts para el tablero en vivo (renderizado inline, sin iframe secundario). -->
   <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
   <!-- Carga dentro de iframe: fondo transparente; solo el bloque .powerups-edge recibe clics (no tapa la página padre). -->
@@ -91,23 +91,23 @@
       <div class="powerups-edge__usage-bar" aria-hidden="true"><div class="powerups-edge__usage-fill" id="powerups-edge-usage-fill" style="width:0%"></div></div>
     </div>
     <div class="powerups-edge__paywall-pro" id="powerups-edge-paywall" hidden>
-      <h3 class="powerups-edge__paywall-pro-title">Súmate a InsightFlow Pro</h3>
-      <p class="powerups-edge__paywall-pro-sub">Acceso ilimitado a dashboards, reportes PDF y análisis experto</p>
-      <button type="button" class="powerups-edge__paywall-pro-cta" id="powerups-edge-paywall-pay">Activar análisis pro por $40.000</button>
+      <h3 class="powerups-edge__paywall-pro-title">Mensajes ilimitados</h3>
+      <p class="powerups-edge__paywall-pro-sub">Agotaste los 15 mensajes gratuitos de hoy. Portal y tablero siguen disponibles.</p>
+      <button type="button" class="powerups-edge__paywall-pro-cta" id="powerups-edge-paywall-pay">Activar mensajes ilimitados · $40.000</button>
     </div>
     <div class="powerups-edge__premium-row">
       <button type="button" class="powerups-edge__chip" id="powerups-edge-btn-pdf" title="Requiere plan premium">Generar Informe PDF Premium</button>
       <button type="button" class="powerups-edge__chip" id="powerups-edge-btn-excel" title="Requiere plan premium">Exportar Excel con Gráficas</button>
     </div>
     <div class="powerups-edge__portal-row">
-      <a class="powerups-edge__portal-link" id="powerups-edge-link-portal" href="#" target="_blank" rel="noopener noreferrer">Portal Premium</a>
+      <a class="powerups-edge__portal-link" id="powerups-edge-link-portal" href="#" target="_blank" rel="noopener noreferrer">Mis tableros</a>
       <a class="powerups-edge__portal-link" id="powerups-edge-link-dashboard" href="#" target="_blank" rel="noopener noreferrer" title="Si ya tienes token de tablero, se abre con tu sesión">Visor tablero (ECharts)</a>
     </div>
     <div class="powerups-edge__dashboard-live" id="powerups-edge-dashboard-live" hidden>
       <div class="powerups-edge__dashboard-head">
         <div class="powerups-edge__dashboard-titles">
           <strong class="powerups-edge__dashboard-title">Tablero en vivo</strong>
-          <span class="powerups-edge__dashboard-sub">Premium · ECharts</span>
+          <span class="powerups-edge__dashboard-sub">InsightFlow · ECharts</span>
         </div>
         <p class="powerups-edge__dashboard-hint">Sigue escribiendo abajo: cada análisis puede renovar la gráfica (tipo de vista, filtros, comparaciones).</p>
         <div class="powerups-edge__dashboard-actions">
@@ -165,6 +165,6 @@
 </div>
 
   <script>window.POWERUPS_WIDGET_CONFIG = window.POWERUPS_WIDGET_CONFIG || {};</script>
-  <script src="powerups-edge-widget.js?v=8" defer></script>
+  <script src="powerups-edge-widget.js?v=9" defer></script>
 </body>
 </html>

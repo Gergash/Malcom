@@ -533,7 +533,7 @@
     var fill = el('powerups-edge-usage-fill');
     var banner = el('powerups-edge-paywall');
     if (!state) {
-      textEl.textContent = 'Mensajes usados: —/—';
+      textEl.textContent = 'Mensajes hoy: —/—';
       fill.style.width = '0%';
       return;
     }
@@ -550,19 +550,19 @@
       }
       return;
     }
-    var used = Math.min(state.message_count, limit);
-    textEl.textContent = 'Mensajes usados: ' + used + '/' + limit;
+    var used = Math.min(state.messages_today != null ? state.messages_today : state.message_count, limit);
+    textEl.textContent = 'Mensajes hoy: ' + used + '/' + limit;
     var pct = Math.min(100, Math.round((used / limit) * 100));
     fill.style.width = pct + '%';
     var wall = !!state.paywall && used >= limit;
     banner.hidden = !wall;
     setComposerLocked(wall);
-    var premiumRow = document.querySelector('.powerups-edge__premium-row');
-    var portalRow = document.querySelector('.powerups-edge__portal-row');
-    if (premiumRow) premiumRow.hidden = wall;
-    if (portalRow) portalRow.hidden = wall;
+    /* v2: portal/tablero siempre visibles; PDF/Excel siguen siendo acciones premium */
     var dashLiveFree = el('powerups-edge-dashboard-live');
-    if (dashLiveFree) dashLiveFree.hidden = true;
+    if (dashLiveFree) {
+      var hasCharts = loadChartsHistory().length > 0;
+      dashLiveFree.hidden = !hasCharts;
+    }
   }
 
   async function fetchCredits() {
@@ -966,7 +966,7 @@
       file.value = '';
       var st = await refreshCredits();
       if (st && st.paywall && !st.is_premium) {
-        appendMessage('sys', 'Primero desbloquea el análisis para adjuntar archivos.', null);
+        appendMessage('sys', 'Agotaste los mensajes de hoy. Activa mensajes ilimitados para adjuntar archivos.', null);
         return;
       }
       appendMessage('sys', 'Subiendo: ' + f.name + '…', null);

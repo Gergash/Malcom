@@ -1,12 +1,17 @@
 InsightFlow · Embed modular (BeBuilder / WordPress)
 ====================================================
-Última actualización: 2026-06-23
+Última actualización: 2026-07-09
+
+Reglas de producto v2: docs/BUSINESS-RULES-v2.md
+  · Gratis: 15 msgs/día + portal + dashboard ECharts
+  · Pago $40k Bold: mensajes ilimitados (+ PDF/Excel premium)
+  · Paywall: solo bloquea nuevos mensajes, no portal/tablero
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 INVENTARIO DE ARCHIVOS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-WIDGET FLOTANTE (van a wp-content/uploads/2026/06/)
+WIDGET FLOTANTE (van a wp-content/uploads/2026/07/)
 ─────────────────────────────────────────────────────
 powerups-edge-frame.html
     Documento del iframe. Carga el CSS, el marcado del chat y el JS del widget.
@@ -73,15 +78,15 @@ premium-dashboard-session.html
 SNIPPETS PARA ELEMENTOS HTML DE BEBUILDER
 ─────────────────────────────────────────────────────
 bebuilder-pro-card-snippet.html
-    Tarjeta CTA de conversión "InsightFlow Pro" lista para pegar en un
-    elemento HTML de BeBuilder. Se puede reutilizar en múltiples secciones
-    de la página. Incluye HTML + <style> autocontenidos.
-    Reemplaza el botón de pago que antes estaba en la burbuja flotante.
-    URL del botón: https://www.powerupsagencia.com/premium-edge-bi/
-    Clases prefijadas pu-pro-card__* para evitar colisión con el tema.
-    Si BeBuilder objeta el <style> duplicado al usar la tarjeta en varios
-    bloques, mover el bloque <style> una sola vez a
-    Theme Options → Custom CSS.
+    Tarjeta CTA de conversión "Mensajes ilimitados" lista para pegar en un
+    elemento HTML de BeBuilder. Copy alineado a BUSINESS-RULES-v2 (portal/dashboard gratis).
+    El botón Bold lo monta powerups-bold-checkout.js vía #pu-bold-mount (Hook Bottom).
+    URL checkout: https://www.powerupsagencia.com/premium-edge-bi/
+
+powerups-bold-checkout.js  (Medios 2026/07/)
+    Fetch GET /api/v1/billing/bold-checkout?chat_id= → monta botón Bold embebido.
+    Cargado desde Hook Bottom cuando existe #pu-bold-mount en la página checkout.
+    Guía: docs/BOLD-SETUP.txt
 
 LEGACY (no usar en producción)
 ─────────────────────────────────────────────────────
@@ -152,11 +157,12 @@ CDN/subdominio hay que actualizar las URLs de portal y dashboard.
 DESPLIEGUE — CHECKLIST
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Archivos que VAN a Medios (misma carpeta base):
-  ✓ powerups-edge-frame.html
-  ✓ powerups-edge-widget.js
-  ✓ powerups-edge-widget.css
-  ✓ widget-loader.js            (opcional si usas loader inline)
+Archivos que VAN a Medios:
+  ✓ powerups-edge-frame.html          → carpeta 2026/07/
+  ✓ powerups-edge-widget.js           → carpeta 2026/07/
+  ✓ powerups-edge-widget.css          → carpeta 2026/07/
+  ✓ powerups-bold-checkout.js         → carpeta 2026/07/ (checkout Bold)
+  ✓ widget-loader.js                  (opcional si usas loader inline)
 
 Archivos que NO van a Medios:
   · bebuilder-install-snippet.html  → su <script> va al hook Bottom
@@ -166,8 +172,10 @@ Archivos que NO van a Medios:
   · powerups-edge-chat-widget.html  → legacy, no desplegar
   · INTEGRATION-BEBUILDER.txt       → solo referencia local
 
-Carpeta actual en producción:
-  https://www.powerupsagencia.com/wp-content/uploads/2026/06/
+Carpeta widget en producción:
+  https://www.powerupsagencia.com/wp-content/uploads/2026/07/
+Carpeta checkout Bold (misma carpeta):
+  https://www.powerupsagencia.com/wp-content/uploads/2026/07/
 
 URLs esperadas de páginas WordPress:
   https://www.powerupsagencia.com/portal-premium/

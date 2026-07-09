@@ -20,6 +20,7 @@ type Config struct {
 	DataDir          string
 	PublicBaseURL    string
 	FreeMessageLimit int
+	QuotaTimezone    string // ej. America/Bogota — día calendario del cupo diario
 	EnablePublicData bool // cuando true, sirve /data/* sin restricción (solo DEV)
 
 	// CORSAllowedOrigins — lista separada por comas; vacío = permitir cualquier origen (solo desarrollo).
@@ -141,6 +142,11 @@ func Load() (*Config, error) {
 		}
 	}
 
+	quotaTZ := strings.TrimSpace(os.Getenv("QUOTA_TIMEZONE"))
+	if quotaTZ == "" {
+		quotaTZ = "America/Bogota"
+	}
+
 	return &Config{
 		DatabaseURL:          NormalizeDatabaseURL(rawURL),
 		Port:                 port,
@@ -148,6 +154,7 @@ func Load() (*Config, error) {
 		DataDir:              dataDir,
 		PublicBaseURL:        strings.TrimSpace(os.Getenv("PUBLIC_BASE_URL")),
 		FreeMessageLimit:     freeLimit,
+		QuotaTimezone:        quotaTZ,
 		EnablePublicData:     enablePublicData,
 		CORSAllowedOrigins:   corsOrigins,
 		CSPFrameAncestors:    cspFrames,

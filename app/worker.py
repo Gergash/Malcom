@@ -44,7 +44,7 @@ class ProcessMessageRequest(BaseModel):
     report_config: ReportConfig | None = None
     # True cuando la API Go detecta archivos en data/{chat_id}/ — no inventar datos.
     require_strict_data: bool = False
-    # True solo premium (lo envía Go): el analista añade bloque echarts-json al final.
+    # v2: ECharts para todos los usuarios cuando el Brain lo genera.
     generate_echarts: bool = False
 
 

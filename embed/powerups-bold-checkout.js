@@ -99,7 +99,7 @@
     var chatId = resolveChatId();
     if (!chatId) {
       setStatus(
-        'Abre el chat y pulsa «Activar análisis pro», o entra con ?chat_id=TU_ID en la URL.',
+        'Abre el chat y pulsa «Activar mensajes ilimitados», o entra con ?chat_id=TU_ID en la URL.',
         false
       );
       return;

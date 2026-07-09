@@ -26,7 +26,7 @@ func NewDashboardHandler(tokens *TokenStore, users repositories.UserRepository, 
 }
 
 // SessionJSON devuelve el JSON de la sesión (incluye echarts_option) para el token dashboard.
-// Exige suscripción premium vigente en PostgreSQL para el chat_id asociado al token.
+// Acceso por token válido (ownership); sin gate premium (v2).
 func (h *DashboardHandler) SessionJSON(c *gin.Context) {
 	token := c.Param("token")
 	if token == "" {
@@ -37,23 +37,6 @@ func (h *DashboardHandler) SessionJSON(c *gin.Context) {
 	if !ok || asset.PayloadJSON == nil || *asset.PayloadJSON == "" {
 		if chatID, metaOk := h.tokens.LookupDashboardTokenChatID(token); metaOk {
 			ctx := c.Request.Context()
-			premium := h.devForcePremium
-			if !premium {
-				var err error
-				premium, err = h.users.IsPremiumForChat(ctx, chatID)
-				if err != nil {
-					slog.Error("dashboard session premium check", "error", err, "chat_id", chatID)
-					c.JSON(http.StatusInternalServerError, types.ErrorResponse{Detail: "No se pudo validar el acceso."})
-					return
-				}
-			}
-			if !premium {
-				slog.Warn("dashboard session forbidden", "chat_id", chatID, "reason", "not_premium")
-				c.JSON(http.StatusForbidden, types.ErrorResponse{
-					Detail: "El tablero interactivo requiere plan premium activo.",
-				})
-				return
-			}
 			snap, err := h.users.GetLastDashboardSnapshot(ctx, chatID)
 			if err != nil {
 				slog.Error("dashboard snapshot read", "error", err, "chat_id", chatID)
@@ -78,24 +61,6 @@ func (h *DashboardHandler) SessionJSON(c *gin.Context) {
 		}
 		c.JSON(http.StatusNotFound, types.ErrorResponse{
 			Detail: "Sesión de dashboard expirada, ya utilizada o inválida.",
-		})
-		return
-	}
-	ctx := c.Request.Context()
-	premium := h.devForcePremium
-	if !premium {
-		var err error
-		premium, err = h.users.IsPremiumForChat(ctx, asset.ChatID)
-		if err != nil {
-			slog.Error("dashboard session premium check", "error", err, "chat_id", asset.ChatID)
-			c.JSON(http.StatusInternalServerError, types.ErrorResponse{Detail: "No se pudo validar el acceso."})
-			return
-		}
-	}
-	if !premium {
-		slog.Warn("dashboard session forbidden", "chat_id", asset.ChatID, "reason", "not_premium")
-		c.JSON(http.StatusForbidden, types.ErrorResponse{
-			Detail: "El tablero interactivo requiere plan premium activo.",
 		})
 		return
 	}

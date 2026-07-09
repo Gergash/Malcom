@@ -22,6 +22,7 @@ class Settings(BaseSettings):
 
     # Paywall
     free_message_limit: int = 15
+    quota_timezone: str = "America/Bogota"
 
     # API
     api_host: str = "0.0.0.0"

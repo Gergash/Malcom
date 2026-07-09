@@ -16,10 +16,12 @@ import requests
 
 logger = logging.getLogger(__name__)
 
+# Modelos recomendados para cuentas nuevas (Jul 2026). Ver:
+# https://ai.google.dev/gemini-api/docs/models
 DEFAULT_MODEL_NAMES: List[str] = [
-    "models/gemini-2.5-flash",
-    "models/gemini-2.0-flash",
-    "models/gemini-3-flash-preview",
+    "models/gemini-3.5-flash",       # GA — reemplazo de gemini-2.5-flash
+    "models/gemini-3.1-flash-lite",  # económico, alto volumen
+    "models/gemini-3-flash-preview", # preview estable
 ]
 
 DEFAULT_EMBEDDING_MODEL: str = "models/gemini-embedding-001"
@@ -30,6 +32,30 @@ FRIENDLY_PROCESSING_MSG = "Estoy procesando tu solicitud, dame un segundo..."
 OLLAMA_DEFAULT_BASE_URL = "http://localhost:11434"
 OLLAMA_DEFAULT_MODEL = "llama3.1"
 OLLAMA_TIMEOUT = 300  # 5 minutos por defecto (antes 180 s)
+
+
+def get_default_gemini_model_names() -> List[str]:
+    """Lista de modelos Gemini desde GEMINI_MODELS (coma) o defaults actuales."""
+    raw = os.getenv("GEMINI_MODELS", "").strip()
+    if raw:
+        names: List[str] = []
+        for part in raw.split(","):
+            p = part.strip()
+            if not p:
+                continue
+            names.append(p if p.startswith("models/") else f"models/{p}")
+        if names:
+            return names
+    return list(DEFAULT_MODEL_NAMES)
+
+
+def get_primary_gemini_model() -> str:
+    """Modelo principal para agentes que usan un solo GenerativeModel."""
+    single = os.getenv("GEMINI_MODEL", "").strip()
+    if single:
+        return single if single.startswith("models/") else f"models/{single}"
+    return get_default_gemini_model_names()[0]
+
 
 LOCAL_PRIORITY_KEYWORDS = (
     "pandas",
@@ -45,6 +71,27 @@ LOCAL_PRIORITY_KEYWORDS = (
     "excel",
     "cargar_dataframe_limpio",
 )
+
+
+def _is_model_unavailable_error(exc: Exception) -> bool:
+    """True si el modelo no existe o ya no está disponible para la cuenta (404)."""
+    msg = str(exc).lower()
+    if any(
+        token in msg
+        for token in (
+            "404",
+            "not found",
+            "no longer available",
+            "is not supported",
+            "does not exist",
+        )
+    ):
+        return True
+    code = getattr(exc, "code", None)
+    try:
+        return code is not None and int(code) == 404
+    except (TypeError, ValueError):
+        return False
 
 
 def _is_rate_limit_error(exc: Exception) -> bool:
@@ -106,7 +153,7 @@ class ModelManager:
         if api_key:
             genai.configure(api_key=api_key)
 
-        self._model_names: List[str] = model_names or list(DEFAULT_MODEL_NAMES)
+        self._model_names: List[str] = model_names or get_default_gemini_model_names()
         self._cooldown_seconds = cooldown_seconds
         self._embedding_model = embedding_model
 
@@ -119,6 +166,7 @@ class ModelManager:
             for name in self._model_names
         }
         self._cooldown_until: Dict[str, float] = {name: 0.0 for name in self._model_names}
+        self._unavailable: set[str] = set()
 
         # Ollama (configurable por .env para soportar host local o nube sin cambiar código)
         env_ollama_model = os.getenv("OLLAMA_MODEL", "").strip()
@@ -160,8 +208,11 @@ class ModelManager:
     # ── Routing logic ─────────────────────────────────────────────────
 
     def _all_gemini_unhealthy(self) -> bool:
-        """True si todos los modelos Gemini están en cooldown (rate limit)."""
-        return all(not self.is_healthy(name) for name in self._model_names)
+        """True si todos los modelos Gemini están en cooldown o no disponibles."""
+        active = [n for n in self._model_names if n not in self._unavailable]
+        if not active:
+            return True
+        return all(not self.is_healthy(name) for name in active)
 
     def _should_route_to_local(
         self,
@@ -203,10 +254,15 @@ class ModelManager:
     def _try_gemini_force(self, content: Any, **kwargs) -> Optional[Any]:
         """Intenta Gemini aunque esté en cooldown (p. ej. tras fallo de Ollama)."""
         for name in self._model_names:
+            if name in self._unavailable:
+                continue
             try:
                 logger.info("ModelManager: reintento Gemini en %s tras fallo Ollama.", name)
                 return self._models[name].generate_content(content, **kwargs)
             except Exception as exc:
+                if _is_model_unavailable_error(exc):
+                    self._unavailable.add(name)
+                    continue
                 if _is_rate_limit_error(exc):
                     continue
                 logger.warning("ModelManager: Gemini %s falló en reintento: %s", name, exc)
@@ -299,12 +355,20 @@ class ModelManager:
 
         for attempt in range(2):
             for name in self._model_names:
+                if name in self._unavailable:
+                    continue
                 if not self.is_healthy(name):
                     continue
                 try:
                     print(f"DEBUG ModelManager: llamando a {name} (cloud)...")
                     return self._models[name].generate_content(content, **kwargs)
                 except Exception as exc:
+                    if _is_model_unavailable_error(exc):
+                        logger.warning("ModelManager: %s no disponible, probando siguiente: %s", name, exc)
+                        print(f"DEBUG ModelManager: {name} no disponible (404), saltando...")
+                        self._unavailable.add(name)
+                        last_error = exc
+                        continue
                     if _is_rate_limit_error(exc):
                         print(f"DEBUG ModelManager: 429 en {name}, marcando cooldown...")
                         self._mark_unhealthy(name)

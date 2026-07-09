@@ -8,17 +8,23 @@ import (
 
 	"github.com/powerups/insightflow-malcom/internal/db"
 	"github.com/powerups/insightflow-malcom/internal/db/repositories"
+	"github.com/powerups/insightflow-malcom/internal/quota"
 	"gorm.io/gorm"
 )
 
 type paymentRepo struct {
 	db        *gorm.DB
 	freeLimit int
+	quotaLoc  *time.Location
 }
 
 // NewPaymentRepository registra pagos y activa premium en la misma transacción que user_repo.
-func NewPaymentRepository(gdb *gorm.DB, freeMessageLimit int) repositories.PaymentRepository {
-	return &paymentRepo{db: gdb, freeLimit: freeMessageLimit}
+func NewPaymentRepository(gdb *gorm.DB, freeMessageLimit int, quotaTimezone string) repositories.PaymentRepository {
+	return &paymentRepo{
+		db:        gdb,
+		freeLimit: freeMessageLimit,
+		quotaLoc:  quota.LoadLocation(quotaTimezone),
+	}
 }
 
 func normalizeEmailPtr(p *string) *string {
@@ -119,7 +125,7 @@ func (r *paymentRepo) ConfirmPayment(
 			p = pe
 		}
 
-		u, err := getOrCreateUserTx(tx, ctx, r.freeLimit, payerChatID, nil, payerEmail)
+		u, err := getOrCreateUserTx(tx, ctx, r.freeLimit, r.quotaLoc, payerChatID, nil, payerEmail)
 		if err != nil {
 			return err
 		}

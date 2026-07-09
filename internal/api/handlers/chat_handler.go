@@ -111,9 +111,9 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 	if creditStatus.Paywall {
 		imgURL := (*string)(nil)
 		c.JSON(http.StatusOK, types.ChatResponse{
-			Response: "Has alcanzado el límite gratuito de análisis.\n\n" +
-				"Activa el plan premium para desbloquear análisis ilimitados " +
-				"y reportes avanzados (PDF / Excel).",
+			Response: "Has alcanzado los 15 mensajes gratuitos de hoy.\n\n" +
+				"Activa mensajes ilimitados por $40.000 COP. Portal y tableros ECharts " +
+				"siguen disponibles; el límite aplica solo a nuevas preguntas en el chat.",
 			Paywall:          true,
 			CreditsRemaining: 0,
 			ImageURL:         imgURL,
@@ -150,7 +150,7 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 
 	// 7 · Enforcement duro (tier) + colección de gráficas para UI.
 	cid := strconv.FormatInt(req.ChatID, 10)
-	enforcedCharts := enforceChartPolicy(result.ChartPaths, result.ChartPath, rc, creditStatus.IsPremium)
+	enforcedCharts := enforceChartPolicy(result.ChartPaths, result.ChartPath, rc)
 	chartURLs := make([]string, 0, len(enforcedCharts))
 	base := publicBaseURL(c)
 	for _, p := range enforcedCharts {
@@ -198,10 +198,10 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		}
 	}
 
-	// 8b · Dashboard premium (ECharts): solo premium; token de sesión para /dashboard
+	// 8b · Dashboard ECharts: disponible para todos los usuarios (v2).
 	var dashboardURL *string
 	var echartsOpt json.RawMessage
-	if creditStatus.IsPremium && len(result.EChartsOption) > 0 {
+	if len(result.EChartsOption) > 0 {
 		echartsOpt = result.EChartsOption
 		wrap, err := json.Marshal(map[string]json.RawMessage{"echarts_option": result.EChartsOption})
 		if err == nil {
@@ -383,19 +383,23 @@ func (h *ChatHandler) GetCredits(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, types.CreditStateResponse{
-		ChatID:           state.ChatID,
-		Email:            state.Email,
-		Username:         state.Username,
-		MessageCount:     state.MessageCount,
-		IsPremium:        state.IsPremium,
-		FreeMessageLimit: state.FreeMessageLimit,
-		CreditsRemaining: state.CreditsRemaining,
-		Paywall:          state.Paywall,
-		PremiumSince:     state.PremiumSince,
+		ChatID:                 state.ChatID,
+		Email:                  state.Email,
+		Username:               state.Username,
+		MessageCount:           state.MessageCount,
+		MessagesToday:          state.MessagesToday,
+		DailyLimit:             state.FreeMessageLimit,
+		MessagesRemainingToday: state.CreditsRemaining,
+		IsPremium:              state.IsPremium,
+		FreeMessageLimit:       state.FreeMessageLimit,
+		CreditsRemaining:       state.CreditsRemaining,
+		Paywall:                state.Paywall,
+		PremiumSince:           state.PremiumSince,
+		QuotaResetsAt:          state.QuotaResetsAt,
 	})
 }
 
-// DashboardTokenRefresh emite un nuevo token de dashboard desde el último snapshot guardado (premium).
+// DashboardTokenRefresh emite un nuevo token de dashboard desde el último snapshot guardado.
 // POST /api/v1/chat/token/refresh — usado por el widget cuando el token one-shot ya se consumió.
 func (h *ChatHandler) DashboardTokenRefresh(c *gin.Context) {
 	var req types.DashboardTokenRefreshRequest
@@ -408,19 +412,6 @@ func (h *ChatHandler) DashboardTokenRefresh(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-	premium, err := h.userRepo.IsPremiumForChat(ctx, req.ChatID)
-	if err != nil {
-		slog.Error("DashboardTokenRefresh premium", "error", err, "chat_id", req.ChatID)
-		c.JSON(http.StatusInternalServerError, types.ErrorResponse{Detail: "No se pudo validar el acceso."})
-		return
-	}
-	if h.devForcePremium {
-		premium = true
-	}
-	if !premium {
-		c.JSON(http.StatusForbidden, types.ErrorResponse{Detail: "Se requiere plan premium activo."})
-		return
-	}
 	snap, err := h.userRepo.GetLastDashboardSnapshot(ctx, req.ChatID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, types.ErrorResponse{Detail: "No se pudo leer el tablero guardado."})
@@ -530,7 +521,7 @@ func buildTierConfig(req *types.ReportConfig, state *repositories.UserState) *ty
 		}
 	} else {
 		rc.Tier = "free"
-		rc.ChartTypes = []string{"bars"}
+		rc.ChartTypes = []string{"bars", "heatmap", "pie", "treemap"}
 		rc.PrimaryColor = "#808080" // gris estándar — no personalizable en free
 	}
 	// El worker Python exige font_size_body >= 6, font_size_titles >= 8.
@@ -564,7 +555,7 @@ func filterAllowedCharts(input []string) []string {
 	return out
 }
 
-func enforceChartPolicy(chartPaths []string, primary string, cfg *types.ReportConfig, isPremium bool) []string {
+func enforceChartPolicy(chartPaths []string, primary string, cfg *types.ReportConfig) []string {
 	merged := make([]string, 0, len(chartPaths)+1)
 	if primary != "" {
 		merged = append(merged, primary)
@@ -589,10 +580,7 @@ func enforceChartPolicy(chartPaths []string, primary string, cfg *types.ReportCo
 	if len(existing) == 0 {
 		return existing
 	}
-	if !isPremium {
-		return existing[:1]
-	}
-	// Premium: devolver máximo tantas rutas como tipos permitidos (mínimo 1, máximo 6).
+	// Máximo tantas rutas como tipos permitidos en el tier (mínimo 1, máximo 6).
 	limit := 4
 	if cfg != nil && len(cfg.ChartTypes) > 0 {
 		limit = len(cfg.ChartTypes)

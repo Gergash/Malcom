@@ -98,6 +98,12 @@ def get_demand_summary(
     return _demand_summary_from_df(df, os.path.basename(path))
 
 
+try:
+    from app.agents.model_manager import get_primary_gemini_model
+except ModuleNotFoundError:
+    from agents.model_manager import get_primary_gemini_model
+
+
 class PredictorAgent:
     """
     Responde preguntas de negocio usando solo la información de la carpeta del usuario
@@ -114,7 +120,7 @@ class PredictorAgent:
             "Te presentas como el Predictor de InsightFlow."
         )
         self.model = genai.GenerativeModel(
-            model_name="models/gemini-2.5-flash",
+            model_name=get_primary_gemini_model(),
             system_instruction=self.identity,
         )
 

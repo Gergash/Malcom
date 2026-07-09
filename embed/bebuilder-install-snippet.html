@@ -9,16 +9,16 @@
     powerups-bold-checkout.js   ← página /premium-edge-bi/ (botón Bold)
   - widget-loader.js es opcional si usas el loader INLINE aquí (recomendado si .js da 404 por caché o reglas).
 
-  Carpeta actual en producción (widget):
-  https://www.powerupsagencia.com/wp-content/uploads/2026/06/
-  Checkout Bold (powerups-bold-checkout.js):
+  Carpeta actual en producción (widget + frame + css + js):
+  https://www.powerupsagencia.com/wp-content/uploads/2026/07/
+  Checkout Bold (mismo folder o dedicado):
   https://www.powerupsagencia.com/wp-content/uploads/2026/07/powerups-bold-checkout.js
 -->
 <script>
 (function () {
   window.POWERUPS_WIDGET_LOADER = {
-    assetsBase: "https://www.powerupsagencia.com/wp-content/uploads/2026/06/",
-    frameUrl: "https://www.powerupsagencia.com/wp-content/uploads/2026/06/powerups-edge-frame.html",
+    assetsBase: "https://www.powerupsagencia.com/wp-content/uploads/2026/07/",
+    frameUrl: "https://www.powerupsagencia.com/wp-content/uploads/2026/07/powerups-edge-frame.html",
     boldCheckoutUrl: "https://www.powerupsagencia.com/wp-content/uploads/2026/07/powerups-bold-checkout.js",
   };
   window.POWERUPS_WIDGET_CONFIG = Object.assign(
@@ -37,7 +37,7 @@
 
   var LOADER = window.POWERUPS_WIDGET_LOADER || {};
   var cfg = window.POWERUPS_WIDGET_CONFIG || {};
-  var DEFAULT_ASSETS_BASE = "https://www.powerupsagencia.com/wp-content/uploads/2026/06/";
+  var DEFAULT_ASSETS_BASE = "https://www.powerupsagencia.com/wp-content/uploads/2026/07/";
   var baseDir = String(LOADER.assetsBase || DEFAULT_ASSETS_BASE).trim().replace(/\/?$/, "/");
   if (!baseDir) return;
 

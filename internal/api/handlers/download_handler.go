@@ -38,23 +38,8 @@ func (h *DownloadHandler) Download(c *gin.Context) {
 		return
 	}
 
-	ctx := c.Request.Context()
-
-	// Sesión ECharts (JSON): mismo flujo que /api/v1/dashboard/session (premium + un solo uso).
+	// Sesión ECharts (JSON): mismo flujo que /api/v1/dashboard/session (v2: sin gate premium).
 	if dash, ok := h.tokens.PeekDashboardSession(token); ok && dash.PayloadJSON != nil {
-		premium, err := h.users.IsPremiumForChat(ctx, dash.ChatID)
-		if err != nil {
-			slog.Error("download dashboard premium check", "error", err, "chat_id", dash.ChatID)
-			c.JSON(http.StatusInternalServerError, types.ErrorResponse{Detail: "No se pudo validar el acceso."})
-			return
-		}
-		if !premium {
-			slog.Warn("download dashboard forbidden", "chat_id", dash.ChatID)
-			c.JSON(http.StatusForbidden, types.ErrorResponse{
-				Detail: "Este recurso requiere plan premium activo.",
-			})
-			return
-		}
 		if !h.tokens.MarkDashboardConsumed(token) {
 			c.JSON(http.StatusConflict, types.ErrorResponse{
 				Detail: "Este enlace ya fue utilizado.",

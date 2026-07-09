@@ -108,16 +108,20 @@ func (h *BillingHandler) BillingStatus(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, types.BillingStatusResponse{
-		ChatID:            state.ChatID,
-		Email:             state.Email,
-		IsPremium:         state.IsPremium,
-		Plan:              plan,
-		MessageCount:      state.MessageCount,
-		CreditsRemaining:  state.CreditsRemaining,
-		ShowUpgradeButton: !state.IsPremium,
-		ShowPDFButton:     state.IsPremium,
-		PaywallActive:     state.Paywall,
-		PremiumSince:      state.PremiumSince,
+		ChatID:                 state.ChatID,
+		Email:                  state.Email,
+		IsPremium:              state.IsPremium,
+		Plan:                   plan,
+		MessageCount:           state.MessageCount,
+		MessagesToday:          state.MessagesToday,
+		DailyLimit:             state.FreeMessageLimit,
+		MessagesRemainingToday: state.CreditsRemaining,
+		CreditsRemaining:       state.CreditsRemaining,
+		ShowUpgradeButton:      !state.IsPremium,
+		ShowPDFButton:          state.IsPremium,
+		PaywallActive:          state.Paywall,
+		PremiumSince:           state.PremiumSince,
+		QuotaResetsAt:          state.QuotaResetsAt,
 	})
 }
 

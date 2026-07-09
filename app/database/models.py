@@ -10,9 +10,9 @@ Tablas:
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -31,7 +31,9 @@ class User(Base):
     username: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Paywall
     is_premium: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    message_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    message_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)  # lifetime
+    messages_today: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    quota_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     free_message_limit: Mapped[int] = mapped_column(Integer, default=15, nullable=False)
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)

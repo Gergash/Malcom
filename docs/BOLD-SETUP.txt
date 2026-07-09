@@ -1,6 +1,9 @@
 InsightFlow — Bold checkout rápido ($40.000 COP)
 ================================================
 
+Reglas de producto: docs/BUSINESS-RULES-v2.md
+  · El pago activa MENSAJES ILIMITADOS (portal + ECharts son gratis).
+
 Opción A (hoy): link fijo en Bold + webhook → activar premium automáticamente.
 
 1) WordPress / Elementor (5 min)
@@ -41,17 +44,15 @@ Reiniciar API tras cambiar .env:
 
   docker compose up -d --build api
 
-4) Flujo end-to-end
--------------------
-Usuario agota mensajes gratis
-  → CTA "Activar análisis pro" en el widget
-  → /premium-edge-bi/?chat_id=12345678
-  → Botón Bold (reference = chat_id, monto $40.000)
-  → Pago aprobado
-  → Bold POST /api/v1/billing/bold-webhook (firma X-Bold-Signature)
-  → API valida monto + chat_id + firma
-  → ConfirmPayment (idempotente) + is_premium=true
-  → Usuario vuelve al portal; al reabrir el chat, paywall desactivado
+4) Flujo end-to-end (reglas v2 — ver docs/BUSINESS-RULES-v2.md)
+----------------------------------------------------------------
+Usuario agota 15 mensajes (objetivo: por día; hoy puede ser lifetime en BD)
+  → Paywall bloquea SOLO nuevos mensajes en el chat
+  → Portal y tablero ECharts siguen accesibles (gratis)
+  → CTA «Activar mensajes ilimitados» → /premium-edge-bi/?chat_id=12345678
+  → Botón Bold (order_id firmado, monto $40.000)
+  → Pago aprobado → webhook → is_premium=true
+  → Chat sin límite; PDF/Excel desbloqueados
 
 5) Verificar
 ------------

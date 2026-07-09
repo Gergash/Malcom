@@ -40,7 +40,7 @@ Telegram Bot (Python)
 | API pública | Go 1.23, Gin, GORM |
 | Pagos | Wompi, Bold (`internal/payment/`) |
 | Base de datos | PostgreSQL — GORM (Go) + SQLAlchemy async (Python) |
-| IA | Claude API (Anthropic) |
+| IA | Gemini (Google) + Ollama local (fallback) |
 | Contenedores | Docker + docker-compose |
 
 ---
@@ -127,12 +127,13 @@ strict_tdd: false               # no hay suite de tests aún
 ## Reglas de desarrollo
 
 1. **No exponer el worker Python** a internet — solo recibe llamadas del Go API o del bot Telegram.
-2. **Créditos/paywall** se validan siempre en `main.py` antes de llamar al worker.
+2. **Créditos/paywall** se validan en la API Go (`BumpAndCheck`) antes de llamar al worker; el bot Telegram replica la misma lógica en `main.py`.
 3. **Pagos** pasan exclusivamente por `internal/payment/`; nunca lógica de pagos en Python.
 4. **Timeouts:** worker timeout = 330s (configurable via `WORKER_REQUEST_TIMEOUT_SEC`).
-5. **ECharts** solo se genera para usuarios premium (`generate_echarts: bool` en el request al worker).
-6. Al modificar agentes, verificar que el routing en `orchestrator.py` siga siendo correcto.
-7. Variables de entorno requeridas: `TELEGRAM_TOKEN`, `WORKER_URL`, `DATABASE_URL`, `ANTHROPIC_API_KEY`.
+5. **Reglas de producto (v2):** ver [`docs/BUSINESS-RULES-v2.md`](BUSINESS-RULES-v2.md). Gratis = 15 msgs/día + portal + dashboard ECharts; pago $40k = mensajes ilimitados. Paywall solo bloquea nuevos mensajes.
+6. **ECharts:** disponible para todos los usuarios (`generate_echarts: true` en worker).
+7. Al modificar agentes, verificar que el routing en `orchestrator.py` siga siendo correcto.
+8. Variables de entorno requeridas: `TELEGRAM_TOKEN`, `WORKER_URL`, `DATABASE_URL`, `GEMINI_API_KEY`. Opcionales para fallback local: `OLLAMA_BASE_URL`, `OLLAMA_MODEL` (Ollama solo se usa como respaldo cuando Gemini falla o se requiere soberanía de datos).
 
 ---
 

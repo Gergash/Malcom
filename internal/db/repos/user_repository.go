@@ -9,17 +9,42 @@ import (
 
 	"github.com/powerups/insightflow-malcom/internal/db"
 	"github.com/powerups/insightflow-malcom/internal/db/repositories"
+	"github.com/powerups/insightflow-malcom/internal/quota"
 	"gorm.io/gorm"
 )
 
 type userRepo struct {
 	db        *gorm.DB
 	freeLimit int
+	quotaLoc  *time.Location
 }
 
 // NewUserRepository builds a UserRepository backed by GORM.
-func NewUserRepository(gdb *gorm.DB, freeMessageLimit int) repositories.UserRepository {
-	return &userRepo{db: gdb, freeLimit: freeMessageLimit}
+func NewUserRepository(gdb *gorm.DB, freeMessageLimit int, quotaTimezone string) repositories.UserRepository {
+	return &userRepo{
+		db:        gdb,
+		freeLimit: freeMessageLimit,
+		quotaLoc:  quota.LoadLocation(quotaTimezone),
+	}
+}
+
+func (r *userRepo) today() time.Time {
+	return quota.TodayDate(r.quotaLoc)
+}
+
+// ensureDailyReset alinea messages_today con el día calendario actual. Devuelve true si hubo cambio.
+func (r *userRepo) ensureDailyReset(u *db.User) bool {
+	if u.IsPremium {
+		return false
+	}
+	today := r.today()
+	if u.QuotaDate == nil || !quota.SameDay(*u.QuotaDate, today, r.quotaLoc) {
+		u.MessagesToday = 0
+		d := today
+		u.QuotaDate = &d
+		return true
+	}
+	return false
 }
 
 func lookupUserByChatID(ctx context.Context, tx *gorm.DB, chatID int64) (*db.User, error) {
@@ -48,7 +73,7 @@ func lookupUserByEmail(ctx context.Context, tx *gorm.DB, email string) (*db.User
 }
 
 // getOrCreateUserTx finds or creates a user (chat_id y/o email). Al menos uno debe estar presente.
-func getOrCreateUserTx(tx *gorm.DB, ctx context.Context, freeLimit int, chatID *int64, username *string, email *string) (*db.User, error) {
+func getOrCreateUserTx(tx *gorm.DB, ctx context.Context, freeLimit int, quotaLoc *time.Location, chatID *int64, username *string, email *string) (*db.User, error) {
 	var user *db.User
 	var err error
 
@@ -78,11 +103,14 @@ func getOrCreateUserTx(tx *gorm.DB, ctx context.Context, freeLimit int, chatID *
 		return user, nil
 	}
 
+	today := quota.TodayDate(quotaLoc)
 	u := db.User{
 		ChatID:           chatID,
 		FreeMessageLimit: freeLimit,
 		MessageCount:     0,
+		MessagesToday:    0,
 		IsPremium:        false,
+		QuotaDate:        &today,
 	}
 	if email != nil && strings.TrimSpace(*email) != "" {
 		e := strings.ToLower(strings.TrimSpace(*email))
@@ -97,16 +125,19 @@ func getOrCreateUserTx(tx *gorm.DB, ctx context.Context, freeLimit int, chatID *
 	return &u, nil
 }
 
-func userToState(u *db.User) *repositories.UserState {
+func userToState(u *db.User, quotaLoc *time.Location) *repositories.UserState {
 	var chat *int64
 	if u.ChatID != nil {
 		chat = u.ChatID
 	}
+	reset := quota.NextResetUTC(quotaLoc).Format(time.RFC3339)
 	st := &repositories.UserState{
 		ChatID:            chat,
 		Email:             u.Email,
 		Username:          u.Username,
-		MessageCount:      u.MessageCount,
+		MessagesToday:     u.MessagesToday,
+		MessageCount:      u.MessagesToday, // compat widget: message_count = uso diario
+		LifetimeMessages:  u.MessageCount,
 		IsPremium:         u.IsPremium,
 		FreeMessageLimit:  u.FreeMessageLimit,
 		PremiumSince:      formatPremiumSince(u.PremiumSince),
@@ -115,13 +146,19 @@ func userToState(u *db.User) *repositories.UserState {
 		BrandingFontBody:  u.BrandingFontBody,
 		BrandingFontTitle: u.BrandingFontTitle,
 		BrandingCharts:    u.BrandingCharts,
+		QuotaResetsAt:     &reset,
 	}
-	remaining := u.FreeMessageLimit - u.MessageCount
+	if u.IsPremium {
+		st.CreditsRemaining = -1
+		st.Paywall = false
+		return st
+	}
+	remaining := u.FreeMessageLimit - u.MessagesToday
 	if remaining < 0 {
 		remaining = 0
 	}
 	st.CreditsRemaining = remaining
-	st.Paywall = !u.IsPremium && u.MessageCount >= u.FreeMessageLimit
+	st.Paywall = u.MessagesToday >= u.FreeMessageLimit
 	return st
 }
 
@@ -144,38 +181,41 @@ func userToPaymentUser(u *db.User) *repositories.PaymentUser {
 func (r *userRepo) BumpAndCheck(ctx context.Context, chatID int64, username *string) (*repositories.UserState, error) {
 	var out *repositories.UserState
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		u, err := getOrCreateUserTx(tx, ctx, r.freeLimit, &chatID, username, nil)
+		u, err := getOrCreateUserTx(tx, ctx, r.freeLimit, r.quotaLoc, &chatID, username, nil)
 		if err != nil {
 			return err
 		}
 
 		if u.IsPremium {
-			out = userToState(u)
+			out = userToState(u, r.quotaLoc)
 			out.Paywall = false
 			out.CreditsRemaining = -1
 			return nil
 		}
 
-		if u.MessageCount >= u.FreeMessageLimit {
-			out = userToState(u)
+		if r.ensureDailyReset(u) {
+			u.UpdatedAt = time.Now().UTC()
+			if err := tx.WithContext(ctx).Save(u).Error; err != nil {
+				return err
+			}
+		}
+
+		if u.MessagesToday >= u.FreeMessageLimit {
+			out = userToState(u, r.quotaLoc)
 			out.Paywall = true
 			out.CreditsRemaining = 0
 			return nil
 		}
 
+		u.MessagesToday++
 		u.MessageCount++
 		u.UpdatedAt = time.Now().UTC()
 		if err := tx.WithContext(ctx).Save(u).Error; err != nil {
 			return err
 		}
 
-		out = userToState(u)
+		out = userToState(u, r.quotaLoc)
 		out.Paywall = false
-		rem := u.FreeMessageLimit - u.MessageCount
-		if rem < 0 {
-			rem = 0
-		}
-		out.CreditsRemaining = rem
 		return nil
 	})
 	return out, err
@@ -187,15 +227,22 @@ func (r *userRepo) GetState(ctx context.Context, chatID *int64, email *string) (
 	}
 
 	var u *db.User
-	var err error
-	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		u, err = getOrCreateUserTx(tx, ctx, r.freeLimit, chatID, nil, email)
-		return err
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var err error
+		u, err = getOrCreateUserTx(tx, ctx, r.freeLimit, r.quotaLoc, chatID, nil, email)
+		if err != nil {
+			return err
+		}
+		if !u.IsPremium && r.ensureDailyReset(u) {
+			u.UpdatedAt = time.Now().UTC()
+			return tx.WithContext(ctx).Save(u).Error
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	return userToState(u), nil
+	return userToState(u, r.quotaLoc), nil
 }
 
 func (r *userRepo) LinkEmail(ctx context.Context, chatID int64, email string) error {
@@ -229,7 +276,7 @@ func (r *userRepo) LinkEmail(ctx context.Context, chatID int64, email string) er
 			return nil
 		}
 
-		u, err := getOrCreateUserTx(tx, ctx, r.freeLimit, &chatID, nil, nil)
+		u, err := getOrCreateUserTx(tx, ctx, r.freeLimit, r.quotaLoc, &chatID, nil, nil)
 		if err != nil {
 			return err
 		}
@@ -247,7 +294,7 @@ func (r *userRepo) ActivatePremium(ctx context.Context, chatID *int64, email *st
 	var u *db.User
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var err error
-		u, err = getOrCreateUserTx(tx, ctx, r.freeLimit, chatID, nil, email)
+		u, err = getOrCreateUserTx(tx, ctx, r.freeLimit, r.quotaLoc, chatID, nil, email)
 		if err != nil {
 			return err
 		}

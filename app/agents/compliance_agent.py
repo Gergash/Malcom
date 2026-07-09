@@ -10,16 +10,11 @@ import os
 from typing import Optional
 
 try:
-    from app.agents.model_manager import ModelManager
+    from app.agents.model_manager import ModelManager, get_default_gemini_model_names
 except ModuleNotFoundError:
-    from agents.model_manager import ModelManager
+    from agents.model_manager import ModelManager, get_default_gemini_model_names
 
 MAX_RESPONSE_CHARS = 1800
-DEFAULT_MODEL_NAMES = [
-    "models/gemini-2.5-flash",
-    "models/gemini-2.0-flash",
-    "models/gemini-3-flash-preview",
-]
 
 
 class ComplianceAgent:
@@ -32,7 +27,7 @@ class ComplianceAgent:
             "Siempre entregas recomendaciones accionables, preventivas y prudentes (sin inventar normas exactas no visibles)."
         )
         self._manager = ModelManager(
-            model_names=model_names or DEFAULT_MODEL_NAMES,
+            model_names=model_names or get_default_gemini_model_names(),
             system_instruction=identity,
             api_key=os.getenv("GEMINI_API_KEY"),
         )
@@ -75,7 +70,6 @@ class ComplianceAgent:
             response = self._manager.generate_content(prompt)
             return self._cap((response.text or "").strip())
         except Exception:
-            # Fallback robusto si hay fallo del modelo.
             return (
                 "Diagnóstico de Cumplimiento e Impacto Operativo\n"
                 "- Cruce Arancelario: Dato faltante para confirmar códigos arancelarios y su impacto exacto de arancel/IVA.\n"
@@ -83,4 +77,3 @@ class ComplianceAgent:
                 "- Gestión de Riesgos: validar vigencias regulatorias (INVIMA), coherencia FOB/CIF y trazabilidad documental "
                 "antes de declaración para reducir exposición ante DIAN."
             )
-

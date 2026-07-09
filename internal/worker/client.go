@@ -46,7 +46,7 @@ type processRequest struct {
 	Message           string              `json:"message"`
 	ReportConfig      *types.ReportConfig `json:"report_config,omitempty"`
 	RequireStrictData bool                `json:"require_strict_data"`
-	GenerateECharts   bool                `json:"generate_echarts"` // true solo premium: Brain devuelve echarts_option
+	GenerateECharts   bool                `json:"generate_echarts"` // true para todos los usuarios (v2)
 }
 
 type ingestRequest struct {
@@ -134,7 +134,7 @@ func (c *HTTPClient) ProcessMessage(
 	var result ProcessResult
 	var apiErr map[string]any
 
-	genECharts := reportConfig != nil && strings.EqualFold(reportConfig.Tier, "premium")
+	genECharts := true // v2: ECharts para todos los usuarios
 	resp, err := c.resty.R().
 		SetContext(dynamicCtx).
 		SetBody(processRequest{

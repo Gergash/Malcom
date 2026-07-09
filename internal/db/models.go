@@ -10,7 +10,9 @@ type User struct {
 	Email            *string `gorm:"uniqueIndex;size:320"`
 	Username         *string `gorm:"size:255"`
 	IsPremium        bool `gorm:"not null;default:false"`
-	MessageCount     int  `gorm:"not null;default:0"`
+	MessageCount     int  `gorm:"not null;default:0"` // lifetime total (analytics)
+	MessagesToday    int  `gorm:"not null;default:0"` // cupo diario v2
+	QuotaDate        *time.Time `gorm:"type:date"`      // día calendario del contador (TZ quota)
 	FreeMessageLimit int  `gorm:"not null;default:15"`
 	CreatedAt        time.Time
 	UpdatedAt        time.Time

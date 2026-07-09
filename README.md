@@ -2,6 +2,13 @@
 
 Plataforma de Business Intelligence conversacional para Colombia. Combina un bot de Telegram, una API pública en Go y un motor de agentes de IA en Python para analizar archivos corporativos y gubernamentales (DIAN, RIPS, extractos bancarios, inventarios) y generar reportes PDF/Excel enriquecidos con gráficas interactivas.
 
+**Reglas de producto (v2):** [`docs/BUSINESS-RULES-v2.md`](docs/BUSINESS-RULES-v2.md) · **Índice de documentación:** [`docs/README.md`](docs/README.md)
+
+| Plan | Mensajes | Portal + dashboard ECharts | Pago Bold $40k |
+|---|---|---|---|
+| Gratis | 15/día (reset medianoche `America/Bogota`) | Incluidos | — |
+| Premium | Ilimitados | Incluidos | Mensajes ilimitados + PDF/Excel |
+
 ---
 
 ## Arquitectura
@@ -123,8 +130,8 @@ Malcom/
 │   ├── powerups-edge-widget.js      # Lógica del chat embebido
 │   ├── powerups-edge-widget.css     # Estilos del widget
 │   ├── powerups-edge-chat-widget.html
-│   ├── premium-portal.html          # Portal de pago premium
-│   ├── premium-dashboard-session.html # Dashboard ECharts
+│   ├── premium-portal.html          # Portal de tableros (gratis en v2)
+│   ├── premium-dashboard-session.html # Visor dashboard ECharts (gratis en v2)
 │   └── bebuilder-install-snippet.html
 │
 ├── data/                            # Archivos de usuarios (volumen Docker compartido)
@@ -166,7 +173,8 @@ DATA_DIR=data                      # Ruta al volumen de archivos de usuario
 PUBLIC_BASE_URL=https://tu-dominio.com
 
 # ── Límites y seguridad ───────────────────────────────────────────────────────
-FREE_MESSAGE_LIMIT=15               # Mensajes gratis antes del paywall
+FREE_MESSAGE_LIMIT=15               # Cupo diario gratis (mensajes/día)
+QUOTA_TIMEZONE=America/Bogota       # Zona horaria del reset diario
 UPLOAD_MAX_MB=32
 CHAT_RATE_LIMIT_RPS=8.0
 CHAT_RATE_LIMIT_BURST=24
@@ -177,6 +185,9 @@ CSP_FRAME_ANCESTORS=https://tu-dominio.com https://www.tu-dominio.com
 BILLING_WEBHOOK_SECRET=            # Secreto compartido para el webhook genérico
 WOMPI_EVENT_SECRET=                # Secreto del dashboard comercio Wompi
 BOLD_WEBHOOK_SECRET=               # HMAC-SHA256 para webhook Bold
+BOLD_API_KEY=                      # Llave de identidad Bold (Botón de pagos, pública en frontend)
+BOLD_INTEGRITY_SECRET=             # Llave secreta Bold para el hash de integridad del botón (solo servidor)
+PREMIUM_AMOUNT_COP=40000           # Monto fijo en COP para activar premium vía Bold
 
 # ── Desarrollo ────────────────────────────────────────────────────────────────
 DEV_FORCE_PREMIUM=false            # true → todos los chats actúan como premium
@@ -246,6 +257,7 @@ python app/main.py
 | Método | Ruta | Descripción |
 |---|---|---|
 | `GET` | `/api/v1/billing/status` | Estado de suscripción del usuario |
+| `GET` | `/api/v1/billing/bold-checkout` | Atributos firmados (order_id, integrity_signature) para el botón embebido Bold |
 | `POST` | `/api/v1/billing/webhook` | Webhook genérico / Wompi PSE |
 | `POST` | `/api/v1/billing/bold-webhook` | Webhook Bold (HMAC-SHA256) |
 | `POST` | `/api/v1/billing/link-email` | Vincular email a chat_id Telegram |
@@ -339,6 +351,8 @@ Archivos del widget:
 - `powerups-edge-widget.css` — estilos (burbuja flotante, panel lateral)
 - `premium-dashboard-session.html` — dashboard Apache ECharts
 - `premium-portal.html` — portal de activación premium / pago
+- `powerups-bold-checkout.js` — carga el botón embebido Bold (`GET /api/v1/billing/bold-checkout?chat_id=`), inyecta el `<script data-bold-button>` del SDK Bold con order_id/integrity-signature firmados por el servidor
+- `docs/BOLD-SETUP.txt` — guía paso a paso para publicar el checkout Bold en WordPress/BeBuilder, configurar el panel Bold y probar el webhook
 
 ---
 
@@ -346,7 +360,7 @@ Archivos del widget:
 
 | Tabla | Descripción |
 |---|---|
-| `users` | Identidad (chat_id + email), plan (`is_premium`), contador de mensajes, `free_message_limit` (por defecto 15) |
+| `users` | Identidad (chat_id + email), plan (`is_premium`), contador de mensajes (`message_count`; v2 objetivo: cupo diario), `free_message_limit` (15) |
 | `conversations` | Historial de mensajes por `chat_id` (rol: `user` / `assistant`) |
 | `user_files` | Archivos subidos vinculados al usuario; flag `indexed` para RAG |
 | `payments` | Registro de webhooks: referencia, monto COP, proveedor, estado, `payer_email` / `payer_chat_id` |
@@ -357,22 +371,51 @@ Archivos del widget:
 
 ## Flujo de pago y activación premium
 
+### Bold (checkout embebido, monto fijo)
+
 ```
-WordPress (WooCommerce) ──genera referencia──► PSP (Wompi / Bold)
+Widget/portal ──GET /api/v1/billing/bold-checkout?chat_id=──► API Go
+                                                                   │
+                                          Genera order_id="IF-{chat_id}-{unix}"
+                                          Firma integridad: SHA256(order_id + amount + currency + BOLD_INTEGRITY_SECRET)
+                                                                   │
+                                          ◄── order_id, amount_cop, integrity_signature, api_key
+                                                                   │
+                             powerups-bold-checkout.js monta <script data-bold-button>
+                                                                   │
+                                                    Usuario paga en el botón Bold
+                                                                   │
+                                                    Bold POST /api/v1/billing/bold-webhook
+                                                    (header X-Bold-Signature, HMAC-SHA256)
+                                                                   │
+                              API valida firma + valida que el monto coincida con PREMIUM_AMOUNT_COP
+                              + extrae chat_id (metadata / description / reference)
+                                                                   │
+                                          PaymentRepository.ConfirmPayment() (idempotente)
+                                          → is_premium = true
+```
+
+- Precio: monto fijo configurable vía `PREMIUM_AMOUNT_COP` (por defecto **$40.000 COP**).
+- `BOLD_API_KEY` (pública, botón) y `BOLD_INTEGRITY_SECRET` (privada, hash del botón) son llaves distintas.
+- El `chat_id` se busca en `metadata.chat_id`, en `description`/`reference` con `?chat_id=` o `chat_id=`, o como entero directo en `reference`/`order_id`.
+- Ver `docs/BOLD-SETUP.txt` para la guía completa de configuración (WordPress + panel Bold + prueba del webhook con curl).
+
+### Wompi (webhook genérico)
+
+```
+WordPress (WooCommerce) ──genera referencia──► Wompi
                                                       │
                                                       │ webhook HTTPS
                                                       ▼
-                                          POST /api/v1/billing/bold-webhook
                                           POST /api/v1/billing/webhook
                                                       │
-                                          Valida firma HMAC-SHA256
+                                          Valida X-Event-Checksum (WOMPI_EVENT_SECRET)
                                                       │
-                                          UserRepository.ActivatePremium()
+                                          PaymentRepository.ConfirmPayment()
                                           → is_premium = true
                                           → premium_since = now()
 ```
 
-- Precio: **$40.000 COP** (4.000.000 centavos Wompi).
 - El `chat_id` se extrae de `metadata.chat_id` o del campo `description`/URL con `?chat_id=`.
 - Se puede vincular email a chat_id vía `POST /api/v1/billing/link-email`.
 
@@ -385,7 +428,7 @@ WordPress (WooCommerce) ──genera referencia──► PSP (Wompi / Bold)
 | Gráfica matplotlib | `data/{chat_id}/output_plot_{chat_id}.png` | Imagen en Telegram / URL firmada en web |
 | Reporte PDF | `data/{chat_id}/reporte_final.pdf` | Documento en Telegram / descarga segura |
 | Reporte Excel | `data/{chat_id}/reporte_final.xlsx` | Documento en Telegram / descarga segura |
-| Option ECharts | Campo `echarts_option` en JSON | Dashboard interactivo (solo premium) |
+| Option ECharts | Campo `echarts_option` en JSON | Dashboard interactivo (todos los usuarios) |
 
 ---
 
@@ -400,10 +443,11 @@ WordPress (WooCommerce) ──genera referencia──► PSP (Wompi / Bold)
 
 ---
 
-## Estado del proyecto (Mayo 2026)
+## Estado del proyecto (Julio 2026)
 
 - **Producción:** Widget web funcional en WordPress/BeBuilder. API Go + Worker Python estables en Docker.
-- **Billing:** Webhook Bold activo. Wompi como alternativa. Portal premium integrado en el widget.
+- **Billing:** Bold es el proveedor principal — checkout embebido con firma SHA256. El pago de **$40.000 COP** activa **mensajes ilimitados** (no “desbloquea dashboard”; portal y ECharts son gratis en v2). Wompi sigue como alternativa.
+- **Producto v2:** contador diario + ECharts gratis implementados (`docs/BUSINESS-RULES-v2.md`).
 - **Ingesta:** Pipeline avanzado para archivos DIAN/RIPS/extractos bancarios colombianos con heurística de encabezado y expansión de delimitadores.
 - **IA:** Soporte híbrido Gemini + Ollama local para soberanía de datos.
 - **Compliance:** Bloque de diagnóstico normativo/aduanero integrado en todos los reportes.

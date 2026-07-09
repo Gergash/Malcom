@@ -16,12 +16,15 @@ type UserState struct {
 	ChatID            *int64
 	Email             *string
 	Username          *string
-	MessageCount      int
+	MessagesToday      int
+	MessageCount       int // messages_today expuesto como message_count (compat widget)
+	LifetimeMessages   int // message_count acumulado de por vida
 	IsPremium         bool
 	FreeMessageLimit  int
 	CreditsRemaining  int
 	Paywall           bool
 	PremiumSince      *string
+	QuotaResetsAt     *string // RFC3339 UTC — próximo reset del cupo diario
 	BrandingColor     *string
 	BrandingColorSec  *string
 	BrandingFontBody  *int

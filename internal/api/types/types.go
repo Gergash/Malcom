@@ -90,15 +90,19 @@ type UploadResponse struct {
 
 // CreditStateResponse — respuesta de GET /api/v1/chat/{chat_id}/credits.
 type CreditStateResponse struct {
-	ChatID           *int64  `json:"chat_id"`
-	Email            *string `json:"email"`
-	Username         *string `json:"username"`
-	MessageCount     int     `json:"message_count"`
-	IsPremium        bool    `json:"is_premium"`
-	FreeMessageLimit int     `json:"free_message_limit"`
-	CreditsRemaining int     `json:"credits_remaining"`
-	Paywall          bool    `json:"paywall"`
-	PremiumSince     *string `json:"premium_since,omitempty"`
+	ChatID                 *int64  `json:"chat_id"`
+	Email                  *string `json:"email"`
+	Username               *string `json:"username"`
+	MessageCount           int     `json:"message_count"`            // uso diario (compat widget)
+	MessagesToday          int     `json:"messages_today"`
+	DailyLimit             int     `json:"daily_limit"`
+	MessagesRemainingToday int     `json:"messages_remaining_today"`
+	IsPremium              bool    `json:"is_premium"`
+	FreeMessageLimit       int     `json:"free_message_limit"` // alias daily_limit
+	CreditsRemaining       int     `json:"credits_remaining"`
+	Paywall                bool    `json:"paywall"`
+	PremiumSince           *string `json:"premium_since,omitempty"`
+	QuotaResetsAt          *string `json:"quota_resets_at,omitempty"`
 }
 
 // ── Billing ───────────────────────────────────────────────────────────────────
@@ -106,16 +110,20 @@ type CreditStateResponse struct {
 // BillingStatusResponse — respuesta de GET /api/v1/billing/status.
 // El frontend WordPress la consulta para decidir qué botones mostrar.
 type BillingStatusResponse struct {
-	ChatID            *int64  `json:"chat_id"`
-	Email             *string `json:"email"`
-	IsPremium         bool    `json:"is_premium"`
-	Plan              string  `json:"plan"` // "free" | "premium"
-	MessageCount      int     `json:"message_count"`
-	CreditsRemaining  int     `json:"credits_remaining"`
-	ShowUpgradeButton bool    `json:"show_upgrade_button"` // true si no es premium
-	ShowPDFButton     bool    `json:"show_pdf_button"`     // true si es premium
-	PaywallActive     bool    `json:"paywall_active"`      // true si agotó mensajes gratis
-	PremiumSince      *string `json:"premium_since,omitempty"`
+	ChatID                 *int64  `json:"chat_id"`
+	Email                  *string `json:"email"`
+	IsPremium              bool    `json:"is_premium"`
+	Plan                   string  `json:"plan"` // "free" | "premium"
+	MessageCount           int     `json:"message_count"` // uso diario (compat)
+	MessagesToday          int     `json:"messages_today"`
+	DailyLimit             int     `json:"daily_limit"`
+	MessagesRemainingToday int     `json:"messages_remaining_today"`
+	CreditsRemaining       int     `json:"credits_remaining"`
+	ShowUpgradeButton      bool    `json:"show_upgrade_button"`
+	ShowPDFButton          bool    `json:"show_pdf_button"`
+	PaywallActive          bool    `json:"paywall_active"`
+	PremiumSince           *string `json:"premium_since,omitempty"`
+	QuotaResetsAt          *string `json:"quota_resets_at,omitempty"`
 }
 
 // PaymentWebhookRequest — payload de POST /api/v1/billing/webhook (Wompi/PSE).

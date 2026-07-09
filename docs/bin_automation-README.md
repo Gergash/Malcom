@@ -114,7 +114,7 @@ POST /api/v1/billing/bold-webhook
   - Lee la cabecera `X-Bold-Signature`.
   - Valida HMAC-SHA256 sobre el body crudo usando `BOLD_WEBHOOK_SECRET`.
   - Si la firma es inválida, responde `401 Unauthorized` y registra un log estructurado con `slog`.
-- Activación premium:
+- Activación premium (mensajes ilimitados por `chat_id`; portal/dashboard gratis en v2 — ver `docs/BUSINESS-RULES-v2.md`):
   - Normaliza eventos de transacción exitosos como `transaction.succeeded`, `approved`, `paid` o equivalentes.
   - Extrae `chat_id` desde `metadata.chat_id` o desde `description`/URL con formato `?chat_id=xxxx`.
   - Usa `UserRepository.ActivatePremium(...)` para marcar `is_premium = true` y registrar `premium_since` en PostgreSQL.
@@ -130,4 +130,4 @@ BOLD_WEBHOOK_SECRET=
 - Pipeline de análisis reforzado para archivos corporativos y gubernamentales colombianos.
 - Diagnóstico normativo y aduanero incorporado a los reportes.
 - Soporte híbrido local/cloud para clientes con requerimientos de soberanía extrema de datos.
-- Webhook Bold disponible para activar planes premium por `chat_id`.
+- Webhook Bold disponible para activar mensajes ilimitados (premium) por `chat_id`.

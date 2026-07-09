@@ -76,11 +76,10 @@ except ModuleNotFoundError:
 load_dotenv()
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
-DEFAULT_MODEL_NAMES: List[str] = [
-    "models/gemini-2.5-flash",
-    "models/gemini-2.0-flash",
-    "models/gemini-3-flash-preview",
-]
+try:
+    from app.agents.model_manager import get_default_gemini_model_names
+except ModuleNotFoundError:
+    from agents.model_manager import get_default_gemini_model_names
 
 _DATA_EXTENSIONS = (".csv", ".xlsx", ".xls")
 MAX_RESPONSE_CHARS = 4096 - 30
@@ -320,12 +319,12 @@ class AnalystAgent:
             f"Siempre que des una respuesta en texto, respétala máximo {MAX_RESPONSE_CHARS} caracteres (límite del canal): sé conciso, prioriza hallazgos clave."
         )
         self._manager = ModelManager(
-            model_names=model_names or DEFAULT_MODEL_NAMES,
+            model_names=model_names or get_default_gemini_model_names(),
             system_instruction=identity,
             api_key=os.getenv("GEMINI_API_KEY"),
         )
         self._knowledge_agents: Dict[int, KnowledgeAgent] = {}
-        self._compliance_agent = ComplianceAgent(model_names=model_names or DEFAULT_MODEL_NAMES)
+        self._compliance_agent = ComplianceAgent(model_names=model_names or get_default_gemini_model_names())
         self._pending_pdf_report_path: Optional[str] = None
         self._pending_excel_report_path: Optional[str] = None
 
