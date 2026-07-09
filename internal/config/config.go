@@ -41,6 +41,8 @@ type Config struct {
 	WompiEventSecret string
 	// Secreto de webhook Bold: valida X-Bold-Signature con HMAC-SHA256 sobre el body crudo.
 	BoldWebhookSecret string
+	// Monto fijo en COP para activar premium vía Bold (p. ej. 40000).
+	PremiumAmountCOP int
 
 	// DevForcePremium: SOLO DESARROLLO. Si true, todos los chats se tratan como premium
 	// (sin paywall, con dashboard ECharts, gráficas múltiples y descargas). Útil para
@@ -126,6 +128,13 @@ func Load() (*Config, error) {
 		devForcePremium = true
 	}
 
+	premiumAmountCOP := 40000
+	if v := strings.TrimSpace(os.Getenv("PREMIUM_AMOUNT_COP")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			premiumAmountCOP = n
+		}
+	}
+
 	return &Config{
 		DatabaseURL:          NormalizeDatabaseURL(rawURL),
 		Port:                 port,
@@ -142,6 +151,7 @@ func Load() (*Config, error) {
 		BillingWebhookSecret: webhookSecret,
 		WompiEventSecret:     wompiEvent,
 		BoldWebhookSecret:    boldWebhook,
+		PremiumAmountCOP:     premiumAmountCOP,
 		DevForcePremium:      devForcePremium,
 	}, nil
 }

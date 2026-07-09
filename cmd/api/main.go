@@ -69,7 +69,7 @@ func main() {
 	if cfg.DevForcePremium {
 		log.Println("⚠️  DEV_FORCE_PREMIUM ACTIVO: todos los chats actuarán como premium. Desactivar en producción.")
 	}
-	billingHandler := handlers.NewBillingHandler(userRepo, paymentRepo, cfg.WompiEventSecret, cfg.BoldWebhookSecret)
+	billingHandler := handlers.NewBillingHandler(userRepo, paymentRepo, cfg.WompiEventSecret, cfg.BoldWebhookSecret, cfg.PremiumAmountCOP)
 	downloadHandler := handlers.NewDownloadHandler(tokenStore, userRepo, cfg.DataDir)
 	dashboardHandler := handlers.NewDashboardHandler(tokenStore, userRepo, cfg.DataDir, cfg.DevForcePremium)
 
@@ -120,6 +120,7 @@ func main() {
 	if cfg.BoldWebhookSecret != "" {
 		log.Println("BOLD_WEBHOOK_SECRET activo: se valida X-Bold-Signature en eventos Bold.")
 	}
+	log.Printf("Premium Bold: monto esperado $%d COP (PREMIUM_AMOUNT_COP)", cfg.PremiumAmountCOP)
 	if strings.TrimSpace(cfg.CSPFrameAncestors) == "" {
 		log.Println("Aviso: CSP_FRAME_ANCESTORS vacío — frame-ancestors solo incluye 'self'. " +
 			"Para embeber /dashboard desde WordPress u otro sitio, define orígenes en CSP_FRAME_ANCESTORS.")

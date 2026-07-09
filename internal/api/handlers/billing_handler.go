@@ -28,6 +28,7 @@ type BillingHandler struct {
 	paymentRepo       repositories.PaymentRepository
 	wompiEventSecret  string
 	boldWebhookSecret string
+	premiumAmountCOP  int
 }
 
 // NewBillingHandler construye el handler con sus dependencias.
@@ -36,12 +37,14 @@ func NewBillingHandler(
 	paymentRepo repositories.PaymentRepository,
 	wompiEventSecret string,
 	boldWebhookSecret string,
+	premiumAmountCOP int,
 ) *BillingHandler {
 	return &BillingHandler{
 		userRepo:          userRepo,
 		paymentRepo:       paymentRepo,
 		wompiEventSecret:  wompiEventSecret,
 		boldWebhookSecret: boldWebhookSecret,
+		premiumAmountCOP:  premiumAmountCOP,
 	}
 }
 
@@ -216,8 +219,9 @@ func (h *BillingHandler) PaymentWebhook(c *gin.Context) {
 // ── POST /api/v1/billing/bold-webhook ─────────────────────────────────────────
 
 // BoldWebhook recibe notificaciones de Bold cuando cambia el estado de una transacción.
-// Si la firma es válida y la transacción fue exitosa, activa premium para el chat_id
-// recibido en metadata.chat_id o en description con formato URL (?chat_id=xxxx).
+// Si la firma es válida, el monto coincide con PREMIUM_AMOUNT_COP y la transacción
+// fue exitosa, registra el pago (idempotente) y activa premium para el chat_id
+// recibido en metadata, description, reference u order_id.
 func (h *BillingHandler) BoldWebhook(c *gin.Context) {
 	raw, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -238,6 +242,13 @@ func (h *BillingHandler) BoldWebhook(c *gin.Context) {
 
 	event := bold.ParseEvent(raw)
 	if !event.IsSuccessful() {
+		ref := strings.TrimSpace(event.Reference)
+		if ref != "" {
+			amountCOP := bold.NormalizeAmountCOP(event.AmountCents)
+			if err := h.paymentRepo.MarkFailed(c.Request.Context(), ref, "bold", amountCOP); err != nil {
+				slog.Warn("bold webhook: error registrando pago fallido", slog.String("error", err.Error()))
+			}
+		}
 		slog.Info(
 			"bold webhook: evento no exitoso registrado",
 			slog.String("event_type", event.Type),
@@ -254,6 +265,24 @@ func (h *BillingHandler) BoldWebhook(c *gin.Context) {
 		return
 	}
 
+	if !bold.AmountMatchesPremium(event.AmountCents, h.premiumAmountCOP) {
+		got := bold.NormalizeAmountCOP(event.AmountCents)
+		slog.Warn(
+			"bold webhook: monto inválido",
+			slog.Int("amount_cop", got),
+			slog.Int("expected_cop", h.premiumAmountCOP),
+			slog.String("reference", event.Reference),
+		)
+		c.JSON(http.StatusUnprocessableEntity, types.ErrorResponse{
+			Detail: fmt.Sprintf(
+				"Monto inválido: se esperaban $%d COP, recibido $%d COP.",
+				h.premiumAmountCOP,
+				got,
+			),
+		})
+		return
+	}
+
 	if event.ChatID == nil {
 		slog.Warn(
 			"bold webhook: pago exitoso sin chat_id",
@@ -262,37 +291,57 @@ func (h *BillingHandler) BoldWebhook(c *gin.Context) {
 			slog.String("reference", event.Reference),
 		)
 		c.JSON(http.StatusUnprocessableEntity, types.ErrorResponse{
-			Detail: "No se encontró chat_id en metadata o description.",
+			Detail: "No se encontró chat_id en metadata, description o reference.",
 		})
 		return
 	}
 
-	user, err := h.userRepo.ActivatePremium(c.Request.Context(), event.ChatID, nil)
+	ref := strings.TrimSpace(event.Reference)
+	if ref == "" {
+		ref = fmt.Sprintf("bold-chat-%d", *event.ChatID)
+	}
+	amountCOP := bold.NormalizeAmountCOP(event.AmountCents)
+
+	result, err := h.paymentRepo.ConfirmPayment(
+		c.Request.Context(),
+		ref,
+		amountCOP,
+		"bold",
+		nil,
+		event.ChatID,
+	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, types.ErrorResponse{
-			Detail: fmt.Sprintf("Error activando premium por Bold: %v", err),
+			Detail: fmt.Sprintf("Error confirmando pago Bold: %v", err),
 		})
 		return
+	}
+
+	msg := "Premium activado por Bold."
+	if result.AlreadyProcessed {
+		msg = "Pago Bold ya procesado anteriormente."
 	}
 
 	slog.Info(
 		"bold webhook: premium activado",
 		slog.Int64("chat_id", *event.ChatID),
-		slog.String("reference", event.Reference),
+		slog.String("reference", ref),
 		slog.String("event_type", event.Type),
 		slog.String("status", event.Status),
+		slog.Bool("already_processed", result.AlreadyProcessed),
 	)
 
 	resp := types.PaymentWebhookResponse{
-		Success:   true,
-		Message:   "Premium activado por Bold.",
-		Reference: event.Reference,
-		IsPremium: true,
+		Success:          true,
+		AlreadyProcessed: result.AlreadyProcessed,
+		Message:          msg,
+		Reference:        ref,
+		IsPremium:        true,
 	}
-	if user != nil {
-		resp.UserChatID = user.ChatID
-		resp.UserEmail = user.Email
-		resp.IsPremium = user.IsPremium
+	if result.User != nil {
+		resp.UserChatID = result.User.ChatID
+		resp.UserEmail = result.User.Email
+		resp.IsPremium = result.User.IsPremium
 	}
 	c.JSON(http.StatusOK, resp)
 }

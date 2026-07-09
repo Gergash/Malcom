@@ -1,0 +1,70 @@
+InsightFlow — Bold checkout rápido ($40.000 COP)
+================================================
+
+Opción A (hoy): link fijo en Bold + webhook → activar premium automáticamente.
+
+1) WordPress / Elementor (5 min)
+--------------------------------
+- Página checkout: https://www.powerupsagencia.com/premium-edge-bi/
+- BeBuilder → Elemento HTML → pegar embed/bebuilder-pro-card-snippet.html
+- El widget ya redirige con ?chat_id= desde bebuilder-install-snippet.html
+
+2) Panel Bold
+-------------
+- Crear link de pago: monto fijo 40.000 COP
+- data-amount="40000" y data-currency="COP" en el snippet (ya incluidos)
+- Webhook URL (producción o ngrok en dev):
+
+    https://<API_PUBLICA>/api/v1/billing/bold-webhook
+
+  Ejemplo dev con ngrok:
+
+    https://abc123.ngrok-free.app/api/v1/billing/bold-webhook
+
+- Copiar el secreto del webhook → BOLD_WEBHOOK_SECRET en .env de la API
+
+3) Variables .env (API Go)
+--------------------------
+PREMIUM_AMOUNT_COP=40000
+BOLD_WEBHOOK_SECRET=<secreto del panel Bold>
+
+Reiniciar API tras cambiar .env:
+
+  docker compose up -d --build api
+
+4) Flujo end-to-end
+-------------------
+Usuario agota mensajes gratis
+  → CTA "Activar análisis pro" en el widget
+  → /premium-edge-bi/?chat_id=12345678
+  → Botón Bold (reference = chat_id, monto $40.000)
+  → Pago aprobado
+  → Bold POST /api/v1/billing/bold-webhook (firma X-Bold-Signature)
+  → API valida monto + chat_id + firma
+  → ConfirmPayment (idempotente) + is_premium=true
+  → Usuario vuelve al portal; al reabrir el chat, paywall desactivado
+
+5) Verificar
+------------
+GET /api/v1/billing/status?chat_id=12345678
+
+  { "is_premium": true, "plan": "premium", "paywall_active": false }
+
+6) chat_id en el webhook
+------------------------
+La API busca chat_id en este orden:
+  - metadata.chat_id
+  - description con ?chat_id= o chat_id=
+  - reference / order_id (número entero, p. ej. el que inyecta el snippet)
+
+7) Prueba local del webhook (curl)
+----------------------------------
+# Generar firma HMAC-SHA256 del body con BOLD_WEBHOOK_SECRET
+# Header: X-Bold-Signature: <hex o sha256=<hex>>
+
+curl -X POST http://localhost:8080/api/v1/billing/bold-webhook \
+  -H "Content-Type: application/json" \
+  -H "X-Bold-Signature: <firma>" \
+  -d '{"type":"transaction.succeeded","status":"approved","reference":"12345678","amount":40000}'
+
+Respuesta esperada: success=true, is_premium=true

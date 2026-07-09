@@ -111,6 +111,27 @@ func ExtractChatID(raw []byte) *int64 {
 			return id
 		}
 	}
+
+	for _, path := range []string{
+		"reference",
+		"transaction.reference",
+		"data.reference",
+		"data.transaction.reference",
+		"data.payment.reference",
+		"order_id",
+		"data.order_id",
+	} {
+		text := strings.TrimSpace(gjson.GetBytes(raw, path).String())
+		if text == "" {
+			continue
+		}
+		if id := parseInt64(text); id != nil {
+			return id
+		}
+		if id := extractChatIDFromText(text); id != nil {
+			return id
+		}
+	}
 	return nil
 }
 
