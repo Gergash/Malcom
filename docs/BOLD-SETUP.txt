@@ -46,7 +46,7 @@ Reiniciar API tras cambiar .env:
 
 4) Flujo end-to-end (reglas v2 — ver docs/BUSINESS-RULES-v2.md)
 ----------------------------------------------------------------
-Usuario agota 15 mensajes (objetivo: por día; hoy puede ser lifetime en BD)
+Usuario agota 15 mensajes del día (reset a medianoche `America/Bogota`, ya implementado en `BumpAndCheck` / `bump_and_check`)
   → Paywall bloquea SOLO nuevos mensajes en el chat
   → Portal y tablero ECharts siguen accesibles (gratis)
   → CTA «Activar mensajes ilimitados» → /premium-edge-bi/?chat_id=12345678

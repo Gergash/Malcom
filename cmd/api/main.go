@@ -55,7 +55,7 @@ func main() {
 	convRepo := repos.NewConversationRepository(gdb)
 	paymentRepo := repos.NewPaymentRepository(gdb, cfg.FreeMessageLimit, cfg.QuotaTimezone)
 
-	workerClient := worker.NewHTTPClient(cfg.WorkerURL)
+	workerClient := worker.NewHTTPClient(cfg.WorkerURL, cfg.WorkerRequestTimeoutSec)
 
 	tokenStore := handlers.NewPersistentTokenStore(gdb)
 

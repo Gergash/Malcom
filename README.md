@@ -256,7 +256,7 @@ python app/main.py
 ### Billing
 | Método | Ruta | Descripción |
 |---|---|---|
-| `GET` | `/api/v1/billing/status` | Estado de suscripción del usuario |
+| `GET` | `/api/v1/billing/status?chat_id=\|email=` | Estado de suscripción del usuario |
 | `GET` | `/api/v1/billing/bold-checkout` | Atributos firmados (order_id, integrity_signature) para el botón embebido Bold |
 | `POST` | `/api/v1/billing/webhook` | Webhook genérico / Wompi PSE |
 | `POST` | `/api/v1/billing/bold-webhook` | Webhook Bold (HMAC-SHA256) |
@@ -267,6 +267,27 @@ python app/main.py
 |---|---|---|
 | `GET` | `/health` | Health check |
 | `GET` | `/download/:token` | Descarga segura de artefactos (PDF/Excel/PNG) |
+
+**Respuesta real de `GET /api/v1/billing/status`** (`internal/api/types/types.go` → `BillingStatusResponse`):
+```json
+{
+  "chat_id": 1234567890,
+  "email": "user@example.com",
+  "is_premium": false,
+  "plan": "free",
+  "message_count": 7,
+  "messages_today": 7,
+  "daily_limit": 15,
+  "messages_remaining_today": 8,
+  "credits_remaining": 8,
+  "show_upgrade_button": true,
+  "show_pdf_button": false,
+  "paywall_active": false,
+  "premium_since": null,
+  "quota_resets_at": "2026-07-10T05:00:00Z"
+}
+```
+> Nota: este contrato existe hoy en el código pero difiere del propuesto en `docs/BUSINESS-RULES-v2.md` §7 (no incluye el objeto `features`); `show_pdf_button` refleja el gate de UI, no un gate real de backend (ver §12 de BUSINESS-RULES-v2.md).
 
 **Ejemplo de petición `/api/v1/chat`:**
 ```json
@@ -352,6 +373,8 @@ Archivos del widget:
 - `premium-dashboard-session.html` — dashboard Apache ECharts
 - `premium-portal.html` — portal de activación premium / pago
 - `powerups-bold-checkout.js` — carga el botón embebido Bold (`GET /api/v1/billing/bold-checkout?chat_id=`), inyecta el `<script data-bold-button>` del SDK Bold con order_id/integrity-signature firmados por el servidor
+- `powerups-edge-widget-markup.html` — fragmento HTML de referencia del `<body>` del chat (debe mantenerse sincronizado con `powerups-edge-frame.html`; no se sube a producción, solo referencia local)
+- `embed/INTEGRATION-BEBUILDER.txt` — inventario completo de archivos del embed modular, checklist de despliegue a Medios de WordPress y mapa de endpoints usados por el widget
 - `docs/BOLD-SETUP.txt` — guía paso a paso para publicar el checkout Bold en WordPress/BeBuilder, configurar el panel Bold y probar el webhook
 
 ---
@@ -360,7 +383,7 @@ Archivos del widget:
 
 | Tabla | Descripción |
 |---|---|
-| `users` | Identidad (chat_id + email), plan (`is_premium`), contador de mensajes (`message_count`; v2 objetivo: cupo diario), `free_message_limit` (15) |
+| `users` | Identidad (chat_id + email), plan (`is_premium`), `message_count` (contador lifetime, solo analítico), `messages_today` + `quota_date` (cupo diario v2, reset en `America/Bogota`), `free_message_limit` (15) |
 | `conversations` | Historial de mensajes por `chat_id` (rol: `user` / `assistant`) |
 | `user_files` | Archivos subidos vinculados al usuario; flag `indexed` para RAG |
 | `payments` | Registro de webhooks: referencia, monto COP, proveedor, estado, `payer_email` / `payer_chat_id` |
@@ -447,7 +470,7 @@ WordPress (WooCommerce) ──genera referencia──► Wompi
 
 - **Producción:** Widget web funcional en WordPress/BeBuilder. API Go + Worker Python estables en Docker.
 - **Billing:** Bold es el proveedor principal — checkout embebido con firma SHA256. El pago de **$40.000 COP** activa **mensajes ilimitados** (no “desbloquea dashboard”; portal y ECharts son gratis en v2). Wompi sigue como alternativa.
-- **Producto v2:** contador diario + ECharts gratis implementados (`docs/BUSINESS-RULES-v2.md`).
+- **Producto v2:** contador diario (`messages_today`/`quota_date`, reset `America/Bogota`) + ECharts/portal gratis para todos, verificado en `internal/db/repos/user_repository.go`, `internal/api/handlers/chat_handler.go` y `internal/api/handlers/dashboard_handler.go` (`docs/BUSINESS-RULES-v2.md`). Pendiente: login opcional por email (endpoint existe, falta UI) y reforzar en backend el gate premium de PDF/Excel — hoy solo se aplica en `powerups-edge-widget.js`, no en `download_handler.go`/`chat_handler.go`.
 - **Ingesta:** Pipeline avanzado para archivos DIAN/RIPS/extractos bancarios colombianos con heurística de encabezado y expansión de delimitadores.
 - **IA:** Soporte híbrido Gemini + Ollama local para soberanía de datos.
 - **Compliance:** Bloque de diagnóstico normativo/aduanero integrado en todos los reportes.

@@ -26,7 +26,7 @@ type ProcessResult struct {
 	ChartPaths []string `json:"chart_paths"` // P5: rutas adicionales (premium multi-chart)
 	PDFPath    string   `json:"pdf_path"`    // ruta al PDF generado
 	ExcelPath  string   `json:"excel_path"`  // ruta al Excel generado
-	// EChartsOption — opción Apache ECharts (JSON) cuando el Brain generó dashboard premium.
+	// EChartsOption — opción Apache ECharts (JSON) cuando el Brain generó dashboard.
 	EChartsOption json.RawMessage `json:"echarts_option,omitempty"`
 }
 
@@ -46,7 +46,7 @@ type processRequest struct {
 	Message           string              `json:"message"`
 	ReportConfig      *types.ReportConfig `json:"report_config,omitempty"`
 	RequireStrictData bool                `json:"require_strict_data"`
-	GenerateECharts   bool                `json:"generate_echarts"` // true para todos los usuarios (v2)
+	GenerateECharts   bool                `json:"generate_echarts"`
 }
 
 type ingestRequest struct {
@@ -71,44 +71,73 @@ type Client interface {
 
 // ── Implementación HTTP (Resty) ───────────────────────────────────────────────
 
-const maxWorkerPatience = 5 * time.Minute
+const defaultWorkerRequestTimeoutSec = 330
 
-// calculateProcessTimeout ajusta el tiempo de espera al Brain según carga esperada
-// (prompt largo, informe con ReportConfig, chat con archivos / datos estrictos).
-func calculateProcessTimeout(message string, reportConfig *types.ReportConfig, requireStrictData bool) time.Duration {
-	timeout := 30 * time.Second
+var chartKeywords = []string{
+	"gráfic", "grafic", "chart", "tablero", "echart", "visualiz",
+	"dashboard", "barras", "heatmap", "mapa de calor", "plot",
+}
+
+// shouldGenerateECharts — v2: ECharts disponible con datos o cuando el usuario pide gráfica.
+func shouldGenerateECharts(message string, requireStrictData bool) bool {
+	if requireStrictData {
+		return true
+	}
+	lower := strings.ToLower(message)
+	for _, kw := range chartKeywords {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+// calculateProcessTimeout ajusta el tiempo de espera al Brain según carga esperada.
+func calculateProcessTimeout(message string, reportConfig *types.ReportConfig, requireStrictData, generateECharts bool, maxSec int) time.Duration {
+	if maxSec <= 0 {
+		maxSec = defaultWorkerRequestTimeoutSec
+	}
+	maxDur := time.Duration(maxSec) * time.Second
+
+	timeout := 90 * time.Second
 	if len(message) > 500 {
 		timeout += 30 * time.Second
 	}
 	if reportConfig != nil {
-		timeout += 2 * time.Minute
+		timeout += 90 * time.Second
 	}
 	if requireStrictData {
 		timeout += 2 * time.Minute
 	}
-	if timeout > maxWorkerPatience {
-		return maxWorkerPatience
+	if generateECharts {
+		timeout += 90 * time.Second
+	}
+	if timeout > maxDur {
+		return maxDur
 	}
 	return timeout
 }
 
 // HTTPClient implementa Client llamando al Worker Python vía HTTP.
 type HTTPClient struct {
-	resty   *resty.Client
-	baseURL string
+	resty              *resty.Client
+	baseURL            string
+	requestTimeoutSec  int
 }
 
 // NewHTTPClient crea un cliente apuntando al Worker Python.
-// baseURL ejemplo: "http://localhost:8001"
-// El timeout por petición lo fija el contexto en ProcessMessage/IngestFile; el techo
-// de Resty debe ser ≥ el máximo de esos contextos. Reintentos solo en 502–504.
-func NewHTTPClient(baseURL string) *HTTPClient {
+// requestTimeoutSec — techo alineado con WORKER_REQUEST_TIMEOUT_SEC del Brain (default 330).
+func NewHTTPClient(baseURL string, requestTimeoutSec int) Client {
+	if requestTimeoutSec <= 0 {
+		requestTimeoutSec = defaultWorkerRequestTimeoutSec
+	}
+	restyTimeout := time.Duration(requestTimeoutSec+30) * time.Second
 	r := resty.New().
 		SetBaseURL(baseURL).
-		SetTimeout(6 * time.Minute).
-		SetRetryCount(2).
-		SetRetryWaitTime(5 * time.Second).
-		SetRetryMaxWaitTime(20 * time.Second).
+		SetTimeout(restyTimeout).
+		SetRetryCount(1).
+		SetRetryWaitTime(3 * time.Second).
+		SetRetryMaxWaitTime(10 * time.Second).
 		AddRetryCondition(func(resp *resty.Response, err error) bool {
 			if resp == nil {
 				return false
@@ -117,7 +146,11 @@ func NewHTTPClient(baseURL string) *HTTPClient {
 			return sc >= 502 && sc <= 504
 		})
 
-	return &HTTPClient{resty: r, baseURL: baseURL}
+	return &HTTPClient{
+		resty:             r,
+		baseURL:           baseURL,
+		requestTimeoutSec: requestTimeoutSec,
+	}
 }
 
 func (c *HTTPClient) ProcessMessage(
@@ -127,14 +160,14 @@ func (c *HTTPClient) ProcessMessage(
 	reportConfig *types.ReportConfig,
 	requireStrictData bool,
 ) (*ProcessResult, error) {
-	patience := calculateProcessTimeout(message, reportConfig, requireStrictData)
+	genECharts := shouldGenerateECharts(message, requireStrictData)
+	patience := calculateProcessTimeout(message, reportConfig, requireStrictData, genECharts, c.requestTimeoutSec)
 	dynamicCtx, cancel := context.WithTimeout(ctx, patience)
 	defer cancel()
 
 	var result ProcessResult
 	var apiErr map[string]any
 
-	genECharts := true // v2: ECharts para todos los usuarios
 	resp, err := c.resty.R().
 		SetContext(dynamicCtx).
 		SetBody(processRequest{
@@ -162,7 +195,8 @@ func (c *HTTPClient) IngestFile(
 	chatID int64,
 	tmpPath, storedFilename, originalFilename string,
 ) (*IngestResult, error) {
-	ingestCtx, cancel := context.WithTimeout(ctx, maxWorkerPatience)
+	maxDur := time.Duration(c.requestTimeoutSec) * time.Second
+	ingestCtx, cancel := context.WithTimeout(ctx, maxDur)
 	defer cancel()
 
 	var result IngestResult

@@ -54,6 +54,8 @@ type Config struct {
 	// validar el flujo premium en local antes de exponerlo en producción.
 	// Activar con DEV_FORCE_PREMIUM=true en .env y reiniciar la API.
 	DevForcePremium bool
+	// WorkerRequestTimeoutSec — techo de espera API→Brain (alinear con WORKER_REQUEST_TIMEOUT_SEC).
+	WorkerRequestTimeoutSec int
 }
 
 // Load reads .env (if present) and environment variables.
@@ -147,6 +149,13 @@ func Load() (*Config, error) {
 		quotaTZ = "America/Bogota"
 	}
 
+	workerTimeoutSec := 330
+	if v := strings.TrimSpace(os.Getenv("WORKER_REQUEST_TIMEOUT_SEC")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			workerTimeoutSec = n
+		}
+	}
+
 	return &Config{
 		DatabaseURL:          NormalizeDatabaseURL(rawURL),
 		Port:                 port,
@@ -168,6 +177,7 @@ func Load() (*Config, error) {
 		BoldIntegritySecret:  boldIntegrity,
 		PremiumAmountCOP:     premiumAmountCOP,
 		DevForcePremium:      devForcePremium,
+		WorkerRequestTimeoutSec: workerTimeoutSec,
 	}, nil
 }
 

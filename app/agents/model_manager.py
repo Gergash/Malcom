@@ -19,9 +19,9 @@ logger = logging.getLogger(__name__)
 # Modelos recomendados para cuentas nuevas (Jul 2026). Ver:
 # https://ai.google.dev/gemini-api/docs/models
 DEFAULT_MODEL_NAMES: List[str] = [
-    "models/gemini-3.5-flash",       # GA — reemplazo de gemini-2.5-flash
-    "models/gemini-3.1-flash-lite",  # económico, alto volumen
-    "models/gemini-3-flash-preview", # preview estable
+    "models/gemini-3-flash-preview",  # compatible con google.generativeai; suele responder rápido
+    "models/gemini-3.5-flash",
+    "models/gemini-3.1-flash-lite",
 ]
 
 DEFAULT_EMBEDDING_MODEL: str = "models/gemini-embedding-001"
@@ -92,6 +92,13 @@ def _is_model_unavailable_error(exc: Exception) -> bool:
         return code is not None and int(code) == 404
     except (TypeError, ValueError):
         return False
+
+
+def _is_timeout_error(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    if any(t in msg for t in ("timeout", "timed out", "deadline exceeded", "504")):
+        return True
+    return False
 
 
 def _is_rate_limit_error(exc: Exception) -> bool:
@@ -172,15 +179,24 @@ class ModelManager:
         env_ollama_model = os.getenv("OLLAMA_MODEL", "").strip()
         env_ollama_base = os.getenv("OLLAMA_BASE_URL", "").strip()
         env_ollama_timeout = os.getenv("OLLAMA_TIMEOUT_SEC", "").strip()
+        gemini_timeout_raw = os.getenv("GEMINI_REQUEST_TIMEOUT_SEC", "90").strip()
 
         self._ollama_model = (ollama_model or env_ollama_model or OLLAMA_DEFAULT_MODEL).strip()
         self._ollama_base_url = (ollama_base_url or env_ollama_base or OLLAMA_DEFAULT_BASE_URL).strip().rstrip("/")
         self._ollama_timeout = OLLAMA_TIMEOUT
         if env_ollama_timeout.isdigit():
             self._ollama_timeout = max(5, int(env_ollama_timeout))
+        self._gemini_timeout = 90
+        if gemini_timeout_raw.isdigit():
+            self._gemini_timeout = max(15, int(gemini_timeout_raw))
         self._system_instruction = system_instruction
 
-    # ── health helpers (Gemini) ────────────────────────────────────────
+    def _gemini_request_options(self) -> dict[str, int]:
+        return {"timeout": self._gemini_timeout}
+
+    def _call_gemini(self, name: str, content: Any, **kwargs: Any) -> Any:
+        opts = kwargs.pop("request_options", None) or self._gemini_request_options()
+        return self._models[name].generate_content(content, request_options=opts, **kwargs)
 
     def is_healthy(self, model_name: str) -> bool:
         """True si el modelo no está en período de cooldown."""
@@ -258,10 +274,13 @@ class ModelManager:
                 continue
             try:
                 logger.info("ModelManager: reintento Gemini en %s tras fallo Ollama.", name)
-                return self._models[name].generate_content(content, **kwargs)
+                return self._call_gemini(name, content, **kwargs)
             except Exception as exc:
                 if _is_model_unavailable_error(exc):
                     self._unavailable.add(name)
+                    continue
+                if _is_timeout_error(exc):
+                    logger.warning("ModelManager: timeout en %s (%ss), probando siguiente", name, self._gemini_timeout)
                     continue
                 if _is_rate_limit_error(exc):
                     continue
@@ -361,12 +380,17 @@ class ModelManager:
                     continue
                 try:
                     print(f"DEBUG ModelManager: llamando a {name} (cloud)...")
-                    return self._models[name].generate_content(content, **kwargs)
+                    return self._call_gemini(name, content, **kwargs)
                 except Exception as exc:
                     if _is_model_unavailable_error(exc):
                         logger.warning("ModelManager: %s no disponible, probando siguiente: %s", name, exc)
                         print(f"DEBUG ModelManager: {name} no disponible (404), saltando...")
                         self._unavailable.add(name)
+                        last_error = exc
+                        continue
+                    if _is_timeout_error(exc):
+                        logger.warning("ModelManager: timeout en %s, probando siguiente", name)
+                        print(f"DEBUG ModelManager: timeout en {name}, saltando...")
                         last_error = exc
                         continue
                     if _is_rate_limit_error(exc):

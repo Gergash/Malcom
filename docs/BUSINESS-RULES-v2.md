@@ -1,7 +1,7 @@
 # InsightFlow — Reglas de negocio v2 (borrador para implementación)
 
 **Fecha:** 2026-07-09  
-**Estado:** Documentación v2 — **implementación backend completa** (Julio 2026); pendiente UI login email.
+**Estado:** Documentación v2 — **implementación backend completa** para cuota diaria, dashboard/portal gratis y activación Bold (Julio 2026); pendiente UI login email y pendiente reforzar en backend el gate premium de PDF/Excel (hoy solo aplicado en el widget, ver §12).
 
 **Precio premium:** $40.000 COP (Bold)  
 **Qué se vende:** mensajes ilimitados + uso ilimitado del panel/dashboard — **no** el acceso al portal ni a ECharts.
@@ -322,7 +322,9 @@ Premium:
 | Copy comercial “mensajes ilimitados” | §1 | ✅ Docs + embed + API/Telegram |
 | Webhook Bold → `is_premium` | §4 | ✅ Implementado |
 | Login opcional email | §4.2 | ⏳ API existe; falta UI widget |
-| PDF / Excel solo premium | §8 rec. | ✅ Sin cambio (premium) |
+| PDF / Excel solo premium | §8 rec. | ⚠️ Solo en el widget (frontend) |
 | Multi-gráfica free | §8 rec. | ✅ `enforceChartPolicy` + chart types free |
+
+**Nota de verificación (Julio 2026) — PDF/Excel:** el gate premium para PDF/Excel es **únicamente de UI**. `powerups-edge-widget.js` (`premiumAction()`) redirige al checkout si `!bill.is_premium` **antes** de enviar el mensaje, y los botones tienen `title="Requiere plan premium"`. Pero `internal/api/handlers/download_handler.go` y `internal/api/handlers/chat_handler.go` (bloque "8 · Enlaces de descarga") **no verifican `IsPremium`**: si el worker Python genera un PDF/Excel (`result.PDFPath` / `result.ExcelPath`), la API construye `download_url` para cualquier usuario, gratis o premium — solo cambia el `download_label` ("Descargar Reporte Básico" vs "Descargar Dashboard Corporativo ✦"). Tampoco hay gate de tier en `app/agents/analyst_agent.py` al invocar `generar_reporte_pdf` / `generar_reporte_excel_avanzado`. Es decir: un usuario free que llame `POST /api/v1/chat` directamente (fuera del widget) y pida un PDF puede obtenerlo. Pendiente: reforzar el gate en el backend si se quiere que PDF/Excel sea realmente premium-only.
 
 **Documentos alineados a v2:** `docs/README.md`, `docs/CLAUDE.md`, `README.md`, `docs/BOLD-SETUP.txt`, `embed/*` (copy paywall).
