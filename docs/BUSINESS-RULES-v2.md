@@ -322,9 +322,15 @@ Premium:
 | Copy comercial “mensajes ilimitados” | §1 | ✅ Docs + embed + API/Telegram |
 | Webhook Bold → `is_premium` | §4 | ✅ Implementado |
 | Login opcional email | §4.2 | ⏳ API existe; falta UI widget |
-| PDF / Excel solo premium | §8 rec. | ⚠️ Solo en el widget (frontend) |
+| PDF / Excel solo premium | §8 rec. | ✅ Gate en backend (`download_handler` + `chat_handler`) |
 | Multi-gráfica free | §8 rec. | ✅ `enforceChartPolicy` + chart types free |
 
-**Nota de verificación (Julio 2026) — PDF/Excel:** el gate premium para PDF/Excel es **únicamente de UI**. `powerups-edge-widget.js` (`premiumAction()`) redirige al checkout si `!bill.is_premium` **antes** de enviar el mensaje, y los botones tienen `title="Requiere plan premium"`. Pero `internal/api/handlers/download_handler.go` y `internal/api/handlers/chat_handler.go` (bloque "8 · Enlaces de descarga") **no verifican `IsPremium`**: si el worker Python genera un PDF/Excel (`result.PDFPath` / `result.ExcelPath`), la API construye `download_url` para cualquier usuario, gratis o premium — solo cambia el `download_label` ("Descargar Reporte Básico" vs "Descargar Dashboard Corporativo ✦"). Tampoco hay gate de tier en `app/agents/analyst_agent.py` al invocar `generar_reporte_pdf` / `generar_reporte_excel_avanzado`. Es decir: un usuario free que llame `POST /api/v1/chat` directamente (fuera del widget) y pida un PDF puede obtenerlo. Pendiente: reforzar el gate en el backend si se quiere que PDF/Excel sea realmente premium-only.
+**Nota de verificación (Julio 2026) — PDF/Excel:** el gate premium para PDF/Excel ahora se enforcea en el **backend**, no solo en la UI. Antes el bloqueo era únicamente de widget (`powerups-edge-widget.js` `premiumAction()`), por lo que un usuario free que llamara `POST /api/v1/chat` directamente podía obtener el reporte. **Fix (Julio 2026):**
+
+- `internal/api/handlers/download_handler.go` — al resolver un token de tipo `pdf`/`excel` valida `IsPremiumForChat(chat_id)` antes de servir el archivo. Sin premium → **403** con detalle "Los reportes PDF/Excel son exclusivos del plan premium". Charts y dashboards ECharts siguen libres (`isPremiumGatedResource` solo cubre pdf/excel). Este es el punto de enforcement autoritativo: aunque un token se filtre o se comparta, sin premium no se sirve.
+- `internal/api/handlers/chat_handler.go` (bloque "8 · Enlaces de descarga") — solo construye `download_url` y el artefacto de reporte si `creditStatus.IsPremium`. El usuario free ya no recibe una URL que devolvería 403 (se eliminó la rama "Descargar Reporte Básico").
+- Tests: `internal/api/handlers/download_handler_test.go` cubre free→403 (pdf y excel), premium→200, y chart free→200.
+
+Pendiente menor (no bloqueante): el worker Python (`app/agents/analyst_agent.py`) aún puede **generar** el PDF/Excel en disco para free (solo se bloquea la entrega, no la generación); si se quiere ahorrar ese cómputo, se puede propagar el tier para no generar el reporte cuando el usuario es free.
 
 **Documentos alineados a v2:** `docs/README.md`, `docs/CLAUDE.md`, `README.md`, `docs/BOLD-SETUP.txt`, `embed/*` (copy paywall).

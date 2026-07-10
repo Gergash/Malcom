@@ -30,6 +30,13 @@ func NewDownloadHandler(tokens *TokenStore, users repositories.UserRepository, d
 	return &DownloadHandler{tokens: tokens, users: users, dataDir: dataDir}
 }
 
+// isPremiumGatedResource indica si el tipo de recurso requiere plan premium
+// para descargarse. Los reportes PDF/Excel son premium-only (v2); charts y
+// dashboards ECharts son libres para todos los usuarios.
+func isPremiumGatedResource(resType string) bool {
+	return strings.EqualFold(resType, "pdf") || strings.EqualFold(resType, "excel")
+}
+
 // Download resuelve el token y sirve el archivo como descarga adjunta.
 func (h *DownloadHandler) Download(c *gin.Context) {
 	token := c.Param("token")
@@ -57,6 +64,29 @@ func (h *DownloadHandler) Download(c *gin.Context) {
 			Detail: "Enlace de descarga expirado o inválido. Genera un nuevo reporte.",
 		})
 		return
+	}
+
+	// Gate premium (v2): los reportes PDF/Excel son exclusivos del plan premium.
+	// Charts y dashboards siguen libres para todos. Este es el punto de enforcement
+	// autoritativo: aunque un token de PDF/Excel se filtre o se comparta, sin premium
+	// no se sirve el archivo.
+	if isPremiumGatedResource(asset.ResourceType) {
+		isPremium, err := h.users.IsPremiumForChat(c.Request.Context(), asset.ChatID)
+		if err != nil {
+			slog.Error("download premium check failed", "chat_id", asset.ChatID, "error", err)
+			c.JSON(http.StatusInternalServerError, types.ErrorResponse{
+				Detail: "No se pudo verificar el plan del usuario.",
+			})
+			return
+		}
+		if !isPremium {
+			slog.Info("download bloqueado: reporte requiere premium",
+				"chat_id", asset.ChatID, "resource", asset.ResourceType)
+			c.JSON(http.StatusForbidden, types.ErrorResponse{
+				Detail: "Los reportes PDF/Excel son exclusivos del plan premium ($40.000 COP).",
+			})
+			return
+		}
 	}
 
 	if asset.PayloadJSON != nil && strings.TrimSpace(*asset.PayloadJSON) != "" {

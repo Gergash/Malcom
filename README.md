@@ -470,7 +470,8 @@ WordPress (WooCommerce) ──genera referencia──► Wompi
 
 - **Producción:** Widget web funcional en WordPress/BeBuilder. API Go + Worker Python estables en Docker.
 - **Billing:** Bold es el proveedor principal — checkout embebido con firma SHA256. El pago de **$40.000 COP** activa **mensajes ilimitados** (no “desbloquea dashboard”; portal y ECharts son gratis en v2). Wompi sigue como alternativa.
-- **Producto v2:** contador diario (`messages_today`/`quota_date`, reset `America/Bogota`) + ECharts/portal gratis para todos, verificado en `internal/db/repos/user_repository.go`, `internal/api/handlers/chat_handler.go` y `internal/api/handlers/dashboard_handler.go` (`docs/BUSINESS-RULES-v2.md`). Pendiente: login opcional por email (endpoint existe, falta UI) y reforzar en backend el gate premium de PDF/Excel — hoy solo se aplica en `powerups-edge-widget.js`, no en `download_handler.go`/`chat_handler.go`.
+- **Producto v2:** contador diario (`messages_today`/`quota_date`, reset `America/Bogota`) + ECharts/portal gratis para todos, verificado en `internal/db/repos/user_repository.go`, `internal/api/handlers/chat_handler.go` y `internal/api/handlers/dashboard_handler.go` (`docs/BUSINESS-RULES-v2.md`). Pendiente: login opcional por email (endpoint existe, falta UI).
+- **PDF/Excel premium-only:** el gate se enforcea en el backend — `download_handler.go` valida `IsPremiumForChat` al servir tokens `pdf`/`excel` (free → 403) y `chat_handler.go` no expone `download_url` a usuarios free. Charts y dashboards siguen gratis. Cubierto por `internal/api/handlers/download_handler_test.go`.
 - **Ingesta:** Pipeline avanzado para archivos DIAN/RIPS/extractos bancarios colombianos con heurística de encabezado y expansión de delimitadores.
 - **IA:** Soporte híbrido Gemini + Ollama local para soberanía de datos.
 - **Compliance:** Bloque de diagnóstico normativo/aduanero integrado en todos los reportes.

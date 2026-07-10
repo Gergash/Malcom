@@ -180,16 +180,15 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		reportPath = result.ExcelPath
 		reportType = "excel"
 	}
-	if reportPath != "" {
+	// Reportes PDF/Excel son premium-only (v2): el usuario free no recibe enlace de
+	// descarga. El gate autoritativo vive en download_handler (valida is_premium al
+	// servir el archivo); aquí evitamos exponer una URL que devolvería 403.
+	if reportPath != "" && creditStatus.IsPremium {
 		if _, statErr := os.Stat(reportPath); statErr == nil {
 			token := h.tokens.Store(req.ChatID, reportType, reportPath)
 			u := publicBaseURL(c) + "/download/" + token
 			downloadURL = &u
-			if creditStatus.IsPremium {
-				downloadLabel = "Descargar Dashboard Corporativo ✦"
-			} else {
-				downloadLabel = "Descargar Reporte Básico"
-			}
+			downloadLabel = "Descargar Dashboard Corporativo ✦"
 			artifacts = append(artifacts, types.ArtifactInfo{
 				Type:  reportType,
 				URL:   u,
