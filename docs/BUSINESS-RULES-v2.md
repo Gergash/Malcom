@@ -321,7 +321,7 @@ Premium:
 | Portal / links visibles con paywall | §3.4 | ✅ Embed + premium-portal.html |
 | Copy comercial “mensajes ilimitados” | §1 | ✅ Docs + embed + API/Telegram |
 | Webhook Bold → `is_premium` | §4 | ✅ Implementado |
-| Login opcional email | §4.2 | ⏳ API existe; falta UI widget |
+| Login opcional email | §4.2 | ⏳ Fase 0 lista (auto-vínculo en webhook); falta UI widget |
 | PDF / Excel solo premium | §8 rec. | ✅ Gate en backend (`download_handler` + `chat_handler`) |
 | Multi-gráfica free | §8 rec. | ✅ `enforceChartPolicy` + chart types free |
 
@@ -332,5 +332,13 @@ Premium:
 - Tests: `internal/api/handlers/download_handler_test.go` cubre free→403 (pdf y excel), premium→200, y chart free→200.
 
 Pendiente menor (no bloqueante): el worker Python (`app/agents/analyst_agent.py`) aún puede **generar** el PDF/Excel en disco para free (solo se bloquea la entrega, no la generación); si se quiere ahorrar ese cómputo, se puede propagar el tier para no generar el reporte cuando el usuario es free.
+
+**Fase 0 de login opcional (Julio 2026) — auto-vínculo email↔chat_id en el webhook Bold:** al confirmar un pago, si Bold reporta el correo del pagador, el backend ahora lo persiste automáticamente:
+
+- `internal/payment/bold/transaction.go` — `Event.PayerEmail` nuevo; `ExtractPayerEmail()` lo extrae de las formas comunes del payload Bold (`payer_email`, `customer_email`, `payer.email`, `customer.email` y variantes bajo `data`/`transaction`), con validación mínima de forma de email y tope de 320 chars.
+- `internal/api/handlers/billing_handler.go` (`BoldWebhook`) — pasa el email a `ConfirmPayment` (antes pasaba `nil`), que ya lo guardaba en `payments.payer_email`.
+- `internal/db/repos/user_repository.go` (`getOrCreateUserTx`) — si el usuario hallado por `chat_id` no tiene email, se le asocia el del pago. Guard de unicidad: `users.email` tiene `uniqueIndex`, así que solo se escribe si ningún otro usuario lo posee (nunca aborta la transacción del pago).
+
+Resultado: quien pagó queda vinculado por correo **sin ninguna UI nueva** — `GET /billing/status?email=` ya devuelve `is_premium=true` para ese correo, que es la base de la Fase 1 ("Restaurar por correo" en el widget, pendiente) y de la Fase 2 (verificación por magic link/OTP, pendiente).
 
 **Documentos alineados a v2:** `docs/README.md`, `docs/CLAUDE.md`, `README.md`, `docs/BOLD-SETUP.txt`, `embed/*` (copy paywall).

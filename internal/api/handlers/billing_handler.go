@@ -317,12 +317,20 @@ func (h *BillingHandler) BoldWebhook(c *gin.Context) {
 	}
 	amountCOP := bold.NormalizeAmountCOP(event.AmountCents)
 
+	// Auto-vínculo email↔chat_id: si Bold reporta el correo del pagador, se
+	// persiste en payments.payer_email y en users.email (si estaba libre) para
+	// poder recuperar premium si el usuario pierde su chat_id (localStorage).
+	var payerEmail *string
+	if event.PayerEmail != "" {
+		payerEmail = &event.PayerEmail
+	}
+
 	result, err := h.paymentRepo.ConfirmPayment(
 		c.Request.Context(),
 		ref,
 		amountCOP,
 		"bold",
-		nil,
+		payerEmail,
 		event.ChatID,
 	)
 	if err != nil {

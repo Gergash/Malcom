@@ -100,6 +100,26 @@ func getOrCreateUserTx(tx *gorm.DB, ctx context.Context, freeLimit int, quotaLoc
 	}
 
 	if user != nil {
+		// Auto-vínculo: si el usuario (hallado por chat_id) aún no tiene email y el
+		// caller aporta uno (p. ej. payer_email del webhook de pago), se asocia aquí
+		// para que el premium sea recuperable por correo si se pierde el chat_id.
+		// users.email tiene uniqueIndex: solo se escribe si ningún otro usuario lo
+		// posee, para no abortar la transacción del caller (ConfirmPayment).
+		if email != nil && strings.TrimSpace(*email) != "" &&
+			(user.Email == nil || strings.TrimSpace(*user.Email) == "") {
+			norm := strings.ToLower(strings.TrimSpace(*email))
+			owner, err := lookupUserByEmail(ctx, tx, norm)
+			if err != nil {
+				return nil, err
+			}
+			if owner == nil {
+				user.Email = &norm
+				user.UpdatedAt = time.Now().UTC()
+				if err := tx.WithContext(ctx).Save(user).Error; err != nil {
+					return nil, err
+				}
+			}
+		}
 		return user, nil
 	}
 

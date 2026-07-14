@@ -20,6 +20,7 @@ type Event struct {
 	Description string
 	AmountCents int
 	ChatID      *int64
+	PayerEmail  string // correo del pagador si Bold lo incluye; "" si ausente/ inválido
 }
 
 // ParseEvent normalizes common Bold transaction webhook payload shapes.
@@ -68,7 +69,41 @@ func ParseEvent(raw []byte) Event {
 		)),
 	}
 	ev.ChatID = ExtractChatID(raw)
+	ev.PayerEmail = ExtractPayerEmail(raw)
 	return ev
+}
+
+// ExtractPayerEmail extracts the payer's email from common Bold payload shapes.
+// Returns "" when absent or not email-shaped. Used to auto-link email↔chat_id
+// on payment confirmation so premium can be recovered if localStorage is lost.
+func ExtractPayerEmail(raw []byte) string {
+	email := firstString(raw,
+		"payer_email",
+		"customer_email",
+		"payer.email",
+		"customer.email",
+		"transaction.payer_email",
+		"transaction.customer_email",
+		"transaction.payer.email",
+		"transaction.customer.email",
+		"data.payer_email",
+		"data.customer_email",
+		"data.payer.email",
+		"data.customer.email",
+		"data.transaction.payer_email",
+		"data.transaction.customer_email",
+		"data.payment.payer_email",
+		"data.payment.customer_email",
+	)
+	email = strings.ToLower(strings.TrimSpace(email))
+	// Validación mínima: evita guardar strings arbitrarios como email.
+	// users.email es varchar(320) — descartar valores más largos.
+	at := strings.Index(email, "@")
+	if at < 1 || len(email) > 320 ||
+		!strings.Contains(email[at:], ".") || strings.ContainsAny(email, " \t\n") {
+		return ""
+	}
+	return email
 }
 
 // IsSuccessful reports whether the Bold event/status indicates a successful transaction.
