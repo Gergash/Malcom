@@ -171,6 +171,39 @@
       animation: fadeout 3s forwards;
     }
     @keyframes fadeout { 0% { opacity:1; } 80% { opacity:1; } 100% { opacity:0; } }
+
+    /* ── Login / restaurar por correo ── */
+    .login-box {
+      margin-top: 20px; padding: 20px 22px;
+      border-radius: var(--pu-radius); border: 1px solid var(--pu-border);
+      background: var(--pu-surface);
+    }
+    .login-box h3 { margin: 0 0 6px; font-size: .98rem; }
+    .login-box p { margin: 0 0 14px; color: var(--pu-muted); font-size: .85rem; }
+    .login-box input[type="email"] {
+      flex: 1 1 220px; min-width: 0; padding: 12px 14px;
+      border-radius: 10px; border: 1px solid var(--pu-border);
+      background: var(--pu-input-bg); color: var(--pu-text); font-size: .9rem;
+    }
+    .login-box input::placeholder { color: #5c6778; }
+    #login-status {
+      margin-top: 12px; font-size: .84rem; min-height: 1.2em;
+    }
+    #login-status.ok { color: #6bc9a8; }
+    #login-status.err { color: #ff8a8a; }
+    #login-status.pending { color: var(--pu-muted); }
+
+    /* ── Botón de pago Bold (revelado tras vincular correo) ── */
+    #pu-pro-card {
+      margin-top: 14px; padding-top: 14px;
+      border-top: 1px solid var(--pu-border);
+    }
+    #pu-pro-card[hidden] { display: none; }
+    #pu-bold-lead { margin: 0 0 10px; font-size: .84rem; color: var(--pu-text); font-weight: 600; }
+    #pu-bold-hint, #pu-bold-error { margin: 10px 0 0; font-size: .84rem; }
+    #pu-bold-hint { color: var(--pu-muted); }
+    #pu-bold-error { color: #ff8a8a; }
+    #pu-bold-mount iframe { max-width: 100%; }
   </style>
 </head>
 <body>
@@ -184,8 +217,31 @@
           <p>Portal Edge BI · PowerUps</p>
         </div>
       </div>
-      <span class="badge"><span class="badge-dot" aria-hidden="true"></span> Tableros de tus análisis</span>
+      <span class="badge" id="plan-badge"><span class="badge-dot" aria-hidden="true"></span> Tableros de tus análisis</span>
     </header>
+
+    <!-- ── LOGIN POR CORREO (restaurar/activar premium) ── -->
+    <div class="login-box" id="portal-login">
+      <h3>Activa tu plan premium de mensajes ilimitados</h3>
+      <p>
+        Ingresa tu correo electrónico para acceder al botón de pago de Bold y adquirir
+        InsightFlow Premium: mensajes ilimitados en el chat y en el tablero.
+        Si ya pagaste antes con este correo, también lo usaremos para recuperar tu acceso en este navegador.
+      </p>
+      <div class="row">
+        <input type="email" id="login-email-input" placeholder="tu@correo.com" autocomplete="email" />
+        <button type="button" class="btn" id="login-email-btn">Continuar</button>
+      </div>
+      <p id="login-status"></p>
+
+      <!-- Botón de pago Bold: oculto hasta vincular correo (revelado por initLoginBox/handleLoginSubmit) -->
+      <div id="pu-pro-card" hidden data-api-base="">
+        <p id="pu-bold-lead">Continúa con el pago para activar tu plan premium:</p>
+        <div id="pu-bold-mount"></div>
+        <p class="pu-pro-card__hint" id="pu-bold-hint">Cargando botón de pago…</p>
+        <p class="pu-pro-card__error" id="pu-bold-error" hidden></p>
+      </div>
+    </div>
 
     <!-- ── MIS TABLEROS (fuente principal: localStorage) ── -->
     <h2 class="section-title" id="mis-tableros-title">Mis tableros</h2>
@@ -264,6 +320,8 @@
   var CHAT_ID_KEY    = 'powerups_edge_chat_id_v1';
   var CHARTS_PREFIX  = 'powerups_edge_charts_';
   var API_BASE_KEY   = 'powerups_edge_api_base';
+  var EMAIL_KEY       = 'powerups_edge_email';
+  var DEFAULT_API_BASE = 'https://nonconfidential-suprarational-sage.ngrok-free.dev';
 
   /* ── Tema ECharts PowerUps ── */
   echarts.registerTheme('powerups', {
@@ -291,7 +349,133 @@
     } catch(e) { return []; }
   }
   function getApiBase() {
-    try { return (localStorage.getItem(API_BASE_KEY) || '').replace(/\/$/, ''); } catch(e) { return ''; }
+    try {
+      var stored = (localStorage.getItem(API_BASE_KEY) || '').trim();
+      if (stored) return stored.replace(/\/$/, '');
+    } catch(e) {}
+    return DEFAULT_API_BASE.replace(/\/$/, '');
+  }
+
+  /* ── chat_id: reutiliza el mismo generador que el widget flotante ── */
+  function getOrCreateChatId() {
+    var raw = null;
+    try { raw = localStorage.getItem(CHAT_ID_KEY); } catch(e) {}
+    var n = raw ? parseInt(raw, 10) : NaN;
+    if (!isFinite(n) || n <= 0) {
+      n = Math.floor(1e9 + Math.random() * 8.99e9);
+      try { localStorage.setItem(CHAT_ID_KEY, String(n)); } catch(e) {}
+    }
+    return n;
+  }
+
+  function apiHeaders(extra) {
+    var h = { 'ngrok-skip-browser-warning': 'true', 'Accept': 'application/json' };
+    if (extra) { for (var k in extra) h[k] = extra[k]; }
+    return h;
+  }
+
+  /* ── Login / restaurar plan por correo ── */
+  function setLoginStatus(msg, kind) {
+    var el = document.getElementById('login-status');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = kind || '';
+  }
+
+  function updatePlanBadge(state) {
+    var badge = document.getElementById('plan-badge');
+    if (!badge || !state) return;
+    if (state.is_premium) {
+      badge.innerHTML = '<span class="badge-dot" aria-hidden="true"></span> Premium · mensajes ilimitados';
+    } else {
+      var remaining = (typeof state.messages_remaining_today === 'number') ? state.messages_remaining_today : null;
+      badge.innerHTML = '<span class="badge-dot" aria-hidden="true"></span> Plan gratis' +
+        (remaining !== null ? ' · ' + remaining + ' msg. hoy' : '');
+    }
+  }
+
+  function fetchStatusByChatId(chatId) {
+    var apiBase = getApiBase();
+    return fetch(apiBase + '/api/v1/billing/status?chat_id=' + encodeURIComponent(chatId), {
+      mode: 'cors', credentials: 'omit', headers: apiHeaders(),
+    }).then(function(res) {
+      return res.text().then(function(text) {
+        var body = {};
+        try { body = text ? JSON.parse(text) : {}; } catch(e) {}
+        if (!res.ok) throw new Error(body.detail || ('API respondió ' + res.status));
+        return body;
+      });
+    });
+  }
+
+  function linkEmail(chatId, email) {
+    var apiBase = getApiBase();
+    return fetch(apiBase + '/api/v1/billing/link-email', {
+      method: 'POST',
+      mode: 'cors', credentials: 'omit',
+      headers: apiHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ chat_id: chatId, email: email }),
+    }).then(function(res) {
+      return res.text().then(function(text) {
+        var body = {};
+        try { body = text ? JSON.parse(text) : {}; } catch(e) {}
+        if (!res.ok) throw new Error(body.detail || ('API respondió ' + res.status));
+        return body;
+      });
+    });
+  }
+
+  function handleLoginSubmit() {
+    var input = document.getElementById('login-email-input');
+    var email = (input.value || '').trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setLoginStatus('Ingresa un correo válido.', 'err');
+      return;
+    }
+
+    var chatId = getOrCreateChatId();
+    setLoginStatus('Vinculando correo…', 'pending');
+
+    linkEmail(chatId, email)
+      .then(function() {
+        try { localStorage.setItem(EMAIL_KEY, email); } catch(e) {}
+        return fetchStatusByChatId(chatId);
+      })
+      .then(function(state) {
+        updatePlanBadge(state);
+        var boldCard = document.getElementById('pu-pro-card');
+        if (state.is_premium) {
+          setLoginStatus('✓ Correo vinculado — tienes mensajes ilimitados en este navegador.', 'ok');
+          if (boldCard) boldCard.hidden = true;
+        } else {
+          setLoginStatus('Correo vinculado. Tu plan actual es gratis (' + (state.messages_remaining_today != null ? state.messages_remaining_today : '—') + ' mensajes restantes hoy). Continúa abajo para pagar y activar el premium.', 'ok');
+          if (boldCard) boldCard.hidden = false;
+        }
+      })
+      .catch(function(err) {
+        setLoginStatus((err && err.message) ? err.message : 'No se pudo vincular el correo. Intenta de nuevo.', 'err');
+      });
+  }
+
+  function initLoginBox() {
+    var btn = document.getElementById('login-email-btn');
+    var input = document.getElementById('login-email-input');
+    if (!btn || !input) return;
+
+    try {
+      var savedEmail = localStorage.getItem(EMAIL_KEY);
+      if (savedEmail) input.value = savedEmail;
+    } catch(e) {}
+
+    btn.addEventListener('click', handleLoginSubmit);
+    input.addEventListener('keydown', function(ev) {
+      if (ev.key === 'Enter') handleLoginSubmit();
+    });
+
+    // Al cargar, si ya hay chat_id local, refrescar el badge con el estado real
+    // (silencioso: sin tocar #login-status para no confundir con el resultado del botón).
+    var chatId = getOrCreateChatId();
+    fetchStatusByChatId(chatId).then(updatePlanBadge).catch(function() {});
   }
 
   /* ── Renderizar un EChart en un contenedor ── */
@@ -390,6 +574,7 @@
   }
 
   loadDashboard();
+  initLoginBox();
 
   /* ── Auto-actualización cuando el widget añade una nueva gráfica ── */
   window.addEventListener('storage', function(ev) {
@@ -422,5 +607,9 @@
 
 })();
   </script>
+
+  <!-- Monta el botón de Bold dentro de #pu-bold-mount (login-box) una vez que el
+       chat_id ya existe en localStorage (garantizado por el script anterior). -->
+  <script src="https://www.powerupsagencia.com/wp-content/uploads/2026/07/powerups-bold-checkout.js"></script>
 </body>
 </html>

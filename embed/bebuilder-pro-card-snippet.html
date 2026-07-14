@@ -4,16 +4,14 @@
   Pega SOLO el <div> + <style> en un Elemento HTML.
   NO incluyas <script>: BeBuilder los elimina.
 
-  El JS se carga desde Theme Options → Hooks → Bottom
-  (bebuilder-install-snippet.html actualizado), que detecta #pu-bold-mount.
-
-  Archivo en Medios (2026/07/):
-  https://www.powerupsagencia.com/wp-content/uploads/2026/07/powerups-bold-checkout.js
+  Tarjeta estática — ya no monta el botón de Bold aquí directamente.
+  El botón redirige a premium-portal.html#portal-login, donde el usuario
+  ingresa su correo (embed/premium-portal.html) y desde ahí se activa
+  el pago (el botón de Bold sigue viviendo detrás de ese flujo).
   ─────────────────────────────────────────────────────────────────────
 -->
 
-<div class="pu-pro-card" id="pu-pro-card"
-     data-api-base="https://nonconfidential-suprarational-sage.ngrok-free.dev">
+<div class="pu-pro-card" id="pu-pro-card">
 
   <div class="pu-pro-card__body">
     <h3 class="pu-pro-card__title">Mensajes ilimitados con InsightFlow Pro</h3>
@@ -21,9 +19,10 @@
       Portal y tableros ECharts son gratis. Por <strong>$40.000 COP</strong> activas
       mensajes ilimitados al chat, iteración sin tope diario y reportes PDF/Excel premium.
     </p>
-    <div id="pu-bold-mount"></div>
-    <p class="pu-pro-card__hint" id="pu-bold-hint">Cargando botón de pago…</p>
-    <p class="pu-pro-card__error" id="pu-bold-error" hidden></p>
+    <a class="pu-pro-card__btn" href="https://www.powerupsagencia.com/portal-premium/#portal-login">
+      Ingresar con mi correo para pagar
+    </a>
+    <p class="pu-pro-card__hint">Te llevamos al portal para ingresar tu correo y activar el pago con Bold.</p>
   </div>
 
 </div>
@@ -58,22 +57,27 @@
   color: #ff6d00;
 }
 
-.pu-pro-card__hint,
-.pu-pro-card__error {
+.pu-pro-card__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 22px;
+  border-radius: 10px;
+  background-color: #ff6d00;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.95rem;
+  text-decoration: none;
+  transition: background-color .15s;
+}
+
+.pu-pro-card__btn:hover {
+  background-color: #e05f00;
+}
+
+.pu-pro-card__hint {
   color: #a0aec0;
   font-size: 0.9rem;
   margin: 12px 0 0;
-}
-
-.pu-pro-card__error {
-  color: #f56565;
-}
-
-#pu-bold-mount {
-  min-height: 48px;
-}
-
-#pu-bold-mount iframe {
-  max-width: 100%;
 }
 </style>
