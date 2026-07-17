@@ -1,24 +1,38 @@
 InsightFlow — Bold checkout rápido ($40.000 COP)
 ================================================
+Última actualización: 2026-07-17
 
 Reglas de producto: docs/BUSINESS-RULES-v2.md
-  · El pago activa MENSAJES ILIMITADOS (portal + ECharts son gratis).
+  · El pago activa MENSAJES ILIMITADOS + PDF/Excel (portal + ECharts son gratis).
 
-Opción A (hoy): link fijo en Bold + webhook → activar premium automáticamente.
+Flujo de pago recomendado (producción)
+--------------------------------------
+1. Usuario agota 15 msgs/día → paywall en el chat (portal/tablero siguen visibles).
+2. CTA «Ingresar con mi correo para pagar» (tarjeta BeBuilder o widget)
+   → https://www.powerupsagencia.com/portal-premium/#portal-login
+3. En el portal: ingresa correo → POST /api/v1/billing/link-email
+4. Se revela el botón Bold (#pu-pro-card / #pu-bold-mount)
+5. Pago aprobado → webhook → is_premium=true (+ email del pagador si Bold lo envía)
+6. Chat sin límite; PDF/Excel desbloqueados
 
-1) WordPress / Elementor (5 min)
---------------------------------
-- Página checkout: https://www.powerupsagencia.com/premium-edge-bi/
-- BeBuilder → Elemento HTML → pegar SOLO div+style de embed/bebuilder-pro-card-snippet.html
+Opción alternativa: página checkout dedicada
+  https://www.powerupsagencia.com/premium-edge-bi/?chat_id={chatId}
+  (también monta Bold vía powerups-bold-checkout.js si hay #pu-bold-mount)
+
+1) WordPress / Elementor
+------------------------
+- Portal: pegar HTML de embed/premium-portal.html en página /portal-premium/
+- Tarjeta CTA: pegar SOLO div+style de embed/bebuilder-pro-card-snippet.html
+  (el botón redirige a /portal-premium/#portal-login; NO monta Bold en la tarjeta)
 - Subir embed/powerups-bold-checkout.js a Medios:
   https://www.powerupsagencia.com/wp-content/uploads/2026/07/powerups-bold-checkout.js
-- Actualizar Hook Bottom con bebuilder-install-snippet.html (carga el JS si hay #pu-bold-mount)
+- Hook Bottom: bebuilder-install-snippet.html (carga el JS si hay #pu-bold-mount)
 - BeBuilder ELIMINA <script> del bloque HTML; el loader va en Hook Bottom
 
 2) Panel Bold
 -------------
-- Crear link de pago: monto fijo 40.000 COP
-- data-amount="40000" y data-currency="COP" en el snippet (ya incluidos)
+- Link / botón de pago: monto fijo 40.000 COP
+- data-amount="40000" y data-currency="COP" (los firma el endpoint bold-checkout)
 - Webhook URL (producción o ngrok en dev):
 
     https://<API_PUBLICA>/api/v1/billing/bold-webhook
@@ -44,30 +58,23 @@ Reiniciar API tras cambiar .env:
 
   docker compose up -d --build api
 
-4) Flujo end-to-end (reglas v2 — ver docs/BUSINESS-RULES-v2.md)
-----------------------------------------------------------------
-Usuario agota 15 mensajes del día (reset a medianoche `America/Bogota`, ya implementado en `BumpAndCheck` / `bump_and_check`)
-  → Paywall bloquea SOLO nuevos mensajes en el chat
-  → Portal y tablero ECharts siguen accesibles (gratis)
-  → CTA «Activar mensajes ilimitados» → /premium-edge-bi/?chat_id=12345678
-  → Botón Bold (order_id firmado, monto $40.000)
-  → Pago aprobado → webhook → is_premium=true
-  → Chat sin límite; PDF/Excel desbloqueados
-
-5) Verificar
+4) Verificar
 ------------
 GET /api/v1/billing/status?chat_id=12345678
+GET /api/v1/billing/status?email=user@example.com
 
   { "is_premium": true, "plan": "premium", "paywall_active": false }
 
-6) chat_id en el webhook
+5) chat_id en el webhook
 ------------------------
 La API busca chat_id en este orden:
   - metadata.chat_id
   - description con ?chat_id= o chat_id=
   - reference / order_id (número entero, p. ej. el que inyecta el snippet)
 
-7) Prueba local del webhook (curl)
+Si Bold envía el correo del pagador, se auto-vincula al usuario (Fase 0 login).
+
+6) Prueba local del webhook (curl)
 ----------------------------------
 # Generar firma HMAC-SHA256 del body con BOLD_WEBHOOK_SECRET
 # Header: X-Bold-Signature: <hex o sha256=<hex>>
@@ -78,3 +85,11 @@ curl -X POST http://localhost:8080/api/v1/billing/bold-webhook \
   -d '{"type":"transaction.succeeded","status":"approved","reference":"12345678","amount":40000}'
 
 Respuesta esperada: success=true, is_premium=true
+
+7) Ngrok (dev)
+--------------
+Desde Test/ngrok-v3-stable-windows-amd64:
+
+  ./ngrok.exe http 8080 --url=nonconfidential-suprarational-sage.ngrok-free.dev
+
+La API Docker debe estar en :8080 (docker compose up -d api brain postgres).

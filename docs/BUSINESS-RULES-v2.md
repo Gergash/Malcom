@@ -1,7 +1,8 @@
-# InsightFlow — Reglas de negocio v2 (borrador para implementación)
+# InsightFlow — Reglas de negocio v2
 
-**Fecha:** 2026-07-09  
-**Estado:** Documentación v2 — **implementación backend completa** para cuota diaria, dashboard/portal gratis y activación Bold (Julio 2026); pendiente UI login email y pendiente reforzar en backend el gate premium de PDF/Excel (hoy solo aplicado en el widget, ver §12).
+**Última actualización:** 2026-07-17  
+**Estado:** **Implementado en producción (API Go + embed)** para cuota diaria, portal/dashboard gratis, multi-gráfica free, PDF/Excel premium en backend, Bold checkout/webhook, y login por correo en el portal (gate del botón Bold).  
+**Pendiente:** formulario email en el widget del chat; magic link / OTP (fase 2); no generar PDF/Excel en el worker para free; paridad de gate PDF/Excel en el bot Telegram.
 
 **Precio premium:** $40.000 COP (Bold)  
 **Qué se vende:** mensajes ilimitados + uso ilimitado del panel/dashboard — **no** el acceso al portal ni a ECharts.
@@ -13,79 +14,72 @@
 | | Plan **Gratis** | Plan **Premium** (pago único $40k) |
 |---|---|---|
 | **Mensajes al chat / análisis** | **15 por día** | **Ilimitados** |
-| **Portal premium** | ✅ Incluido | ✅ Incluido |
+| **Portal** (`/portal-premium/`) | ✅ Incluido | ✅ Incluido |
 | **Dashboard ECharts (tablero en vivo)** | ✅ Incluido | ✅ Incluido |
-| **Modificar / ampliar tablero sin tope diario** | Dentro del cupo de 15 msgs/día | ✅ Ilimitado |
+| **Multi-gráfica** | ✅ Incluido | ✅ Incluido |
+| **PDF / Excel** | ❌ Solo premium | ✅ Incluido |
+| **Branding (colores/fuentes)** | Gris fijo | Personalizable |
 | **Paywall** | Solo al agotar **15 mensajes del día** | Nunca (por mensajes) |
-| **Identificación** | `chat_id` anónimo (localStorage) | Mismo + **login opcional** (email) para recuperar premium |
+| **Identificación** | `chat_id` anónimo (localStorage) | Mismo + **email** (portal / webhook Bold) |
 
-**Mensaje comercial:** InsightFlow es gratis para explorar (portal + gráficas + 15 preguntas al día). El pago de $40.000 COP elimina el límite diario de mensajes y permite iterar sin restricción en el análisis y el tablero.
+**Mensaje comercial:** InsightFlow es gratis para explorar (portal + gráficas + 15 preguntas al día). El pago de $40.000 COP elimina el límite diario de mensajes y desbloquea reportes PDF/Excel.
 
 ---
 
-## 2. Modelo anterior (v1) — referencia
+## 2. Modelo anterior (v1) — solo referencia histórica
 
-Hoy el sistema funciona así:
+Antes de v2 el sistema funcionaba así (ya **no** aplica):
 
-| Aspecto | Comportamiento actual |
+| Aspecto | Comportamiento v1 (obsoleto) |
 |---|---|
-| Límite gratis | `FREE_MESSAGE_LIMIT=15` mensajes **acumulados de por vida** (`users.message_count`) |
-| Paywall | Bloquea **todo el chat** cuando `message_count >= 15` y `is_premium=false` |
-| Dashboard ECharts | Solo si `is_premium=true` (`chat_handler.go` ~L201-204) |
-| Token dashboard / portal | Gate `IsPremiumForChat` en `dashboard_handler.go`, `download_handler.go` |
-| Multi-gráfica | Free: 1 gráfica; Premium: hasta 4–6 (`enforceChartPolicy`) |
-| PDF / Excel | UI y acciones marcadas como premium en el widget |
-| Identidad | `chat_id` numérico en `localStorage`; email opcional vía `POST /billing/link-email` |
-| Activación pago | Webhook Bold → `is_premium=true` por `chat_id` |
+| Límite gratis | 15 mensajes **acumulados de por vida** (`users.message_count`) |
+| Paywall | Bloqueaba el chat al agotar el lifetime |
+| Dashboard ECharts | Solo si `is_premium=true` |
+| Token dashboard / portal | Gate `IsPremiumForChat` |
+| Multi-gráfica | Free: 1; Premium: varias |
+| PDF / Excel | Solo UI del widget (sin gate backend) |
 
-**Problema de producto v1:** se cobraba implícitamente por “acceso premium” (dashboard, portal, gráficas). En v2 **eso deja de ser premium**; solo el **volumen de mensajes** es de pago.
+**Problema de producto v1:** se cobraba por “acceso premium” (dashboard, portal, gráficas). En v2 eso deja de ser premium; solo el **volumen de mensajes** (y PDF/Excel) es de pago.
 
 ---
 
-## 3. Modelo nuevo (v2) — reglas detalladas
+## 3. Modelo v2 — reglas detalladas
 
-### 3.1 Cupo de mensajes (único gate de pago)
+### 3.1 Cupo de mensajes (gate principal)
 
-- Cada usuario **gratis** tiene **15 mensajes por día natural** (ventana de 24 h o día calendario — ver §5).
-- Un **mensaje** = una petición que consume el agente (`POST /api/v1/chat` o upload que dispara análisis), igual que hoy con `BumpAndCheck`.
-- Al llegar a 15 en el día:
-  - `paywall=true`
-  - Respuesta amable + CTA a pagar $40.000 (Bold)
-  - **No** se bloquea la navegación al portal/dashboard ya generados
-- Usuario **premium** (`is_premium=true`):
-  - `paywall=false` siempre
-  - `credits_remaining=-1` (convención actual = ilimitado)
-  - Sin incremento de contador diario (o contador solo analítico)
+- Cada usuario **gratis** tiene **15 mensajes por día calendario** en zona `America/Bogota`.
+- Un **mensaje** = petición que consume el agente (`POST /api/v1/chat` o upload que dispara análisis) vía `BumpAndCheck`.
+- Al llegar a 15 en el día: `paywall=true`, CTA a pagar $40.000; **no** se bloquea portal/dashboard ya generados.
+- Usuario **premium** (`is_premium=true`): `paywall=false`, `credits_remaining=-1`, sin tope diario.
 
-### 3.2 Funciones incluidas en plan GRATIS (sin pagar)
+### 3.2 Incluido en plan GRATIS
 
-Todos los usuarios, con o sin pago:
+1. Widget flotante en WordPress  
+2. Portal (`/portal-premium/`) — historial de gráficas + login correo → Bold  
+3. Dashboard ECharts (inline y `/dashboard-premium-echarts/?token=…`)  
+4. Subida de archivos (dentro del cupo)  
+5. Multi-gráfica / visualización  
 
-1. **Widget flotante** InsightFlow en el sitio WordPress  
-2. **Portal premium** (`/portal-premium/`, visor local de historial de gráficas)  
-3. **Dashboard ECharts** inline en el widget y en `/dashboard?token=…`  
-4. **Subida de archivos** para análisis (dentro del cupo de mensajes)  
-5. **Visualización** de gráficas generadas en la sesión  
-
-Restricción: si el cupo diario está agotado, **no pueden enviar mensajes nuevos** al agente hasta el reset o hasta pagar.
+Restricción: sin cupo diario no pueden enviar mensajes nuevos hasta el reset o hasta pagar.
 
 ### 3.3 Qué aporta el pago ($40.000 COP)
 
-1. **`is_premium=true`** permanente (mientras la suscripción/compra siga vigente — hoy: compra única sin expiry)  
-2. **Mensajes ilimitados** (sin paywall por contador)  
-3. **Iteración ilimitada** en panel y dashboard (cada mensaje puede renovar gráficas, filtros, comparaciones)  
-4. *(Opcional v2.1)* PDF/Excel, branding, multi-gráfica extendida — ver §8  
+1. `is_premium=true` (compra única, sin expiry hoy)  
+2. Mensajes ilimitados  
+3. Iteración ilimitada en panel/dashboard  
+4. PDF / Excel descargables  
+5. Branding personalizable  
 
-### 3.4 Qué NO se cobra en v2
+### 3.4 Qué NO se cobra
 
-- Entrar al **portal premium**  
-- Abrir el **dashboard ECharts** con un token válido  
+- Entrar al portal  
+- Abrir dashboard ECharts con token válido  
 - Ver gráficas ya generadas  
 - Tener la burbuja del chat visible  
 
 ---
 
-## 4. Identidad de usuario y login opcional
+## 4. Identidad de usuario y login por correo
 
 ### 4.1 Identidad primaria (sin login)
 
@@ -94,251 +88,208 @@ Restricción: si el cupo diario está agotado, **no pueden enviar mensajes nuevo
 | `chat_id` | `localStorage` key `powerups_edge_chat_id_v1` | Contador, historial, pago Bold |
 | Generación | Widget al primer uso (`1e9 + random`) | Anónimo por navegador |
 
-**Limitación:** otro navegador = otro `chat_id` = otro cupo de 15/día. El pago atado solo a ese `chat_id` no se transfiere solo.
+**Limitación:** otro navegador = otro `chat_id` = otro cupo. El pago atado solo a `chat_id` no se transfiere solo.
 
-### 4.2 Login opcional (recomendado v2)
+### 4.2 Login / vínculo por email — estado actual
 
-**Objetivo:** que quien pagó recupere premium en otro dispositivo o tras borrar cookies.
+| Pieza | Estado |
+|---|---|
+| `POST /api/v1/billing/link-email` | ✅ Backend (merge si el email ya existe) |
+| `GET /api/v1/billing/status?chat_id=` / `?email=` | ✅ |
+| Auto-vínculo email en webhook Bold (`ExtractPayerEmail`) | ✅ Fase 0 |
+| UI portal: correo → revela botón Bold | ✅ `embed/premium-portal.html` (`#portal-login`) |
+| CTA WordPress → portal | ✅ `bebuilder-pro-card-snippet.html` → `/portal-premium/#portal-login` |
+| Formulario email en el **widget** del chat | ❌ Pendiente |
+| Magic link / OTP / verificación de correo | ❌ Fase 2 |
 
-| Campo | Fuente | Rol |
-|---|---|---|
-| `email` | Login opcional en widget o portal | Clave humana estable |
-| `chat_id` | Sigue siendo el ID de sesión del widget | Contador y webhook Bold |
-
-**Flujo propuesto:**
+**Flujo en producción (portal):**
 
 ```
-Usuario anónimo (chat_id) → usa 15 msgs/día
-       ↓
-Opcional: "Vincular email" → POST /api/v1/billing/link-email
-       ↓
-Paga Bold (reference/order = chat_id)
-       ↓
-Webhook → is_premium=true en usuario con ese chat_id
-       ↓
-En otro navegador: login con mismo email → merge/recupera is_premium
+CTA «Ingresar con mi correo para pagar»
+  → /portal-premium/#portal-login
+  → usuario ingresa email
+  → POST /billing/link-email { chat_id, email }
+  → si free: se revela #pu-pro-card + botón Bold
+  → pago → webhook → is_premium=true (+ email del pagador si Bold lo envía)
+  → en otro navegador: mismo email → LinkEmail reasigna chat_id / recupera premium
 ```
-
-**Endpoints existentes reutilizables:**
-
-- `POST /api/v1/billing/link-email` — `{ chat_id, email }`  
-- `GET /api/v1/billing/status?chat_id=` o `?email=`  
-- Webhook Bold — activa premium por `chat_id`  
-
-**Por implementar (login opcional UI):**
-
-- Formulario ligero en widget: email + magic link o código (fase 2)  
-- O solo email + confirmación en portal premium (fase 1 mínima)  
-- `GET /billing/status?email=` ya devuelve `is_premium` si el email pagó  
 
 ### 4.3 Identificar “usuario que pagó”
 
-| Método | Confiable para premium |
+| Método | Confiable |
 |---|---|
-| `is_premium` en BD + `chat_id` | ✅ Mismo navegador |
+| `is_premium` + `chat_id` | ✅ Mismo navegador |
 | `is_premium` + `email` vinculado | ✅ Cross-device |
-| Referencia Bold / `payments` table | ✅ Auditoría y soporte |
-| Solo localStorage | ❌ No prueba pago |
+| Tabla `payments` / referencia Bold | ✅ Auditoría |
+| Solo localStorage | ❌ |
 
 ---
 
-## 5. Reset diario (15 mensajes / día)
+## 5. Reset diario (15 mensajes / día) — implementado
 
-### Decisión propuesta
-
-- **Día calendario en zona `America/Bogota`** (COP / usuarios Colombia).  
-- A las **00:00 America/Bogota** el contador diario vuelve a 0 para usuarios free.  
-- Premium: no aplica reset (ilimitado).
-
-### Cambio de datos (a implementar)
-
-Añadir a `users` (PostgreSQL / GORM):
-
-| Columna | Tipo | Descripción |
-|---|---|---|
-| `messages_today` | int | Mensajes consumidos en el día actual |
-| `quota_date` | date | Fecha (Bogotá) del último conteo; si `< hoy` → reset |
-
-**Alternativa:** tabla `daily_usage(user_id, usage_date, count)` — mejor para analytics.
-
-### Lógica en `BumpAndCheck`
+- Día calendario en `America/Bogota` (`QUOTA_TIMEZONE`).  
+- Columnas: `users.messages_today`, `users.quota_date`.  
+- Lógica en `BumpAndCheck` (Go) y espejo en Python para el bot Telegram.  
+- Env: `FREE_MESSAGE_LIMIT=15` (no `FREE_DAILY_MESSAGE_LIMIT`).
 
 ```
 si is_premium → paywall=false, return
 si quota_date < hoy (Bogotá) → messages_today=0, quota_date=hoy
-si messages_today >= 15 → paywall=true
+si messages_today >= FREE_MESSAGE_LIMIT → paywall=true
 si no → messages_today++, paywall=false
 ```
 
-**Migración:** usuarios con `message_count` legacy — opción A: resetear todos; opción B: congelar `message_count` y empezar solo con columnas diarias.
+`message_count` lifetime se conserva solo como métrica analítica.
 
 ---
 
-## 6. Cambios técnicos previstos (mapa)
+## 6. Mapa técnico (v2 ya aplicado)
 
-### 6.1 Backend Go (API)
+### 6.1 Backend Go
 
-| Área | Archivo(s) | Cambio |
+| Área | Archivo(s) | Estado |
 |---|---|---|
-| Modelo | `internal/db/models.go` | `messages_today`, `quota_date` |
-| Repo | `internal/db/repos/user_repository.go` | Reset diario en `BumpAndCheck` / `userToState` |
-| Chat | `internal/api/handlers/chat_handler.go` | Quitar gate premium en `EChartsOption` / `dashboardURL` (~L201) |
-| Dashboard | `internal/api/handlers/dashboard_handler.go` | Quitar `IsPremiumForChat` para **leer** sesión (mantener ownership por token) |
-| Download | `internal/api/handlers/download_handler.go` | Revisar gates PDF/Excel |
-| Billing | `billing_handler.go` | Mensajes de status: `plan=free|premium`, `messages_today`, `daily_limit=15` |
-| Config | `config.go`, `.env` | `FREE_DAILY_MESSAGE_LIMIT=15`, `QUOTA_TIMEZONE=America/Bogota` |
-| Charts | `enforceChartPolicy` | **Abrir multi-gráfica a free** (alineado con dashboard gratis) |
+| Modelo | `internal/db/models.go` | ✅ `messages_today`, `quota_date` |
+| Repo | `internal/db/repos/user_repository.go` | ✅ Reset diario + `LinkEmail` merge |
+| Chat | `chat_handler.go` | ✅ ECharts free; PDF/Excel solo premium en URLs |
+| Dashboard | `dashboard_handler.go` | ✅ Sin gate premium (token/ownership) |
+| Download | `download_handler.go` | ✅ PDF/Excel → 403 si free |
+| Billing | `billing_handler.go` | ✅ status diario + Bold + link-email |
+| Worker client | `internal/worker/client.go` | ✅ `generate_echarts` condicional; timeout dinámico ≤ `WORKER_REQUEST_TIMEOUT_SEC` |
+| Config | `config.go` | ✅ `FREE_MESSAGE_LIMIT`, `QUOTA_TIMEZONE`, `WorkerRequestTimeoutSec` |
 
 ### 6.2 Brain Python
 
-| Área | Cambio |
+| Área | Estado |
 |---|---|
-| `user_repo.py`, `credits.py` | Alinear con contador diario si el bot Telegram sigue activo |
-| Orquestador | Sin cambio de producto si Go es autoridad de cuota |
+| Contador diario bot | ✅ Alineado |
+| `ModelManager` | ✅ Defaults `gemini-3-flash-preview` (+ fallbacks); `GEMINI_REQUEST_TIMEOUT_SEC` |
+| Worker hard timeout | ✅ `WORKER_REQUEST_TIMEOUT_SEC` (default 330) |
+| Generar PDF/Excel aunque free | ⏳ Pendiente optimizar (Go bloquea entrega) |
 
 ### 6.3 Frontend embed
 
-| Archivo | Cambio |
+| Archivo | Estado |
 |---|---|
-| `powerups-edge-widget.js` | Paywall solo por mensajes; **no ocultar** portal/dashboard en free; texto “X/15 hoy” |
-| `powerups-edge-widget.css` | CTA paywall: “Mensajes ilimitados por $40.000” |
-| `bebuilder-pro-card-snippet.html` | Copy alineado a v2 |
-| Portal / dashboard HTML | Quitar badges “solo premium” en navegación; mantener gate solo en enviar mensaje |
+| `powerups-edge-widget.js` | ✅ Contador diario; no oculta portal/dashboard |
+| `premium-portal.html` | ✅ Login correo + gate Bold |
+| `bebuilder-pro-card-snippet.html` | ✅ CTA a `#portal-login` |
+| `powerups-bold-checkout.js` | ✅ Checkout firmado |
+| Email UI en widget | ❌ Pendiente |
 
 ### 6.4 WordPress / Bold
 
-- Sin cambio de monto ni webhook.  
-- Significado del pago: **ilimitar mensajes**, no “desbloquear portal”.
+- Assets widget + Bold JS: `wp-content/uploads/2026/07/`  
+- Hook Bottom: `bebuilder-install-snippet.html`  
+- Significado del pago: **ilimitar mensajes** (+ PDF/Excel), no “desbloquear portal”.
 
 ---
 
-## 7. API — contrato propuesto (billing/status)
+## 7. API — contrato real de `billing/status`
 
-Respuesta enriquecida para el widget:
+Respuesta actual (`BillingStatusResponse` en Go) — **no** incluye el objeto `features` propuesto en borradores previos:
 
 ```json
 {
   "chat_id": 1234567890,
   "email": "user@example.com",
-  "plan": "free",
   "is_premium": false,
-  "daily_limit": 15,
+  "plan": "free",
+  "message_count": 7,
   "messages_today": 7,
+  "daily_limit": 15,
   "messages_remaining_today": 8,
-  "quota_resets_at": "2026-07-10T05:00:00Z",
+  "credits_remaining": 8,
+  "show_upgrade_button": true,
+  "show_pdf_button": false,
   "paywall_active": false,
-  "features": {
-    "portal": true,
-    "dashboard_echarts": true,
-    "unlimited_messages": false
-  },
-  "show_upgrade_button": true
+  "premium_since": null,
+  "quota_resets_at": "2026-07-10T05:00:00Z"
 }
 ```
 
-Premium:
-
-```json
-{
-  "plan": "premium",
-  "is_premium": true,
-  "messages_remaining_today": -1,
-  "paywall_active": false,
-  "features": {
-    "portal": true,
-    "dashboard_echarts": true,
-    "unlimited_messages": true
-  },
-  "show_upgrade_button": false
-}
-```
+- `show_pdf_button` refleja plan premium (UI).  
+- Gate autoritativo de PDF/Excel: `download_handler.go` (403) + no emitir `download_url` en chat free.
 
 ---
 
-## 8. Decisiones abiertas (confirmar con producto)
+## 8. Decisiones de producto (cerradas en v2.0)
 
-| # | Tema | Opción A | Opción B |
-|---|---|---|---|
-| 1 | PDF / Excel | Gratis con cupo 15/día | Solo premium (como hoy) |
-| 2 | Multi-gráfica (4+) | Gratis | Solo premium |
-| 3 | Branding colores/fuentes | Solo premium | Gratis |
-| 4 | Premium expira | Compra única de por vida | Suscripción mensual (futuro) |
-| 5 | Login | Solo email link manual | Magic link / OAuth Google |
-| 6 | Reset diario | Medianoche Bogotá | Rolling 24 h desde primer mensaje |
-
-**Recomendación v2.0:** portal + dashboard + multi-gráfica **gratis**; PDF/Excel y branding **premium**; reset **medianoche Bogotá**; login **email opcional fase 1** (`link-email` existente).
+| # | Tema | Decisión v2.0 |
+|---|---|---|
+| 1 | PDF / Excel | **Solo premium** (gate backend) |
+| 2 | Multi-gráfica | **Gratis** |
+| 3 | Branding | **Solo premium** |
+| 4 | Premium expira | Compra única (sin expiry) |
+| 5 | Login | Email vínculo (portal ✅); magic link futuro |
+| 6 | Reset diario | Medianoche **America/Bogota** |
 
 ---
 
-## 9. Plan de implementación (orden sugerido)
+## 9. Plan — qué queda
 
-1. **Documentación** ← este archivo  
-2. **Migración BD** + `BumpAndCheck` diario  
-3. **Quitar gates premium** en dashboard/ECharts (Go handlers)  
-4. **Actualizar respuestas** paywall (copy: “15 mensajes hoy”)  
-5. **Widget UI** — contador diario, no ocultar links portal/dashboard  
-6. **Login opcional UI** — email en widget → `link-email`  
-7. **Pruebas** — free: 15 msgs, dashboard OK; día 2 reset; pago Bold → ilimitado  
-8. **Desactivar `DEV_FORCE_PREMIUM`** en producción  
+1. ~~Documentación v2~~  
+2. ~~Migración BD + `BumpAndCheck` diario~~  
+3. ~~Quitar gates premium en dashboard/ECharts~~  
+4. ~~Widget contador diario / copy~~  
+5. ~~Login email en portal + CTA Bold~~  
+6. **Login email en widget** (opcional, misma API `link-email`)  
+7. **Magic link / OTP** (fase 2)  
+8. Propagar tier al worker para **no generar** PDF/Excel en free  
+9. Paridad PDF/Excel en **bot Telegram**  
+10. Desactivar `DEV_FORCE_PREMIUM` en producción cuando no se necesite QA  
 
 ---
 
 ## 10. Criterios de aceptación
 
-- [ ] Usuario nuevo free ve portal y dashboard ECharts **sin pagar**  
-- [ ] Tras 15 mensajes **en el mismo día**, paywall bloquea **solo** nuevos mensajes  
-- [ ] A las 00:00 Bogotá, free vuelve a tener 15 mensajes  
-- [ ] Tras pago Bold $40k, `is_premium=true` y mensajes ilimitados  
-- [ ] Email vinculado recupera premium en otro navegador (`billing/status?email=`)  
-- [ ] Copy del widget y tarjeta Bold dice “mensajes ilimitados”, no “desbloquea dashboard”  
+- [x] Usuario free ve portal y dashboard ECharts **sin pagar**  
+- [x] Tras 15 mensajes **el mismo día**, paywall bloquea **solo** nuevos mensajes  
+- [x] A las 00:00 Bogotá, free vuelve a tener 15 mensajes  
+- [x] Tras pago Bold $40k, `is_premium=true` y mensajes ilimitados  
+- [x] Copy “mensajes ilimitados”, no “desbloquea dashboard”  
+- [x] Portal: correo → botón Bold  
+- [ ] Email recupera premium en otro navegador (backend listo; validar E2E en prod)  
+- [ ] Formulario email en el widget del chat  
 
 ---
 
-## 11. Referencias en código (v1)
+## 11. Referencias en código (v2 vigente)
 
 | Concepto | Ubicación |
 |---|---|
-| Contador lifetime | `users.message_count`, `BumpAndCheck` |
-| Paywall chat | `chat_handler.go` L111-121 |
-| ECharts solo premium | `chat_handler.go` L201-204 |
-| Dashboard gate | `dashboard_handler.go` SessionJSON |
-| Widget paywall UI | `powerups-edge-widget.js` `applyCreditsUI` |
-| Bold activación | `billing_handler.go` BoldWebhook → `ConfirmPayment` |
+| Contador diario | `users.messages_today` / `quota_date`, `BumpAndCheck` |
+| Paywall chat | `chat_handler.go` (antes de llamar al worker) |
+| ECharts free + URLs PDF/Excel | `chat_handler.go` |
+| Dashboard sin gate premium | `dashboard_handler.go` |
+| PDF/Excel 403 | `download_handler.go` + tests |
+| `generate_echarts` condicional | `internal/worker/client.go` |
+| Timeouts Gemini / worker | `model_manager.py`, `app/worker.py`, `client.go` |
+| Widget paywall UI | `powerups-edge-widget.js` |
+| Login portal + Bold | `premium-portal.html`, `powerups-bold-checkout.js` |
+| Bold webhook + payer email | `billing_handler.go`, `internal/payment/bold/` |
 | Link email | `POST /api/v1/billing/link-email` |
 
 ---
 
-*Próximo paso: confirmar decisiones §8 e implementar ítems pendientes de §12.*
+## 12. Changelog de implementación
 
----
+### Julio 2026 — núcleo v2
 
-## 12. Estado de implementación (Julio 2026)
+| Capa | Estado |
+|---|---|
+| Contador diario | ✅ |
+| Dashboard/portal free | ✅ |
+| Multi-gráfica free | ✅ |
+| PDF/Excel gate backend | ✅ |
+| Bold checkout + webhook | ✅ |
+| Auto-vínculo email en webhook | ✅ |
+| Login UI portal → Bold | ✅ (2026-07) |
+| `generate_echarts` solo con datos/keywords | ✅ (fix latencia free) |
+| Timeouts Gemini + techo worker 330s | ✅ |
 
-| Capa | v2 objetivo | Estado actual |
-|---|---|---|
-| Contador **diario** (`messages_today`, reset Bogotá) | §5 | ✅ Implementado |
-| Dashboard ECharts para **free** | §3.2 | ✅ Sin gate premium en API |
-| Portal / links visibles con paywall | §3.4 | ✅ Embed + premium-portal.html |
-| Copy comercial “mensajes ilimitados” | §1 | ✅ Docs + embed + API/Telegram |
-| Webhook Bold → `is_premium` | §4 | ✅ Implementado |
-| Login opcional email | §4.2 | ⏳ Fase 0 lista (auto-vínculo en webhook); falta UI widget |
-| PDF / Excel solo premium | §8 rec. | ✅ Gate en backend (`download_handler` + `chat_handler`) |
-| Multi-gráfica free | §8 rec. | ✅ `enforceChartPolicy` + chart types free |
+**PDF/Excel:** enforcement en `download_handler.go` y omisión de `download_url` en chat free. El worker aún puede *generar* el archivo en disco para free (solo se bloquea la entrega).
 
-**Nota de verificación (Julio 2026) — PDF/Excel:** el gate premium para PDF/Excel ahora se enforcea en el **backend**, no solo en la UI. Antes el bloqueo era únicamente de widget (`powerups-edge-widget.js` `premiumAction()`), por lo que un usuario free que llamara `POST /api/v1/chat` directamente podía obtener el reporte. **Fix (Julio 2026):**
+**Login:** Fase 0 (webhook) + Fase 1 mínima (portal). Falta UI en widget y Fase 2 (verificación).
 
-- `internal/api/handlers/download_handler.go` — al resolver un token de tipo `pdf`/`excel` valida `IsPremiumForChat(chat_id)` antes de servir el archivo. Sin premium → **403** con detalle "Los reportes PDF/Excel son exclusivos del plan premium". Charts y dashboards ECharts siguen libres (`isPremiumGatedResource` solo cubre pdf/excel). Este es el punto de enforcement autoritativo: aunque un token se filtre o se comparta, sin premium no se sirve.
-- `internal/api/handlers/chat_handler.go` (bloque "8 · Enlaces de descarga") — solo construye `download_url` y el artefacto de reporte si `creditStatus.IsPremium`. El usuario free ya no recibe una URL que devolvería 403 (se eliminó la rama "Descargar Reporte Básico").
-- Tests: `internal/api/handlers/download_handler_test.go` cubre free→403 (pdf y excel), premium→200, y chart free→200.
-
-Pendiente menor (no bloqueante): el worker Python (`app/agents/analyst_agent.py`) aún puede **generar** el PDF/Excel en disco para free (solo se bloquea la entrega, no la generación); si se quiere ahorrar ese cómputo, se puede propagar el tier para no generar el reporte cuando el usuario es free.
-
-**Fase 0 de login opcional (Julio 2026) — auto-vínculo email↔chat_id en el webhook Bold:** al confirmar un pago, si Bold reporta el correo del pagador, el backend ahora lo persiste automáticamente:
-
-- `internal/payment/bold/transaction.go` — `Event.PayerEmail` nuevo; `ExtractPayerEmail()` lo extrae de las formas comunes del payload Bold (`payer_email`, `customer_email`, `payer.email`, `customer.email` y variantes bajo `data`/`transaction`), con validación mínima de forma de email y tope de 320 chars.
-- `internal/api/handlers/billing_handler.go` (`BoldWebhook`) — pasa el email a `ConfirmPayment` (antes pasaba `nil`), que ya lo guardaba en `payments.payer_email`.
-- `internal/db/repos/user_repository.go` (`getOrCreateUserTx`) — si el usuario hallado por `chat_id` no tiene email, se le asocia el del pago. Guard de unicidad: `users.email` tiene `uniqueIndex`, así que solo se escribe si ningún otro usuario lo posee (nunca aborta la transacción del pago).
-
-Resultado: quien pagó queda vinculado por correo **sin ninguna UI nueva** — `GET /billing/status?email=` ya devuelve `is_premium=true` para ese correo, que es la base de la Fase 1 ("Restaurar por correo" en el widget, pendiente) y de la Fase 2 (verificación por magic link/OTP, pendiente).
-
-**Documentos alineados a v2:** `docs/README.md`, `docs/CLAUDE.md`, `README.md`, `docs/BOLD-SETUP.txt`, `embed/*` (copy paywall).
+**Documentos alineados:** este archivo, `docs/README.md`, `docs/CLAUDE.md`, `README.md`, `docs/BOLD-SETUP.txt`, `embed/INTEGRATION-BEBUILDER.txt`, `.env.example`.

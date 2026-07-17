@@ -126,8 +126,9 @@ BOLD_WEBHOOK_SECRET=
 
 ### Estado Actual del Ecosistema InsightFlow / Malcom
 
-- Widget web funcional en WordPress / BeBuilder.
-- Pipeline de análisis reforzado para archivos corporativos y gubernamentales colombianos.
-- Diagnóstico normativo y aduanero incorporado a los reportes.
-- Soporte híbrido local/cloud para clientes con requerimientos de soberanía extrema de datos.
-- Webhook Bold disponible para activar mensajes ilimitados (premium) por `chat_id`.
+> Ver estado vigente en `docs/BUSINESS-RULES-v2.md` y `README.md` (2026-07-17):
+
+- Producto v2: 15 msgs/día free; portal + ECharts gratis; $40k Bold = mensajes ilimitados + PDF/Excel.
+- Login correo en `premium-portal.html` (gate del botón Bold); `link-email` + auto-vínculo en webhook.
+- Assets WordPress en `wp-content/uploads/2026/07/`.
+- Pendiente: email UI en widget, magic link, no generar PDF/Excel free en worker.

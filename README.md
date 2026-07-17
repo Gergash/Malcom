@@ -42,7 +42,7 @@ Plataforma de Business Intelligence conversacional para Colombia. Combina un bot
 │   ├── PredictorAgent → forecast / preguntas de inventario       │
 │   ├── KnowledgeAgent → RAG vectorial por chat_id (PDF/DOCX/TXT)│
 │   ├── ComplianceAgent→ diagnóstico normativo/aduanero Colombia  │
-│   └── ModelManager   → Gemini 2.5-flash + fallback Ollama       │
+│   ├── ModelManager   → Gemini 3.x (flash-preview + fallbacks) + Ollama
 └──────────────────────────────────────────────────────────────────┘
                            │
                            ▼
@@ -287,7 +287,7 @@ python app/main.py
   "quota_resets_at": "2026-07-10T05:00:00Z"
 }
 ```
-> Nota: este contrato existe hoy en el código pero difiere del propuesto en `docs/BUSINESS-RULES-v2.md` §7 (no incluye el objeto `features`); `show_pdf_button` refleja el gate de UI, no un gate real de backend (ver §12 de BUSINESS-RULES-v2.md).
+> Nota: este contrato es el vigente en Go. No incluye el objeto `features` de borradores antiguos. `show_pdf_button` refleja el plan; el gate autoritativo de PDF/Excel está en `download_handler.go` (403 si free) y en `chat_handler.go` (no emite `download_url` a free). Ver `docs/BUSINESS-RULES-v2.md` §7 y §12.
 
 **Ejemplo de petición `/api/v1/chat`:**
 ```json
@@ -340,42 +340,52 @@ python app/main.py
 - Cubre: cruces arancelarios DIAN, alertas de tratados comerciales (TLCs), INVIMA, Zonas Francas, consistencia FOB/CIF.
 
 ### ModelManager
-- Fallback automático: `gemini-2.5-flash` → `gemini-2.0-flash` → `gemini-3-flash-preview`.
-- Modo **Ollama local** (`llama3.1`): se activa para tareas de estructuración/Pandas cuando se requiere soberanía total de datos (cero llamadas a APIs externas).
+- Defaults actuales: `gemini-3-flash-preview` → `gemini-3.5-flash` → `gemini-3.1-flash-lite` (configurable con `GEMINI_MODEL` / `GEMINI_MODELS`).
+- Timeout por llamada: `GEMINI_REQUEST_TIMEOUT_SEC` (default 90); fallback automático ante 404/timeout.
+- Modo **Ollama local** (`llama3.1`): soberanía de datos / tareas de estructuración.
 - Cooldown de 60 s ante errores 429.
+- SDK `google.generativeai` está deprecado; migración a `google.genai` es deuda técnica.
 
 ---
 
 ## Widget de embed (WordPress / BeBuilder)
 
-El widget se integra en cualquier sitio vía un script en el hook `Bottom`:
+El widget se integra vía script en el hook `Bottom`. Plantilla lista: `embed/bebuilder-install-snippet.html`.
+
+Assets en producción (Medios):
+
+```
+https://www.powerupsagencia.com/wp-content/uploads/2026/07/
+```
 
 ```html
 <script>
 window.POWERUPS_WIDGET_CONFIG = {
-  API_BASE: 'https://tu-api.com',
-  CHECKOUT_URL: 'https://tu-tienda.com/pagar'
+  API_BASE: 'https://tu-api-ngrok-o-dominio',
+  CHECKOUT_URL: 'https://www.powerupsagencia.com/premium-edge-bi/?chat_id={chatId}',
+  PREMIUM_PORTAL_URL: 'https://www.powerupsagencia.com/portal-premium/',
+  DASHBOARD_SESSION_URL: 'https://www.powerupsagencia.com/dashboard-premium-echarts/'
 };
 window.POWERUPS_WIDGET_LOADER = {
-  frameUrl: 'https://tu-cdn.com/powerups-edge-frame.html',
-  assetsBase: 'https://tu-cdn.com/uploads/2026/05/',
+  assetsBase: 'https://www.powerupsagencia.com/wp-content/uploads/2026/07/',
+  frameUrl: 'https://www.powerupsagencia.com/wp-content/uploads/2026/07/powerups-edge-frame.html',
   zIndex: 2147483000
 };
 </script>
-<script src="https://tu-cdn.com/uploads/2026/05/widget-loader.js"></script>
+<!-- Preferir el loader inline de bebuilder-install-snippet.html; widget-loader.js es alternativa -->
 ```
 
 Archivos del widget:
-- `widget-loader.js` — crea el lienzo iframe en el host
+- `widget-loader.js` / snippet inline — crea el iframe en el host
 - `powerups-edge-frame.html` — documento raíz del iframe
-- `powerups-edge-widget.js` — lógica del chat (envío de mensajes, file upload, paywall)
-- `powerups-edge-widget.css` — estilos (burbuja flotante, panel lateral)
-- `premium-dashboard-session.html` — dashboard Apache ECharts
-- `premium-portal.html` — portal de activación premium / pago
-- `powerups-bold-checkout.js` — carga el botón embebido Bold (`GET /api/v1/billing/bold-checkout?chat_id=`), inyecta el `<script data-bold-button>` del SDK Bold con order_id/integrity-signature firmados por el servidor
-- `powerups-edge-widget-markup.html` — fragmento HTML de referencia del `<body>` del chat (debe mantenerse sincronizado con `powerups-edge-frame.html`; no se sube a producción, solo referencia local)
-- `embed/INTEGRATION-BEBUILDER.txt` — inventario completo de archivos del embed modular, checklist de despliegue a Medios de WordPress y mapa de endpoints usados por el widget
-- `docs/BOLD-SETUP.txt` — guía paso a paso para publicar el checkout Bold en WordPress/BeBuilder, configurar el panel Bold y probar el webhook
+- `powerups-edge-widget.js` — chat, upload, paywall diario, ECharts inline
+- `powerups-edge-widget.css`
+- `premium-dashboard-session.html` — visor ECharts
+- `premium-portal.html` — portal + **login por correo** + gate del botón Bold
+- `bebuilder-pro-card-snippet.html` — CTA → `/portal-premium/#portal-login`
+- `powerups-bold-checkout.js` — botón Bold firmado (`GET /billing/bold-checkout`)
+- `embed/INTEGRATION-BEBUILDER.txt` — inventario y checklist de despliegue
+- `docs/BOLD-SETUP.txt` — guía Bold + webhook + ngrok
 
 ---
 
@@ -397,6 +407,13 @@ Archivos del widget:
 ### Bold (checkout embebido, monto fijo)
 
 ```
+CTA / tarjeta Pro ──► /portal-premium/#portal-login
+                           │
+                    usuario ingresa email
+                    POST /api/v1/billing/link-email
+                           │
+                    se revela #pu-bold-mount
+                           │
 Widget/portal ──GET /api/v1/billing/bold-checkout?chat_id=──► API Go
                                                                    │
                                           Genera order_id="IF-{chat_id}-{unix}"
@@ -411,17 +428,17 @@ Widget/portal ──GET /api/v1/billing/bold-checkout?chat_id=──► API Go
                                                     Bold POST /api/v1/billing/bold-webhook
                                                     (header X-Bold-Signature, HMAC-SHA256)
                                                                    │
-                              API valida firma + valida que el monto coincida con PREMIUM_AMOUNT_COP
-                              + extrae chat_id (metadata / description / reference)
+                              API valida firma + monto PREMIUM_AMOUNT_COP
+                              + extrae chat_id + opcionalmente payer email
                                                                    │
                                           PaymentRepository.ConfirmPayment() (idempotente)
                                           → is_premium = true
+                                          → auto-vínculo email si el usuario no tenía
 ```
 
-- Precio: monto fijo configurable vía `PREMIUM_AMOUNT_COP` (por defecto **$40.000 COP**).
-- `BOLD_API_KEY` (pública, botón) y `BOLD_INTEGRITY_SECRET` (privada, hash del botón) son llaves distintas.
-- El `chat_id` se busca en `metadata.chat_id`, en `description`/`reference` con `?chat_id=` o `chat_id=`, o como entero directo en `reference`/`order_id`.
-- Ver `docs/BOLD-SETUP.txt` para la guía completa de configuración (WordPress + panel Bold + prueba del webhook con curl).
+- Precio: `PREMIUM_AMOUNT_COP` (por defecto **$40.000 COP**).
+- `BOLD_API_KEY` (pública) y `BOLD_INTEGRITY_SECRET` (privada) son llaves distintas.
+- Ver `docs/BOLD-SETUP.txt` para WordPress + panel Bold + curl del webhook + ngrok.
 
 ### Wompi (webhook genérico)
 
@@ -466,14 +483,12 @@ WordPress (WooCommerce) ──genera referencia──► Wompi
 
 ---
 
-## Estado del proyecto (Julio 2026)
+## Estado del proyecto (2026-07-17)
 
-- **Producción:** Widget web funcional en WordPress/BeBuilder. API Go + Worker Python estables en Docker.
-- **Billing:** Bold es el proveedor principal — checkout embebido con firma SHA256. El pago de **$40.000 COP** activa **mensajes ilimitados** (no “desbloquea dashboard”; portal y ECharts son gratis en v2). Wompi sigue como alternativa.
-- **Producto v2:** contador diario (`messages_today`/`quota_date`, reset `America/Bogota`) + ECharts/portal gratis para todos, verificado en `internal/db/repos/user_repository.go`, `internal/api/handlers/chat_handler.go` y `internal/api/handlers/dashboard_handler.go` (`docs/BUSINESS-RULES-v2.md`). Pendiente: login opcional por email (endpoint existe, falta UI).
-- **PDF/Excel premium-only:** el gate se enforcea en el backend — `download_handler.go` valida `IsPremiumForChat` al servir tokens `pdf`/`excel` (free → 403) y `chat_handler.go` no expone `download_url` a usuarios free. Charts y dashboards siguen gratis. Cubierto por `internal/api/handlers/download_handler_test.go`.
-- **Ingesta:** Pipeline avanzado para archivos DIAN/RIPS/extractos bancarios colombianos con heurística de encabezado y expansión de delimitadores.
-- **IA:** Soporte híbrido Gemini + Ollama local para soberanía de datos.
-- **Compliance:** Bloque de diagnóstico normativo/aduanero integrado en todos los reportes.
-- **Dashboard:** Apache ECharts con sesiones firmadas y URL de descarga segura de artefactos.
-- **Pendiente:** Eliminar `app/database/quota.db` (SQLite rezago de migración). Añadir tests de integración automatizados.
+- **Producción:** Widget web en WordPress/BeBuilder (assets `wp-content/uploads/2026/07/`). API Go + Worker Python en Docker.
+- **Billing Bold:** checkout firmado + webhook HMAC. $40.000 COP = mensajes ilimitados + PDF/Excel (portal/ECharts gratis). Flujo de pago: correo en portal → botón Bold.
+- **Producto v2:** contador diario (`messages_today`/`quota_date`, `America/Bogota`); ECharts/portal/multi-gráfica free; PDF/Excel gate en backend.
+- **Login email:** backend `link-email` + merge; auto-vínculo en webhook; **UI en `premium-portal.html`**. Pendiente: formulario en el widget y magic link/OTP.
+- **Rendimiento chat:** `generate_echarts` condicional; timeouts Gemini (90s) y worker (330s) — evita `context deadline exceeded` en mensajes simples.
+- **IA:** Gemini 3.x (flash-preview + fallbacks) + Ollama opcional. SDK `google.generativeai` deprecado (migración pendiente).
+- **Pendiente:** email UI en widget; no generar PDF/Excel free en worker; gate PDF/Excel en bot Telegram; tests E2E; eliminar `app/database/quota.db` si aún existe; desactivar `DEV_FORCE_PREMIUM` fuera de QA.
