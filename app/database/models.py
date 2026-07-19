@@ -42,6 +42,10 @@ class User(Base):
     )
     # Fecha en que se activó el plan premium (útil para métricas de retención)
     premium_since: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Fin de la ventana premium (premium_since + 30 días); nil = nunca ha pagado.
+    # Espejo del campo Go PremiumExpiresAt (internal/db/models.go). Sin Alembic:
+    # la columna la crea AutoMigrate (GORM) en el servicio Go, este solo la lee/mapea.
+    premium_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class Conversation(Base):
