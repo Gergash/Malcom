@@ -5,6 +5,7 @@ package handlers
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -300,16 +301,30 @@ func newSessionTokenValue() string {
 	return hex.EncodeToString(b)
 }
 
+// hashTokenValue deriva el valor persistido/indexado para tokens de sesión y magic-link.
+// Estos tokens son credenciales bearer reutilizables (sesión, 7 días) o de un solo uso con
+// ventana corta (magic-link, 15 min); a diferencia de los tokens de descarga de corta vida
+// de `Store`/`StorePayload`, una fuga de la base de datos permitiría suplantar a un usuario
+// mientras el token siga vigente. Por eso solo se persiste/indexa el hash SHA-256; el valor
+// crudo nunca toca disco y únicamente se devuelve al emisor original (respuesta HTTP / URL
+// del magic-link). Se aplica también a la ruta en memoria (mapa `ts.store`) por consistencia
+// entre ambos caminos de código, aunque hoy esa ruta solo se ejercita en tests/fallback local.
+func hashTokenValue(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
 // IssueSession crea un token de sesión reutilizable (multi-uso, TTL 7 días) ligado a chatID.
 // A diferencia de los tokens de descarga, NO marca used_at/consumed: debe autorizar múltiples
 // acciones (p. ej. BoldCheckout) durante toda la ventana de 7 días.
 func (ts *TokenStore) IssueSession(chatID int64) (string, time.Time, error) {
 	token := newSessionTokenValue()
+	tokenHash := hashTokenValue(token)
 	expiresAt := time.Now().Add(sessionTokenTTL)
 
 	if ts.db != nil {
 		entry := &malcomdb.DownloadToken{
-			Token:        token,
+			Token:        tokenHash,
 			FilePath:     "",
 			PayloadJSON:  nil,
 			ChatID:       chatID,
@@ -323,7 +338,7 @@ func (ts *TokenStore) IssueSession(chatID int64) (string, time.Time, error) {
 	}
 
 	ts.mu.Lock()
-	ts.store[token] = tokenEntry{
+	ts.store[tokenHash] = tokenEntry{
 		chatID:    chatID,
 		resType:   resourceTypeSession,
 		expiresAt: expiresAt,
@@ -338,10 +353,11 @@ func (ts *TokenStore) ValidateSession(token string) (int64, bool) {
 	if strings.TrimSpace(token) == "" {
 		return 0, false
 	}
+	tokenHash := hashTokenValue(token)
 	if ts.db != nil {
 		var e malcomdb.DownloadToken
 		err := ts.db.WithContext(context.Background()).
-			Where("token = ? AND resource_type = ?", token, resourceTypeSession).
+			Where("token = ? AND resource_type = ?", tokenHash, resourceTypeSession).
 			First(&e).Error
 		if err != nil {
 			return 0, false
@@ -354,7 +370,7 @@ func (ts *TokenStore) ValidateSession(token string) (int64, bool) {
 
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
-	e, ok := ts.store[token]
+	e, ok := ts.store[tokenHash]
 	if !ok || !strings.EqualFold(e.resType, resourceTypeSession) || time.Now().After(e.expiresAt) {
 		return 0, false
 	}
@@ -386,7 +402,7 @@ func (ts *TokenStore) IssueMagicLink(chatID int64, email string) (string, error)
 
 		token := newSessionTokenValue()
 		entry := &malcomdb.DownloadToken{
-			Token:        token,
+			Token:        hashTokenValue(token),
 			FilePath:     "",
 			PayloadJSON:  &payload,
 			ChatID:       chatID,
@@ -410,7 +426,7 @@ func (ts *TokenStore) IssueMagicLink(chatID int64, email string) (string, error)
 	}
 	token := newSessionTokenValue()
 	emailCopy := email
-	ts.store[token] = tokenEntry{
+	ts.store[hashTokenValue(token)] = tokenEntry{
 		chatID:    chatID,
 		resType:   resourceTypeMagicLink,
 		email:     &emailCopy,
@@ -425,12 +441,13 @@ func (ts *TokenStore) ConsumeMagicLink(token string) (int64, string, bool) {
 	if strings.TrimSpace(token) == "" {
 		return 0, "", false
 	}
+	tokenHash := hashTokenValue(token)
 	if ts.db != nil {
 		ctx := context.Background()
 
 		var e malcomdb.DownloadToken
 		err := ts.db.WithContext(ctx).
-			Where("token = ? AND resource_type = ?", token, resourceTypeMagicLink).
+			Where("token = ? AND resource_type = ?", tokenHash, resourceTypeMagicLink).
 			First(&e).Error
 		if err != nil {
 			return 0, "", false
@@ -449,7 +466,7 @@ func (ts *TokenStore) ConsumeMagicLink(token string) (int64, string, bool) {
 		now := time.Now().UTC()
 		res := ts.db.WithContext(ctx).
 			Model(&malcomdb.DownloadToken{}).
-			Where("token = ? AND resource_type = ? AND used_at IS NULL", token, resourceTypeMagicLink).
+			Where("token = ? AND resource_type = ? AND used_at IS NULL", tokenHash, resourceTypeMagicLink).
 			Update("used_at", &now)
 		if res.Error != nil || res.RowsAffected != 1 {
 			// Ya consumido (o carrera perdida) → rechazar, no revelar el motivo exacto.
@@ -460,7 +477,7 @@ func (ts *TokenStore) ConsumeMagicLink(token string) (int64, string, bool) {
 
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
-	e, ok := ts.store[token]
+	e, ok := ts.store[tokenHash]
 	if !ok || !strings.EqualFold(e.resType, resourceTypeMagicLink) || time.Now().After(e.expiresAt) {
 		return 0, "", false
 	}
@@ -468,7 +485,7 @@ func (ts *TokenStore) ConsumeMagicLink(token string) (int64, string, bool) {
 		return 0, "", false
 	}
 	e.consumed = true
-	ts.store[token] = e
+	ts.store[tokenHash] = e
 	return e.chatID, *e.email, true
 }
 

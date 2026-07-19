@@ -40,10 +40,12 @@ func TestValidateSession_ExpiredRejected(t *testing.T) {
 	}
 
 	// Forzamos expiración manipulando la entrada en memoria directamente.
+	// El store indexa por hash del token (Fix 2: no se persiste/indexa el valor crudo).
+	tokenHash := hashTokenValue(token)
 	ts.mu.Lock()
-	e := ts.store[token]
+	e := ts.store[tokenHash]
 	e.expiresAt = time.Now().Add(-1 * time.Minute)
-	ts.store[token] = e
+	ts.store[tokenHash] = e
 	ts.mu.Unlock()
 
 	if _, ok := ts.ValidateSession(token); ok {
@@ -92,10 +94,12 @@ func TestConsumeMagicLink_ExpiredRejected(t *testing.T) {
 		t.Fatalf("IssueMagicLink: error inesperado: %v", err)
 	}
 
+	// El store indexa por hash del token (Fix 2: no se persiste/indexa el valor crudo).
+	tokenHash := hashTokenValue(token)
 	ts.mu.Lock()
-	e := ts.store[token]
+	e := ts.store[tokenHash]
 	e.expiresAt = time.Now().Add(-1 * time.Minute)
-	ts.store[token] = e
+	ts.store[tokenHash] = e
 	ts.mu.Unlock()
 
 	if _, _, ok := ts.ConsumeMagicLink(token); ok {
