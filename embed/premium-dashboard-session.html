@@ -3,31 +3,34 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>InsightFlow · Tablero interactivo Premium</title>
+  <title>InsightFlow · Tablero ejecutivo</title>
   <meta name="robots" content="noindex,nofollow" />
   <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
   <style>
     :root {
-      --pu-bg: #0e1116;
-      --pu-surface: #161b24;
-      --pu-border: #2a3344;
+      --pu-bg: #0b0e1b;
+      --pu-surface: rgba(22, 27, 48, 0.72);
+      --pu-surface-solid: #12162a;
+      --pu-border: rgba(124, 255, 107, 0.14);
       --pu-text: #e8edf5;
       --pu-muted: #8b98a8;
-      --pu-accent: #28468C;
-      --pu-accent-bright: #3a5fb8;
-      --pu-danger: #c94b4b;
-      --pu-radius: 12px;
-      --pu-shadow: 0 12px 40px rgba(0,0,0,.45);
-      --pu-input-bg: #0c1017;
+      --pu-accent: #39ff14;
+      --pu-accent-soft: #7cff6b;
+      --pu-danger: #ff6b6b;
+      --pu-radius: 14px;
+      --pu-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; }
     body {
-      font-family: system-ui, "Segoe UI", Roboto, Arial, sans-serif;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
       font-size: 14px;
       line-height: 1.45;
       color: var(--pu-text);
-      background: var(--pu-bg);
+      background:
+        radial-gradient(ellipse 80% 50% at 20% 0%, rgba(57, 255, 20, 0.06), transparent 55%),
+        radial-gradient(ellipse 60% 40% at 90% 100%, rgba(58, 95, 184, 0.12), transparent 50%),
+        var(--pu-bg);
       display: flex;
       flex-direction: column;
       min-height: 100vh;
@@ -39,119 +42,184 @@
       justify-content: space-between;
       gap: 12px;
       flex-wrap: wrap;
-      padding: 12px 18px;
-      background: var(--pu-surface);
+      padding: 14px 20px;
+      background: rgba(12, 16, 28, 0.85);
       border-bottom: 1px solid var(--pu-border);
-      box-shadow: 0 4px 24px rgba(0,0,0,0.25);
+      backdrop-filter: blur(10px);
     }
-    .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
     .brand-mark {
       width: 10px; height: 36px;
       border-radius: 4px;
-      background: linear-gradient(180deg, var(--pu-accent-bright), var(--pu-accent));
+      background: linear-gradient(180deg, var(--pu-accent-soft), var(--pu-accent));
+      box-shadow: 0 0 16px rgba(57, 255, 20, 0.35);
       flex-shrink: 0;
     }
     .brand-text strong { display: block; font-size: 15px; letter-spacing: 0.02em; }
-    .brand-text span { font-size: 11px; color: var(--pu-muted); text-transform: uppercase; letter-spacing: 0.08em; }
-    .toolbar {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 8px;
+    .brand-text span { font-size: 11px; color: var(--pu-muted); letter-spacing: 0.06em; }
+    .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .live-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 5px 12px; border-radius: 999px;
+      background: rgba(57, 255, 20, 0.12);
+      border: 1px solid rgba(57, 255, 20, 0.35);
+      color: var(--pu-accent); font-size: 12px; font-weight: 700;
+    }
+    .live-badge .dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--pu-accent);
+      box-shadow: 0 0 8px var(--pu-accent);
+      animation: pulse 1.6s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.45; }
     }
     .toolbar button, .toolbar a.btn-link {
       padding: 8px 14px;
       border-radius: 10px;
       border: 1px solid var(--pu-border);
-      background: var(--pu-input-bg);
+      background: var(--pu-surface-solid);
       color: var(--pu-text);
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      font-family: inherit;
+      font-size: 13px; font-weight: 600;
+      cursor: pointer; font-family: inherit;
       text-decoration: none;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
+      display: inline-flex; align-items: center; gap: 6px;
       transition: border-color 0.15s, background 0.15s;
     }
     .toolbar button:hover, .toolbar a.btn-link:hover {
       border-color: var(--pu-accent);
-      background: rgba(40, 70, 140, 0.2);
+      background: rgba(57, 255, 20, 0.08);
     }
     .toolbar button.primary {
-      border-color: var(--pu-accent);
-      background: var(--pu-accent);
-      color: #fff;
+      border-color: rgba(57, 255, 20, 0.45);
+      background: rgba(57, 255, 20, 0.15);
+      color: var(--pu-accent);
     }
-    .toolbar button.primary:hover { background: var(--pu-accent-bright); border-color: var(--pu-accent-bright); }
     .toolbar button:disabled { opacity: 0.45; cursor: not-allowed; }
     main {
       flex: 1;
       display: flex;
-      min-height: 0;
-    }
-    .chart-panel {
-      flex: 1;
-      display: flex;
       flex-direction: column;
-      min-width: 0;
-      padding: 14px 16px 18px;
-    }
-    .chart-surface {
-      flex: 1;
-      min-height: 420px;
-      border-radius: var(--pu-radius);
-      border: 1px solid var(--pu-border);
-      background: var(--pu-input-bg);
-      box-shadow: var(--pu-shadow);
-      overflow: hidden;
+      min-height: 0;
+      padding: 16px 18px 22px;
       position: relative;
     }
-    #chart-main { width: 100%; height: 100%; min-height: 400px; }
-    .aside {
-      width: min(280px, 100%);
-      border-left: 1px solid var(--pu-border);
-      background: rgba(22, 27, 36, 0.6);
-      padding: 16px;
-      font-size: 12px;
-      color: var(--pu-muted);
+    #loading {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(11, 14, 27, 0.72);
+      color: var(--pu-muted); z-index: 8;
     }
-    .aside h3 { margin: 0 0 10px; font-size: 13px; color: var(--pu-text); font-weight: 700; }
-    .aside ul { margin: 0; padding-left: 18px; }
-    .aside li { margin-bottom: 8px; }
-    .err {
-      padding: 32px 24px;
-      color: #f0b0b0;
-      text-align: center;
-      max-width: 520px;
-      margin: auto;
+    #loading[hidden] { display: none !important; }
+    #board {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      grid-template-rows: auto auto;
+      gap: 14px;
+      flex: 1;
+      min-height: 0;
+      align-content: start;
     }
-    .err code { color: #9ec5ff; }
-    .pending {
-      padding: 32px 24px;
-      color: #ff9e9e;
-      text-align: center;
-      max-width: 520px;
-      margin: auto;
+    #board.legacy {
+      grid-template-columns: 1fr;
+      grid-template-rows: 1fr;
+    }
+    .card {
+      background: var(--pu-surface);
+      border: 1px solid var(--pu-border);
+      border-radius: var(--pu-radius);
+      box-shadow: var(--pu-shadow);
+      padding: 14px 16px 16px;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      position: relative;
+      backdrop-filter: blur(8px);
+    }
+    .card::after {
+      content: "";
+      position: absolute; top: 14px; right: 14px;
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--pu-accent);
+      box-shadow: 0 0 10px rgba(57, 255, 20, 0.55);
+      opacity: 0.85;
+    }
+    .card-head {
+      display: flex; flex-wrap: wrap; align-items: baseline;
+      justify-content: space-between; gap: 8px;
+      margin-bottom: 10px; padding-right: 18px;
+    }
+    .card-kicker {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--pu-muted); margin: 0 0 2px;
+    }
+    .card-title {
+      margin: 0; font-size: 15px; font-weight: 700; color: var(--pu-text);
+    }
+    .card-sub {
+      margin: 2px 0 0; font-size: 12px; color: var(--pu-muted);
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .metric {
+      background: rgba(11, 14, 27, 0.55);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+    .metric .label { font-size: 11px; color: var(--pu-muted); margin: 0 0 4px; }
+    .metric .value {
+      font-size: 18px; font-weight: 700; margin: 0;
+      color: var(--pu-accent);
+    }
+    .metric .value.down { color: var(--pu-danger); }
+    .metric .value.neutral { color: var(--pu-text); }
+    .chart-box {
+      flex: 1;
+      min-height: 220px;
+      width: 100%;
+    }
+    .card.span-wide { grid-column: 1; min-height: 340px; }
+    .card.span-narrow { grid-column: 2; min-height: 340px; }
+    .card.span-third { min-height: 260px; }
+    .card.span-full { grid-column: 1 / -1; min-height: 420px; }
+    .bottom-row {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+    .qa-block {
+      background: rgba(11, 14, 27, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+    }
+    .qa-block .q { margin: 0 0 8px; color: var(--pu-text); font-size: 13px; }
+    .qa-block .a { margin: 0; color: var(--pu-accent); font-size: 13px; font-weight: 600; }
+    .qa-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--pu-muted); margin: 0 0 4px; }
+    .bullets { margin: 0; padding-left: 18px; color: var(--pu-text); }
+    .bullets li { margin-bottom: 10px; color: var(--pu-muted); }
+    .bullets li::marker { color: var(--pu-accent); }
+    .err, .pending {
+      padding: 32px 24px; text-align: center; max-width: 520px; margin: auto;
       line-height: 1.5;
     }
+    .err { color: #f0b0b0; }
+    .pending { color: #ffb4b4; }
     .pending strong { color: var(--pu-text); }
-    .loading {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(14, 17, 22, 0.75);
-      color: var(--pu-muted);
-      font-size: 14px;
-      z-index: 2;
-    }
-    .loading[hidden] { display: none !important; }
-    @media (max-width: 900px) {
-      main { flex-direction: column; }
-      .aside { width: 100%; border-left: none; border-top: 1px solid var(--pu-border); }
+    .err code { color: var(--pu-accent-soft); }
+    @media (max-width: 960px) {
+      #board { grid-template-columns: 1fr; }
+      .card.span-wide, .card.span-narrow, .card.span-full { grid-column: 1; }
+      .bottom-row { grid-template-columns: 1fr; }
+      .metrics { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -160,49 +228,29 @@
     <div class="brand">
       <span class="brand-mark" aria-hidden="true"></span>
       <div class="brand-text">
-        <strong>InsightFlow</strong>
-        <span>Tablero Premium · ECharts</span>
+        <strong id="board-title">InsightFlow</strong>
+        <span id="board-subtitle">Tablero ejecutivo · ECharts</span>
       </div>
     </div>
     <div class="toolbar">
+      <span class="live-badge" id="live-badge" hidden><span class="dot" aria-hidden="true"></span> Live</span>
+      <button type="button" id="btn-filter" title="Filtros (próximamente)">Filtrar</button>
       <button type="button" id="btn-png" class="primary" disabled title="Exportar vista actual">Descargar PNG</button>
-      <button type="button" id="btn-reload" disabled>Recargar datos</button>
+      <button type="button" id="btn-reload" disabled>Recargar</button>
       <a class="btn-link" href="https://www.powerupsagencia.com/portal-premium/">Mis tableros</a>
     </div>
   </header>
 
   <main>
-    <div class="chart-panel">
-      <div class="chart-surface">
-        <div class="loading" id="loading">Cargando tablero…</div>
-        <div id="chart-main" role="img" aria-label="Gráfica interactiva"></div>
-      </div>
-    </div>
-    <aside class="aside" aria-label="Ayuda">
-      <h3>Uso rápido</h3>
-      <ul>
-        <li><strong>Leyenda:</strong> clic en series para mostrar u ocultar.</li>
-        <li><strong>Zoom:</strong> rueda del ratón o dataZoom si el gráfico lo incluye.</li>
-        <li><strong>PNG:</strong> exporta lo que ves (resolución del canvas).</li>
-      </ul>
-      <p style="margin: 16px 0 0;">
-        El tipo de gráfico (barras, líneas, sunburst, mapa de calor…) lo define tu petición o el criterio del analista para tus datos.
-      </p>
-    </aside>
+    <div class="loading" id="loading">Cargando tablero…</div>
+    <div id="board" aria-live="polite"></div>
   </main>
 
   <script>
 (function () {
-  /**
-   * Prioridad para resolver la URL base de la API:
-   *  1. window.POWERUPS_API_BASE definido en el HTML anfitrión (WordPress)
-   *  2. localStorage['powerups_edge_api_base'] escrito por el widget al arrancar
-   *  3. Parámetro ?api= en la URL (para enlaces compartidos)
-   *  4. Cadena vacía → mismo origen (solo funciona si la API sirve este HTML)
-   */
   var _apiFromStorage = '';
-  try { _apiFromStorage = (localStorage.getItem('powerups_edge_api_base') || ''); } catch(e) {}
-  var _apiFromParam   = new URLSearchParams(window.location.search).get('api') || '';
+  try { _apiFromStorage = (localStorage.getItem('powerups_edge_api_base') || ''); } catch (e) {}
+  var _apiFromParam = new URLSearchParams(window.location.search).get('api') || '';
   var API_BASE = (
     (typeof window.POWERUPS_API_BASE === 'string' && window.POWERUPS_API_BASE) ||
     _apiFromParam ||
@@ -214,36 +262,50 @@
   var token = params.get('token');
   var CHAT_ID_KEY = 'powerups_edge_chat_id_v1';
   var CHARTS_PREFIX = 'powerups_edge_charts_';
-  var chartEl = document.getElementById('chart-main');
+  var boardEl = document.getElementById('board');
   var loadingEl = document.getElementById('loading');
   var btnPng = document.getElementById('btn-png');
   var btnReload = document.getElementById('btn-reload');
-  var chart = null;
+  var btnFilter = document.getElementById('btn-filter');
+  var liveBadge = document.getElementById('live-badge');
+  var chartInstances = [];
 
   echarts.registerTheme('powerups', {
-    color: ['#3a5fb8', '#5a7fcf', '#9ec5ff', '#28468C', '#6bc9a8', '#d4a853', '#c77dff'],
+    color: ['#39FF14', '#7CFF6B', '#3a5fb8', '#6bc9a8', '#d4a853', '#ff6b6b', '#9ec5ff'],
     backgroundColor: 'transparent',
-    textStyle: { fontFamily: 'system-ui, Segoe UI, Roboto, Arial, sans-serif' },
-    categoryAxis: { axisLine: { lineStyle: { color: '#8b98a8' } }, axisLabel: { color: '#8b98a8' }, splitLine: { lineStyle: { color: '#2a3344' } } },
-    valueAxis: { axisLine: { lineStyle: { color: '#8b98a8' } }, axisLabel: { color: '#8b98a8' }, splitLine: { lineStyle: { color: '#2a3344' } } },
-    timeAxis: { axisLine: { lineStyle: { color: '#8b98a8' } }, axisLabel: { color: '#8b98a8' }, splitLine: { lineStyle: { color: '#2a3344' } } },
-    logAxis: { axisLine: { lineStyle: { color: '#8b98a8' } }, axisLabel: { color: '#8b98a8' }, splitLine: { lineStyle: { color: '#2a3344' } } },
+    textStyle: { fontFamily: 'Segoe UI, system-ui, sans-serif' },
+    categoryAxis: {
+      axisLine: { lineStyle: { color: '#8b98a8' } },
+      axisLabel: { color: '#8b98a8' },
+      splitLine: { lineStyle: { color: '#1e2638' } }
+    },
+    valueAxis: {
+      axisLine: { lineStyle: { color: '#8b98a8' } },
+      axisLabel: { color: '#8b98a8' },
+      splitLine: { lineStyle: { color: '#1e2638' } }
+    },
     title: { textStyle: { color: '#e8edf5' } },
     legend: { textStyle: { color: '#8b98a8' } },
-    tooltip: { backgroundColor: 'rgba(22, 27, 36, 0.94)', borderColor: '#2a3344', textStyle: { color: '#e8edf5' } },
+    tooltip: {
+      backgroundColor: 'rgba(18, 22, 42, 0.94)',
+      borderColor: 'rgba(57,255,20,0.25)',
+      textStyle: { color: '#e8edf5' }
+    }
   });
 
   function showError(msg) {
     loadingEl.hidden = true;
-    chartEl.innerHTML = '<div class="err"><p>' + msg + '</p><p style="margin-top:12px;font-size:12px;">Si acabas de pagar, abre el enlace que envía el chat tras el análisis Premium.</p></div>';
+    boardEl.className = 'legacy';
+    boardEl.innerHTML = '<div class="err"><p>' + msg + '</p></div>';
   }
 
   function showPreparing(msg) {
     loadingEl.hidden = true;
     btnPng.disabled = true;
     btnReload.disabled = false;
-    var text = msg || 'Genera la gráfica enviando un mensaje en el chat.';
-    chartEl.innerHTML = '<div class="pending"><p><strong>Preparando tablero…</strong></p><p>' + text + '</p></div>';
+    boardEl.className = 'legacy';
+    boardEl.innerHTML = '<div class="pending"><p><strong>Preparando tablero…</strong></p><p>' +
+      (msg || 'Genera la gráfica enviando un mensaje en el chat.') + '</p></div>';
   }
 
   function sessionURL(tok) {
@@ -263,9 +325,7 @@
       }
       if (!r.ok) {
         var st = r.status;
-        if (st === 404) {
-          return { __pending404: true };
-        }
+        if (st === 404) return { __pending404: true };
         if ((st === 409 || st === 401 || st === 403) && window.parent !== window) {
           try {
             window.parent.postMessage({ type: 'insightflow-dashboard', action: 'token_refresh', status: st }, '*');
@@ -277,45 +337,223 @@
     });
   }
 
-  function extractOption(sessionData) {
-    if (!sessionData || typeof sessionData !== 'object') return null;
-    /*
-     * Consume directamente el objeto `echarts_option` que genera el backend
-     * (orchestrator → echarts_builder.dataframe_to_echarts_option). Si por
-     * compatibilidad la respuesta ya viene como option plano, también vale.
-     */
-    var opt = sessionData.echarts_option != null ? sessionData.echarts_option : sessionData;
-    if (!opt || typeof opt !== 'object') return null;
-    return opt;
+  function disposeCharts() {
+    chartInstances.forEach(function (c) {
+      try { c.dispose(); } catch (e) {}
+    });
+    chartInstances = [];
   }
 
-  function renderOption(sessionData) {
-    if (chart) {
-      chart.dispose();
-      chart = null;
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function normalizeDashboard(sessionData) {
+    if (!sessionData || typeof sessionData !== 'object') return null;
+    if (sessionData.dashboard && typeof sessionData.dashboard === 'object') {
+      return sessionData.dashboard;
     }
-    chartEl.innerHTML = '';
-    /*
-     * Inicialización nativa exactamente como pide el contrato:
-     *   var myChart = echarts.init(document.getElementById('main'));
-     *   myChart.setOption(sessionData.echarts_option);
-     *
-     * En este HTML el contenedor se llama `chart-main` y aplicamos además
-     * el tema visual `powerups` para coherencia con el widget.
-     */
-    var myChart = echarts.init(chartEl, 'powerups', { renderer: 'canvas' });
-    chart = myChart;
-    var opt = sessionData && sessionData.echarts_option ? sessionData.echarts_option : sessionData;
-    myChart.setOption(opt, true);
-    btnPng.disabled = false;
+    var opt = sessionData.echarts_option != null ? sessionData.echarts_option : null;
+    if (!opt || typeof opt !== 'object') {
+      // Compat: payload plano ECharts
+      if (sessionData.series || sessionData.xAxis) opt = sessionData;
+    }
+    if (!opt || typeof opt !== 'object') return null;
+    return {
+      title: 'Panel unificado',
+      subtitle: 'InsightFlow · Análisis',
+      live: false,
+      metrics: [],
+      widgets: [{
+        id: 'main_trend',
+        kind: 'echarts',
+        title: 'Panel unificado',
+        span: 'full',
+        option: opt
+      }]
+    };
+  }
+
+  function renderMetrics(metrics) {
+    if (!metrics || !metrics.length) return '';
+    var html = '<div class="metrics">';
+    metrics.slice(0, 3).forEach(function (m) {
+      var tone = (m && m.tone) || 'up';
+      html += '<div class="metric"><p class="label">' + escapeHtml(m.label || '') +
+        '</p><p class="value ' + escapeHtml(tone) + '">' + escapeHtml(m.value || '') + '</p></div>';
+    });
+    html += '</div>';
+    return html;
+  }
+
+  function mountEcharts(el, option) {
+    if (!el || !option) return null;
+    var inst = echarts.init(el, 'powerups', { renderer: 'canvas' });
+    inst.setOption(option, true);
+    chartInstances.push(inst);
+    return inst;
+  }
+
+  function renderDashboard(dash) {
+    disposeCharts();
+    boardEl.innerHTML = '';
+    boardEl.className = '';
+
+    document.getElementById('board-title').textContent = dash.title || 'InsightFlow';
+    document.getElementById('board-subtitle').textContent = dash.subtitle || 'Tablero ejecutivo · ECharts';
+    liveBadge.hidden = !dash.live;
+
+    var widgets = Array.isArray(dash.widgets) ? dash.widgets.slice() : [];
+    var metrics = Array.isArray(dash.metrics) ? dash.metrics : [];
+
+    // Clasificar slots del mockup
+    var main = null, perception = null, scenarios = null, qa = null, exec = null, extras = [];
+    widgets.forEach(function (w) {
+      if (!w) return;
+      if (w.id === 'main_trend' || (!main && w.kind === 'echarts' && w.span === 'wide')) main = w;
+      else if (w.id === 'perception' || (!perception && w.span === 'narrow')) perception = w;
+      else if (w.id === 'scenarios') scenarios = w;
+      else if (w.id === 'qa' || w.kind === 'qa') qa = w;
+      else if (w.id === 'exec' || w.kind === 'bullets') exec = w;
+      else extras.push(w);
+    });
+    if (!main) {
+      main = widgets.find(function (w) { return w && w.kind === 'echarts'; }) || null;
+    }
+
+    // Legacy: un solo widget full
+    if (widgets.length === 1 && widgets[0].span === 'full') {
+      boardEl.className = 'legacy';
+      var only = widgets[0];
+      var card = document.createElement('div');
+      card.className = 'card span-full';
+      card.innerHTML =
+        '<div class="card-head"><div>' +
+        '<p class="card-kicker">Ejemplo de interfaz</p>' +
+        '<h2 class="card-title">' + escapeHtml(only.title || 'Panel') + '</h2>' +
+        '</div></div>' +
+        renderMetrics(metrics) +
+        '<div class="chart-box" id="chart-0"></div>';
+      boardEl.appendChild(card);
+      mountEcharts(document.getElementById('chart-0'), only.option);
+    } else {
+      // Top: wide + narrow
+      if (main) {
+        var mainCard = document.createElement('div');
+        mainCard.className = 'card span-wide';
+        mainCard.innerHTML =
+          '<div class="card-head"><div>' +
+          '<p class="card-kicker">Ejemplo de interfaz</p>' +
+          '<h2 class="card-title">' + escapeHtml(main.title || 'Panel unificado') + '</h2>' +
+          '<p class="card-sub">' + escapeHtml(dash.subtitle || '') + '</p>' +
+          '</div></div>' +
+          renderMetrics(metrics) +
+          '<div class="chart-box" id="chart-main-w"></div>';
+        boardEl.appendChild(mainCard);
+        mountEcharts(document.getElementById('chart-main-w'), main.option);
+      }
+      if (perception && perception.kind === 'echarts') {
+        var pCard = document.createElement('div');
+        pCard.className = 'card span-narrow';
+        pCard.innerHTML =
+          '<div class="card-head"><div>' +
+          '<p class="card-kicker">Escenario de aplicación</p>' +
+          '<h2 class="card-title">' + escapeHtml(perception.title || 'Percepción') + '</h2>' +
+          '</div></div>' +
+          '<div class="chart-box" id="chart-perception"></div>';
+        boardEl.appendChild(pCard);
+        mountEcharts(document.getElementById('chart-perception'), perception.option);
+      }
+
+      var bottom = document.createElement('div');
+      bottom.className = 'bottom-row';
+
+      function appendQa(target) {
+        var c = document.createElement('div');
+        c.className = 'card span-third';
+        var items = (qa && qa.items) || [];
+        var body = '';
+        items.forEach(function (it) {
+          body += '<div class="qa-block">' +
+            '<p class="qa-label">Pregunta</p><p class="q">' + escapeHtml(it.q || '') + '</p>' +
+            '<p class="qa-label">Respuesta con fuente</p><p class="a">' + escapeHtml(it.a || '') + '</p>' +
+            '</div>';
+        });
+        if (!body) body = '<p class="card-sub">Sin Q&amp;A para este análisis.</p>';
+        c.innerHTML =
+          '<div class="card-head"><div>' +
+          '<p class="card-kicker">VitalDoc</p>' +
+          '<h2 class="card-title">' + escapeHtml((qa && qa.title) || 'Flujo ilustrativo') + '</h2>' +
+          '</div></div>' + body;
+        target.appendChild(c);
+      }
+
+      function appendScenarios(target) {
+        var c = document.createElement('div');
+        c.className = 'card span-third';
+        var title = (scenarios && scenarios.title) || 'Escenarios comparados';
+        c.innerHTML =
+          '<div class="card-head"><div>' +
+          '<p class="card-kicker">Demostración conceptual</p>' +
+          '<h2 class="card-title">' + escapeHtml(title) + '</h2>' +
+          '</div></div>' +
+          '<div class="chart-box" id="chart-scenarios"></div>';
+        target.appendChild(c);
+        if (scenarios && scenarios.option) {
+          mountEcharts(document.getElementById('chart-scenarios'), scenarios.option);
+        } else if (perception && perception.option) {
+          mountEcharts(document.getElementById('chart-scenarios'), perception.option);
+        }
+      }
+
+      function appendExec(target) {
+        var c = document.createElement('div');
+        c.className = 'card span-third';
+        var items = (exec && exec.items) || [];
+        var lis = items.map(function (t) {
+          return '<li>' + escapeHtml(t) + '</li>';
+        }).join('');
+        c.innerHTML =
+          '<div class="card-head"><div>' +
+          '<p class="card-kicker">Copiloto ejecutivo</p>' +
+          '<h2 class="card-title">' + escapeHtml((exec && exec.title) || 'Resumen ejecutivo') + '</h2>' +
+          '</div></div>' +
+          '<ul class="bullets">' + (lis || '<li>Sin hallazgos narrativos.</li>') + '</ul>';
+        target.appendChild(c);
+      }
+
+      appendQa(bottom);
+      appendScenarios(bottom);
+      appendExec(bottom);
+      boardEl.appendChild(bottom);
+
+      extras.forEach(function (w, i) {
+        if (w.kind !== 'echarts' || !w.option) return;
+        var c = document.createElement('div');
+        c.className = 'card span-full';
+        var id = 'chart-extra-' + i;
+        c.innerHTML =
+          '<div class="card-head"><div><h2 class="card-title">' +
+          escapeHtml(w.title || 'Vista adicional') +
+          '</h2></div></div><div class="chart-box" id="' + id + '"></div>';
+        boardEl.appendChild(c);
+        mountEcharts(document.getElementById(id), w.option);
+      });
+    }
+
+    btnPng.disabled = chartInstances.length === 0;
     btnReload.disabled = false;
     loadingEl.hidden = true;
-    window.addEventListener('resize', onResize);
   }
 
   function onResize() {
-    if (chart) chart.resize();
+    chartInstances.forEach(function (c) {
+      try { c.resize(); } catch (e) {}
+    });
   }
+  window.addEventListener('resize', onResize);
 
   function getLocalChartsArray() {
     try {
@@ -324,61 +562,8 @@
       var raw = localStorage.getItem(CHARTS_PREFIX + String(chatId));
       if (!raw) return [];
       var arr = JSON.parse(raw);
-      return Array.isArray(arr) ? arr.filter(function(o){ return o && typeof o === 'object'; }) : [];
+      return Array.isArray(arr) ? arr.filter(function (o) { return o && typeof o === 'object'; }) : [];
     } catch (e) { return []; }
-  }
-  function getLatestLocalOption() {
-    var arr = getLocalChartsArray();
-    return arr.length ? arr[0] : null;
-  }
-
-  var _localIdx = 0;
-  var _localNavEl = null;
-
-  function ensureLocalNav() {
-    if (_localNavEl) return _localNavEl;
-    var nav = document.createElement('div');
-    nav.id = 'local-nav';
-    nav.style.cssText = 'position:absolute;left:50%;transform:translateX(-50%);bottom:14px;z-index:4;display:flex;gap:8px;align-items:center;padding:6px 10px;border-radius:999px;border:1px solid #2a3344;background:rgba(22,27,36,.94);color:#e8edf5;font-size:12px;';
-    nav.innerHTML =
-      '<button type="button" id="local-prev" style="background:transparent;border:1px solid #2a3344;color:#e8edf5;border-radius:6px;padding:2px 8px;cursor:pointer;">←</button>' +
-      '<span id="local-counter">1 / 1</span>' +
-      '<button type="button" id="local-next" style="background:transparent;border:1px solid #2a3344;color:#e8edf5;border-radius:6px;padding:2px 8px;cursor:pointer;">→</button>';
-    var surface = chartEl && chartEl.parentElement;
-    if (surface) surface.appendChild(nav);
-    _localNavEl = nav;
-    nav.querySelector('#local-prev').addEventListener('click', function(){ showLocalAt(_localIdx + 1); });
-    nav.querySelector('#local-next').addEventListener('click', function(){ showLocalAt(_localIdx - 1); });
-    return nav;
-  }
-  function showLocalAt(idx) {
-    var arr = getLocalChartsArray();
-    if (!arr.length) return;
-    if (idx < 0) idx = 0;
-    if (idx >= arr.length) idx = arr.length - 1;
-    _localIdx = idx;
-    renderOption({ echarts_option: arr[idx] });
-    showLocalModeNotice();
-    ensureLocalNav();
-    var lbl = document.getElementById('local-counter');
-    if (lbl) lbl.textContent = (idx + 1) + ' / ' + arr.length;
-    var prev = document.getElementById('local-prev');
-    var next = document.getElementById('local-next');
-    if (prev) prev.disabled = idx >= arr.length - 1;
-    if (next) next.disabled = idx <= 0;
-    _localNavEl.style.display = arr.length > 1 ? 'flex' : 'none';
-  }
-
-  function showLocalModeNotice() {
-    var box = document.createElement('div');
-    box.style.cssText = 'position:absolute;right:12px;top:12px;z-index:3;padding:6px 10px;border-radius:8px;border:1px solid #2a3344;background:rgba(22,27,36,.92);color:#8b98a8;font-size:11px;';
-    box.textContent = 'Modo local: mostrando gráficas guardadas en este navegador.';
-    var surface = chartEl && chartEl.parentElement;
-    if (!surface) return;
-    var old = document.getElementById('local-mode-notice');
-    if (old && old.parentElement) old.parentElement.removeChild(old);
-    box.id = 'local-mode-notice';
-    surface.appendChild(box);
   }
 
   function tryFallbackToLocal(reason) {
@@ -387,8 +572,14 @@
       showError('No se pudo cargar el tablero (' + (reason || 'sin datos') + ') y no hay caché local.');
       return false;
     }
-    showLocalAt(0);
+    renderDashboard(normalizeDashboard({ echarts_option: arr[0] }));
     return true;
+  }
+
+  function loadFromData(data) {
+    var dash = normalizeDashboard(data);
+    if (!dash) throw new Error('La respuesta no incluye un tablero válido.');
+    renderDashboard(dash);
   }
 
   function load() {
@@ -418,64 +609,30 @@
           showPreparing(data.message);
           return;
         }
-        var opt = extractOption(data);
-        if (!opt) throw new Error('La respuesta no incluye una opción ECharts válida.');
-        renderOption(data);
+        loadFromData(data);
       })
       .catch(function (e) {
-        // Cualquier fallo de red/CORS (incluido "Failed to fetch") cae al caché local.
         if (tryFallbackToLocal(e.message || 'fetch error')) return;
         showError('No se pudo cargar el tablero: ' + (e.message || String(e)));
       });
   }
 
   btnReload.addEventListener('click', function () {
-    if (!token) {
-      var localOpt = getLatestLocalOption();
-      if (!localOpt) {
-        showPreparing('Aún no hay gráficas locales. Genera una desde el chat.');
-        return;
-      }
-      renderOption({ echarts_option: localOpt });
-      showLocalModeNotice();
-      return;
-    }
-    chartEl.innerHTML = '';
-    loadingEl.hidden = false;
-    if (chart) {
-      chart.dispose();
-      chart = null;
-    }
-    fetchSession(token)
-      .then(function (data) {
-        if (data && data.__pending404) {
-          showPreparing('No hay una sesión de gráfica lista todavía. Vuelve al chat y pide un análisis con datos.');
-          if (window.parent !== window) {
-            try {
-              window.parent.postMessage({ type: 'insightflow-dashboard', action: 'token_refresh', status: 404 }, '*');
-            } catch (e) {}
-          }
-          return;
-        }
-        if (data && data.__pending) {
-          showPreparing(data.message);
-          return;
-        }
-        var opt = extractOption(data);
-        if (!opt) throw new Error('Respuesta sin echarts_option');
-        renderOption(data);
-      })
-      .catch(function (e) {
-        showError('Error al recargar: ' + (e.message || String(e)));
-      });
+    disposeCharts();
+    boardEl.innerHTML = '';
+    load();
+  });
+
+  btnFilter.addEventListener('click', function () {
+    alert('Los filtros interactivos llegarán en una próxima versión. Por ahora itera la pregunta en el chat.');
   });
 
   btnPng.addEventListener('click', function () {
-    if (!chart) return;
-    var url = chart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#0c1017' });
+    if (!chartInstances.length) return;
+    var url = chartInstances[0].getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#0b0e1b' });
     var a = document.createElement('a');
     a.href = url;
-    a.download = 'insightflow-tablero-premium.png';
+    a.download = 'insightflow-tablero.png';
     a.click();
   });
 

@@ -86,29 +86,49 @@ const dashboardPremiumHTML = `<!DOCTYPE html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>InsightFlow — Dashboard Premium</title>
+  <title>InsightFlow — Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
   <style>
-    body { margin: 0; font-family: system-ui, sans-serif; background: #0e1116; color: #e8edf5; }
-    header { padding: 12px 16px; background: #161b24; border-bottom: 1px solid #2a3344; }
-    #chart { width: 100%; height: calc(100vh - 56px); min-height: 420px; }
+    :root { --pu-bg:#0b0e1b; --pu-accent:#39ff14; --pu-text:#e8edf5; --pu-muted:#8b98a8; --pu-border:rgba(57,255,20,.14); }
+    body { margin: 0; font-family: system-ui, sans-serif; background: var(--pu-bg); color: var(--pu-text); }
+    header { padding: 12px 16px; background: #12162a; border-bottom: 1px solid var(--pu-border); display:flex; align-items:center; gap:10px; }
+    .live { font-size:11px; font-weight:700; color:var(--pu-accent); border:1px solid rgba(57,255,20,.35); border-radius:999px; padding:3px 10px; }
+    #board { display:grid; gap:12px; padding:14px; grid-template-columns: 2fr 1fr; }
+    .card { background:rgba(22,27,48,.72); border:1px solid var(--pu-border); border-radius:14px; padding:12px; min-height:280px; }
+    .card.full { grid-column:1/-1; min-height:420px; }
+    .chart { width:100%; height:260px; }
+    .card.full .chart { height:calc(100vh - 120px); min-height:400px; }
     .err { padding: 24px; color: #f0a0a0; }
     .pending { padding: 24px 28px; color: #9ec5ff; line-height: 1.5; max-width: 520px; }
     .pending strong { color: #e8edf5; }
+    @media (max-width:900px){ #board{grid-template-columns:1fr;} }
   </style>
 </head>
 <body>
-  <header><strong>InsightFlow</strong> · Dashboard interactivo (Premium)</header>
-  <div id="chart"></div>
+  <header>
+    <strong>InsightFlow</strong>
+    <span style="color:var(--pu-muted);font-size:12px;">Tablero interactivo</span>
+    <span class="live" id="live" hidden>Live</span>
+  </header>
+  <div id="board"></div>
   <script>
 (function () {
   var params = new URLSearchParams(window.location.search);
   var token = params.get('token');
-  var el = document.getElementById('chart');
+  var board = document.getElementById('board');
   if (!token) {
-    el.innerHTML = '<p class="err">Falta el parámetro <code>token</code> en la URL.</p>';
+    board.innerHTML = '<p class="err">Falta el parámetro <code>token</code> en la URL.</p>';
     return;
   }
+  echarts.registerTheme('powerups', {
+    color: ['#39FF14','#7CFF6B','#3a5fb8','#6bc9a8','#d4a853','#ff6b6b'],
+    backgroundColor: 'transparent',
+    textStyle: { fontFamily: 'system-ui,sans-serif' },
+    categoryAxis: { axisLine:{lineStyle:{color:'#8b98a8'}}, axisLabel:{color:'#8b98a8'}, splitLine:{lineStyle:{color:'#1e2638'}} },
+    valueAxis: { axisLine:{lineStyle:{color:'#8b98a8'}}, axisLabel:{color:'#8b98a8'}, splitLine:{lineStyle:{color:'#1e2638'}} },
+    title: { textStyle:{color:'#e8edf5'} },
+    tooltip: { backgroundColor:'rgba(18,22,42,.94)', borderColor:'rgba(57,255,20,.25)', textStyle:{color:'#e8edf5'} }
+  });
   var headers = { 'Accept': 'application/json' };
   if (window.location.hostname.indexOf('ngrok') !== -1) {
     headers['ngrok-skip-browser-warning'] = 'true';
@@ -118,42 +138,49 @@ const dashboardPremiumHTML = `<!DOCTYPE html>
       if (r.status === 202) {
         return r.json().then(function (data) {
           var msg = (data && data.message) ? data.message : 'Genera la gráfica enviando un mensaje en el chat.';
-          el.innerHTML = '<div class="pending"><p><strong>Preparando tablero…</strong></p><p>' + msg + '</p></div>';
+          board.innerHTML = '<div class="pending"><p><strong>Preparando tablero…</strong></p><p>' + msg + '</p></div>';
         });
       }
       if (!r.ok) {
         var st = r.status;
         if (st === 404) {
-          el.innerHTML = '<div class="pending"><p><strong>Preparando tablero…</strong></p><p>No hay una sesión de gráfica lista todavía. Vuelve al chat y pide un análisis con datos; el tablero se actualizará cuando esté listo.</p></div>';
-          if (window.parent !== window) {
-            try {
-              window.parent.postMessage({ type: 'insightflow-dashboard', action: 'token_refresh', status: st }, '*');
-            } catch (e) {}
-          }
+          board.innerHTML = '<div class="pending"><p><strong>Preparando tablero…</strong></p><p>No hay una sesión de gráfica lista todavía.</p></div>';
           return;
-        }
-        if ((st === 409 || st === 401 || st === 403) && window.parent !== window) {
-          try {
-            window.parent.postMessage({ type: 'insightflow-dashboard', action: 'token_refresh', status: st }, '*');
-          } catch (e) {}
         }
         throw new Error('HTTP ' + st);
       }
       return r.json();
     })
     .then(function (data) {
-      if (!data || (data.status === 'pending')) return;
-      var opt = data.echarts_option || data;
-      if (!opt || typeof opt !== 'object') throw new Error('Respuesta sin echarts_option');
-      var chart = echarts.init(el, 'dark');
-      chart.setOption(opt);
-      window.addEventListener('resize', function () { chart.resize(); });
+      if (!data || data.status === 'pending') return;
+      var dash = data.dashboard;
+      var primary = data.echarts_option;
+      if (dash && dash.live) document.getElementById('live').hidden = false;
+      var widgets = (dash && Array.isArray(dash.widgets)) ? dash.widgets.filter(function(w){ return w && w.kind==='echarts' && w.option; }) : [];
+      if (!widgets.length && primary) {
+        widgets = [{ title: 'Panel unificado', option: primary, span: 'full' }];
+      }
+      if (!widgets.length) throw new Error('Respuesta sin echarts_option');
+      board.innerHTML = '';
+      var charts = [];
+      widgets.slice(0, 2).forEach(function (w, i) {
+        var card = document.createElement('div');
+        card.className = 'card' + (widgets.length === 1 || w.span === 'full' || w.span === 'wide' && i===0 && widgets.length===1 ? ' full' : '');
+        if (widgets.length === 1) card.className = 'card full';
+        card.innerHTML = '<div style="font-size:13px;font-weight:700;margin-bottom:8px;">' + (w.title || 'Vista') + '</div><div class="chart" id="c'+i+'"></div>';
+        board.appendChild(card);
+        var inst = echarts.init(document.getElementById('c'+i), 'powerups');
+        inst.setOption(w.option || primary, true);
+        charts.push(inst);
+      });
+      window.addEventListener('resize', function () { charts.forEach(function(c){ c.resize(); }); });
     })
     .catch(function (e) {
-      el.innerHTML = '<p class="err">No se pudo cargar el tablero: ' + (e.message || e) + '</p>';
+      board.innerHTML = '<p class="err">No se pudo cargar el tablero: ' + (e.message || e) + '</p>';
     });
 })();
   </script>
 </body>
 </html>
 `
+

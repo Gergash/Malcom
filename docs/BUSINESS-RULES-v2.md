@@ -264,6 +264,7 @@ Respuesta actual (`BillingStatusResponse` en Go) — **no** incluye el objeto `f
 | Dashboard sin gate premium | `dashboard_handler.go` |
 | PDF/Excel 403 | `download_handler.go` + tests |
 | `generate_echarts` condicional | `internal/worker/client.go` |
+| Dashboard multi-widget | `app/core/dashboard_builder.py`, `premium-dashboard-session.html` |
 | Timeouts Gemini / worker | `model_manager.py`, `app/worker.py`, `client.go` |
 | Widget paywall UI | `powerups-edge-widget.js` |
 | Login portal + Bold | `premium-portal.html`, `powerups-bold-checkout.js` |
@@ -281,12 +282,15 @@ Respuesta actual (`BillingStatusResponse` en Go) — **no** incluye el objeto `f
 | Contador diario | ✅ |
 | Dashboard/portal free | ✅ |
 | Multi-gráfica free | ✅ |
+| Visor multi-widget (mockup ejecutivo) | ✅ (2026-07-23) |
 | PDF/Excel gate backend | ✅ |
 | Bold checkout + webhook | ✅ |
 | Auto-vínculo email en webhook | ✅ |
 | Login UI portal → Bold | ✅ (2026-07) |
 | `generate_echarts` solo con datos/keywords | ✅ (fix latencia free) |
 | Timeouts Gemini + techo worker 330s | ✅ |
+
+**Visor multi-widget (2026-07-23):** el Brain ensambla `dashboard` (`app/core/dashboard_builder.py`) junto a `echarts_option`. Go persiste ambos en el snapshot. El visor WP (`premium-dashboard-session.html`) renderiza KPIs + cards (área, percepción, Q&A, escenarios, bullets) con paleta neon `#39FF14`. Snapshots legacy solo con `echarts_option` → una card full-bleed.
 
 **PDF/Excel:** enforcement en `download_handler.go` y omisión de `download_url` en chat free. El worker aún puede *generar* el archivo en disco para free (solo se bloquea la entrega).
 

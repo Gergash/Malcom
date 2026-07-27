@@ -48,6 +48,7 @@ try:
         dataframe_to_echarts_option,
         build_bar_option,
         build_line_option,
+        build_area_option,
         build_pie_option,
         build_horizontal_bar_option,
         build_scatter_option,
@@ -55,6 +56,7 @@ try:
         build_stacked_bar_option,
         correlation_heatmap_from_df,
     )
+    from app.core.dashboard_builder import assemble_executive_dashboard
     from app.agents.report_generator import generar_reporte_premium_pdf
 except ModuleNotFoundError:
     # Cuando se ejecuta dentro de `app/`: `python main.py`
@@ -64,6 +66,7 @@ except ModuleNotFoundError:
         dataframe_to_echarts_option,
         build_bar_option,
         build_line_option,
+        build_area_option,
         build_pie_option,
         build_horizontal_bar_option,
         build_scatter_option,
@@ -71,6 +74,7 @@ except ModuleNotFoundError:
         build_stacked_bar_option,
         correlation_heatmap_from_df,
     )
+    from core.dashboard_builder import assemble_executive_dashboard
     from agents.report_generator import generar_reporte_premium_pdf
 
 load_dotenv()
@@ -327,6 +331,7 @@ class AnalystAgent:
         self._compliance_agent = ComplianceAgent(model_names=model_names or get_default_gemini_model_names())
         self._pending_pdf_report_path: Optional[str] = None
         self._pending_excel_report_path: Optional[str] = None
+        self._pending_dashboard: Optional[Dict[str, Any]] = None
 
     def peek_pending_pdf_report(self) -> Optional[str]:
         """Ruta absoluta del último reporte_final.pdf registrado tras exec (si lo hubo)."""
@@ -342,6 +347,13 @@ class AnalystAgent:
 
     def clear_pending_excel_report(self) -> None:
         self._pending_excel_report_path = None
+
+    def peek_pending_dashboard(self) -> Optional[Dict[str, Any]]:
+        """Tablero ejecutivo multi-widget ensamblado tras generate_echarts."""
+        return self._pending_dashboard
+
+    def clear_pending_dashboard(self) -> None:
+        self._pending_dashboard = None
 
     def get_knowledge_agent(self, chat_id: int) -> KnowledgeAgent:
         """Devuelve el KnowledgeAgent para un chat_id, creándolo si no existe."""
@@ -787,6 +799,7 @@ class AnalystAgent:
             "dataframe_to_echarts_option": dataframe_to_echarts_option,
             "build_bar_option": build_bar_option,
             "build_line_option": build_line_option,
+            "build_area_option": build_area_option,
             "build_pie_option": build_pie_option,
             "build_horizontal_bar_option": build_horizontal_bar_option,
             "build_scatter_option": build_scatter_option,
@@ -917,6 +930,41 @@ class AnalystAgent:
         except Exception as e:
             print(f"DEBUG: re-render premium PDF falló (se conserva el original): {e}")
 
+        # Tablero ejecutivo multi-widget (visor). Nunca bloquea si falla.
+        self._pending_dashboard = None
+        if generate_echarts and opt:
+            try:
+                primary_color = None
+                if report_config is not None:
+                    primary_color = getattr(report_config, "primary_color", None) or None
+                    if isinstance(primary_color, str) and not primary_color.strip():
+                        primary_color = None
+                self._pending_dashboard = assemble_executive_dashboard(
+                    primary_option=opt,
+                    narrative=text or "",
+                    user_query=user_query or "",
+                    primary_color=primary_color,
+                    title="Panel unificado",
+                    subtitle="InsightFlow · Análisis",
+                )
+            except Exception as dash_exc:
+                print(f"DEBUG: assemble_executive_dashboard falló: {dash_exc}")
+                self._pending_dashboard = {
+                    "title": "Panel unificado",
+                    "subtitle": "InsightFlow · Análisis",
+                    "live": True,
+                    "metrics": [],
+                    "widgets": [
+                        {
+                            "id": "main_trend",
+                            "kind": "echarts",
+                            "title": "Panel unificado",
+                            "span": "wide",
+                            "option": opt,
+                        }
+                    ],
+                }
+
         return self._cap(text), opt
 
     # ── Punto de entrada principal ───────────────────────────────────────
@@ -940,6 +988,7 @@ class AnalystAgent:
         document_context = self._get_document_context(user_query, chat_id=chat_id)
         self._pending_pdf_report_path = None
         self._pending_excel_report_path = None
+        self._pending_dashboard = None
 
         # Separar documentos (PDF/DOCX/TXT) de archivos de datos (CSV/Excel)
         data_file_path: Optional[str] = None

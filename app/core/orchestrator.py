@@ -134,6 +134,7 @@ class Orchestrator:
 
         if self._is_prediction_query(message):
             self._echarts_option = None
+            self._dashboard = None
             response_text = await loop.run_in_executor(
                 None, self._run_predictor, message
             )
@@ -189,8 +190,10 @@ class Orchestrator:
         # Capturar reportes pendientes antes de que el objeto analyst se destruya
         self._pending_pdf = analyst.peek_pending_pdf_report()
         self._pending_excel = analyst.peek_pending_excel_report()
+        self._dashboard = analyst.peek_pending_dashboard()
         analyst.clear_pending_pdf_report()
         analyst.clear_pending_excel_report()
+        analyst.clear_pending_dashboard()
 
         return response_text or ""
 
@@ -238,4 +241,7 @@ class Orchestrator:
             eo = self._load_pandas_echarts_option()
         if eo is not None:
             out["echarts_option"] = eo
+        dash = getattr(self, "_dashboard", None)
+        if dash is not None:
+            out["dashboard"] = dash
         return out

@@ -82,6 +82,9 @@ async def internal_process_message(body: ProcessMessageRequest):
         eo = result.get("echarts_option")
         if eo is not None:
             payload["echarts_option"] = eo
+        dash = result.get("dashboard")
+        if dash is not None:
+            payload["dashboard"] = dash
         return payload
 
     try:

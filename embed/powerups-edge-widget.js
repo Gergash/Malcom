@@ -310,7 +310,21 @@
       return;
     }
 
-    _echartInstance = window.echarts.init(canvas, 'dark', { renderer: 'canvas' });
+    if (!window.__powerupsEchartsThemeRegistered && typeof window.echarts.registerTheme === 'function') {
+      window.echarts.registerTheme('powerups', {
+        color: ['#39FF14', '#7CFF6B', '#3a5fb8', '#6bc9a8', '#d4a853', '#ff6b6b', '#9ec5ff'],
+        backgroundColor: 'transparent',
+        textStyle: { fontFamily: 'system-ui, Segoe UI, Roboto, Arial, sans-serif' },
+        categoryAxis: { axisLine: { lineStyle: { color: '#8b98a8' } }, axisLabel: { color: '#8b98a8' }, splitLine: { lineStyle: { color: '#1e2638' } } },
+        valueAxis: { axisLine: { lineStyle: { color: '#8b98a8' } }, axisLabel: { color: '#8b98a8' }, splitLine: { lineStyle: { color: '#1e2638' } } },
+        title: { textStyle: { color: '#e8edf5' } },
+        legend: { textStyle: { color: '#8b98a8' } },
+        tooltip: { backgroundColor: 'rgba(18, 22, 42, 0.94)', borderColor: 'rgba(57,255,20,0.25)', textStyle: { color: '#e8edf5' } }
+      });
+      window.__powerupsEchartsThemeRegistered = true;
+    }
+
+    _echartInstance = window.echarts.init(canvas, 'powerups', { renderer: 'canvas' });
     _echartInstance.setOption(opt, true);
     setPanelChartMode(true);
 

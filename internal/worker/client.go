@@ -26,8 +26,10 @@ type ProcessResult struct {
 	ChartPaths []string `json:"chart_paths"` // P5: rutas adicionales (premium multi-chart)
 	PDFPath    string   `json:"pdf_path"`    // ruta al PDF generado
 	ExcelPath  string   `json:"excel_path"`  // ruta al Excel generado
-	// EChartsOption — opción Apache ECharts (JSON) cuando el Brain generó dashboard.
+	// EChartsOption — opción Apache ECharts primaria (compat con clientes legacy).
 	EChartsOption json.RawMessage `json:"echarts_option,omitempty"`
+	// Dashboard — tablero ejecutivo multi-widget (KPIs, charts, Q&A, bullets).
+	Dashboard json.RawMessage `json:"dashboard,omitempty"`
 }
 
 // IngestResult — resultado que el Worker Python retorna tras ingestar un archivo.

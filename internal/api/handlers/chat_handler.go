@@ -197,12 +197,21 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		}
 	}
 
-	// 8b · Dashboard ECharts: disponible para todos los usuarios (v2).
+	// 8b · Dashboard ECharts / multi-widget: disponible para todos los usuarios (v2).
 	var dashboardURL *string
 	var echartsOpt json.RawMessage
-	if len(result.EChartsOption) > 0 {
+	var dashboardPayload json.RawMessage
+	if len(result.EChartsOption) > 0 || len(result.Dashboard) > 0 {
 		echartsOpt = result.EChartsOption
-		wrap, err := json.Marshal(map[string]json.RawMessage{"echarts_option": result.EChartsOption})
+		dashboardPayload = result.Dashboard
+		wrapMap := map[string]json.RawMessage{}
+		if len(result.EChartsOption) > 0 {
+			wrapMap["echarts_option"] = result.EChartsOption
+		}
+		if len(result.Dashboard) > 0 {
+			wrapMap["dashboard"] = result.Dashboard
+		}
+		wrap, err := json.Marshal(wrapMap)
 		if err == nil {
 			tok := h.tokens.StorePayload(req.ChatID, "dashboard", string(wrap))
 			u := base + "/dashboard?token=" + tok
@@ -235,6 +244,9 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 	}
 	if len(echartsOpt) > 0 {
 		out.EChartsOption = echartsOpt
+	}
+	if len(dashboardPayload) > 0 {
+		out.Dashboard = dashboardPayload
 	}
 	c.JSON(http.StatusOK, out)
 }
