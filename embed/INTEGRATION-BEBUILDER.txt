@@ -65,6 +65,12 @@ bebuilder-pro-card-snippet.html
       https://www.powerupsagencia.com/portal-premium/#portal-login
     Pegar SOLO div+style (BeBuilder elimina <script>).
 
+lovable-login-card.html
+    Tarjeta autónoma registro (correo) + pago Bold para apps Lovable.
+    Flujo: email → POST link-email → revela botón Bold embebido.
+    Config: ?api_base=URL_API  (y CORS en el API con dominio Lovable).
+    Ver embed/lovable-login-card-snippet.html para iframe en Lovable.
+
 powerups-bold-checkout.js  (Medios 2026/07/)
     GET /api/v1/billing/bold-checkout?chat_id= → monta botón Bold.
     Guía: docs/BOLD-SETUP.txt

@@ -235,7 +235,7 @@
       <p id="login-status"></p>
 
       <!-- Botón de pago Bold: oculto hasta vincular correo (revelado por initLoginBox/handleLoginSubmit) -->
-      <div id="pu-pro-card" hidden data-api-base="">
+      <div id="pu-pro-card" hidden data-api-base="" data-bold-gate="login">
         <p id="pu-bold-lead">Continúa con el pago para activar tu plan premium:</p>
         <div id="pu-bold-mount"></div>
         <p class="pu-pro-card__hint" id="pu-bold-hint">Cargando botón de pago…</p>
@@ -451,7 +451,13 @@
           if (boldCard) boldCard.hidden = true;
         } else {
           setLoginStatus('Correo vinculado. Tu plan actual es gratis (' + (state.messages_remaining_today != null ? state.messages_remaining_today : '—') + ' mensajes restantes hoy). Continúa abajo para pagar y activar el premium.', 'ok');
-          if (boldCard) boldCard.hidden = false;
+          if (boldCard) {
+            boldCard.hidden = false;
+            boldCard.setAttribute('data-api-base', getApiBase());
+          }
+          if (typeof window.PU_mountBoldCheckout === 'function') {
+            window.PU_mountBoldCheckout();
+          }
         }
       })
       .catch(function(err) {
