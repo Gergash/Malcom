@@ -109,8 +109,13 @@ _FUZZY_THRESHOLD = 85
 
 _ID_COL_HINTS = ("nit", "cédula", "cedula", "identificacion", "identificación", "documento")
 _COP_COL_HINTS = ("cop", "peso", "pesos", "costo", "flete", "seguro", "valor", "monto", "importe", "total")
-_USD_COL_HINTS = ("usd", "dolar", "dólar", "us$", "u$s", "dollars")
-_NUMERIC_CRITICAL_HINTS = ("valor", "cif", "fob", "monto", "importe", "precio", "total", "flete", "seguro")
+_USD_COL_HINTS = ("usd", "dolar", "dólar", "us$", "u$s", "dollars", "$")
+# Incluye export/import/$/usd: columnas tipo Export($) deben coerce a numérico (nlargest/sum/mean)
+_NUMERIC_CRITICAL_HINTS = (
+    "valor", "cif", "fob", "monto", "importe", "precio", "total", "flete", "seguro",
+    "export", "import", "usd", "amount", "qty", "cantidad", "revenue", "sales", "venta",
+    "$",
+)
 _ACCUMULATIVE_HINTS = ("flete", "seguro", "gasto", "costo", "cargo", "impuesto")
 _DATE_HINTS = ("fecha", "presentacion", "presentación", "declaracion", "declaración")
 
@@ -457,7 +462,27 @@ def _harmonize_categorical(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _series_to_numeric(s: pd.Series) -> pd.Series:
+    """Convierte series a numérico quitando ruido típico de monedas ($, comas, espacios)."""
+    if pd.api.types.is_numeric_dtype(s):
+        return pd.to_numeric(s, errors="coerce")
+    cleaned = (
+        s.astype(str)
+        .str.strip()
+        .str.replace(r"^[\s]*[$€£¥]\s*", "", regex=True)
+        .str.replace(r"[\s$€£¥]", "", regex=True)
+        .str.replace(",", "", regex=False)
+        .str.replace(r"^\((.+)\)$", r"-\1", regex=True)  # (123) → -123
+    )
+    # Vacíos / placeholders comunes
+    cleaned = cleaned.replace(
+        {"": pd.NA, "nan": pd.NA, "none": pd.NA, "null": pd.NA, "-": pd.NA, "n/a": pd.NA, "na": pd.NA}
+    )
+    return pd.to_numeric(cleaned, errors="coerce")
+
+
 def _coerce_numeric_quarantine(df: pd.DataFrame) -> pd.DataFrame:
+    """Coerce numérico por hints de nombre; si no hay hint, intenta coerce agresivo si ≥35% parsea."""
     out = df.copy()
     for col in out.columns:
         cname = str(col).lower()
@@ -468,12 +493,16 @@ def _coerce_numeric_quarantine(df: pd.DataFrame) -> pd.DataFrame:
             out[col] = dt.ffill()
             continue
 
-        if not any(k in cname for k in _NUMERIC_CRITICAL_HINTS):
+        hinted = any(k in cname for k in _NUMERIC_CRITICAL_HINTS)
+        numeric = _series_to_numeric(s)
+        parse_ratio = float(numeric.notna().mean()) if len(numeric) else 0.0
+
+        # Hint explícito: umbral 0.35. Sin hint: solo si ya parece numérico (agresivo ≥0.50)
+        if hinted and parse_ratio < 0.35:
+            continue
+        if not hinted and parse_ratio < 0.50:
             continue
 
-        numeric = pd.to_numeric(s, errors="coerce")
-        if numeric.notna().mean() < 0.35:
-            continue
         if any(k in cname for k in _ACCUMULATIVE_HINTS):
             out[col] = numeric.fillna(0.0)
         else:

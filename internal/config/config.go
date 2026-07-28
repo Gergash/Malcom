@@ -48,6 +48,9 @@ type Config struct {
 	BoldIntegritySecret string
 	// Monto fijo en COP para activar premium vía Bold (p. ej. 40000).
 	PremiumAmountCOP int
+	// URL a la que Bold devuelve al usuario tras el pago (data-redirection-url).
+	// Configurable con PREMIUM_PORTAL_URL; la API le añade ?chat_id=.
+	PremiumPortalURL string
 
 	// DevForcePremium: SOLO DESARROLLO. Si true, todos los chats se tratan como premium
 	// (sin paywall, con dashboard ECharts, gráficas múltiples y descargas). Útil para
@@ -157,6 +160,11 @@ func Load() (*Config, error) {
 		}
 	}
 
+	premiumPortalURL := strings.TrimSpace(os.Getenv("PREMIUM_PORTAL_URL"))
+	if premiumPortalURL == "" {
+		premiumPortalURL = "https://clarity-connector-18.lovable.app/insightflow/portal"
+	}
+
 	quotaTZ := strings.TrimSpace(os.Getenv("QUOTA_TIMEZONE"))
 	if quotaTZ == "" {
 		quotaTZ = "America/Bogota"
@@ -212,6 +220,7 @@ func Load() (*Config, error) {
 		BoldAPIKey:              boldAPIKey,
 		BoldIntegritySecret:     boldIntegrity,
 		PremiumAmountCOP:        premiumAmountCOP,
+		PremiumPortalURL:        premiumPortalURL,
 		DevForcePremium:         devForcePremium,
 		WorkerRequestTimeoutSec: workerTimeoutSec,
 		ResendAPIKey:            resendAPIKey,

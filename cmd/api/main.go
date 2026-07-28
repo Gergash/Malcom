@@ -77,7 +77,7 @@ func main() {
 		cfg.BoldAPIKey,
 		cfg.BoldIntegritySecret,
 		cfg.PremiumAmountCOP,
-		"https://www.powerupsagencia.com/portal-premium",
+		cfg.PremiumPortalURL,
 	)
 	downloadHandler := handlers.NewDownloadHandler(tokenStore, userRepo, cfg.DataDir)
 	dashboardHandler := handlers.NewDashboardHandler(tokenStore, userRepo, cfg.DataDir, cfg.DevForcePremium)
