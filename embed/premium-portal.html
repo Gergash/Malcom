@@ -13,8 +13,8 @@
       --pu-border: #2a3344;
       --pu-text: #e8edf5;
       --pu-muted: #8b98a8;
-      --pu-accent: #28468C;
-      --pu-accent-bright: #3a5fb8;
+      --pu-accent: #39ff14;
+      --pu-accent-bright: #7cff6b;
       --pu-radius: 12px;
       --pu-shadow: 0 12px 40px rgba(0,0,0,.45);
       --pu-input-bg: #0c1017;
@@ -89,7 +89,7 @@
       cursor: pointer; font-family: inherit;
       transition: border-color .15s, background .15s;
     }
-    .btn-card:hover { border-color: var(--pu-accent); background: rgba(40,70,140,.2); }
+    .btn-card:hover { border-color: var(--pu-accent); background: rgba(57,255,20,.08); }
 
     /* Estado vacío */
     .empty-state {
@@ -141,7 +141,7 @@
     .btn-secondary {
       background: var(--pu-chip-bg); border-color: var(--pu-border); color: var(--pu-text);
     }
-    .btn-secondary:hover { border-color: var(--pu-accent); background: rgba(40,70,140,.2); }
+    .btn-secondary:hover { border-color: var(--pu-accent); background: rgba(57,255,20,.08); }
 
     /* ── Grid feature cards ── */
     .cards-grid {
@@ -235,7 +235,7 @@
       <p id="login-status"></p>
 
       <!-- Botón de pago Bold: oculto hasta vincular correo (revelado por initLoginBox/handleLoginSubmit) -->
-      <div id="pu-pro-card" hidden data-api-base="">
+      <div id="pu-pro-card" hidden data-api-base="" data-bold-gate="login">
         <p id="pu-bold-lead">Continúa con el pago para activar tu plan premium:</p>
         <div id="pu-bold-mount"></div>
         <p class="pu-pro-card__hint" id="pu-bold-hint">Cargando botón de pago…</p>
@@ -325,14 +325,16 @@
 
   /* ── Tema ECharts PowerUps ── */
   echarts.registerTheme('powerups', {
-    color: ['#3a5fb8','#5a7fcf','#ff6d00','#6bc9a8','#d4a853','#c77dff','#9ec5ff'],
+    color: ['#39FF14','#7CFF6B','#3a5fb8','#6bc9a8','#d4a853','#ff6b6b','#9ec5ff'],
     backgroundColor: 'transparent',
-    textStyle: { fontFamily: 'system-ui,Segoe UI,Roboto,Arial,sans-serif' },
-    categoryAxis: { axisLine:{lineStyle:{color:'#8b98a8'}}, axisLabel:{color:'#8b98a8'}, splitLine:{lineStyle:{color:'#2a3344'}} },
-    valueAxis:    { axisLine:{lineStyle:{color:'#8b98a8'}}, axisLabel:{color:'#8b98a8'}, splitLine:{lineStyle:{color:'#2a3344'}} },
-    title:   { textStyle:{color:'#e8edf5'} },
-    legend:  { textStyle:{color:'#8b98a8'} },
-    tooltip: { backgroundColor:'rgba(22,27,36,.94)', borderColor:'#2a3344', textStyle:{color:'#e8edf5'} },
+    textStyle: { fontFamily: 'system-ui, Segoe UI, Roboto, Arial, sans-serif' },
+    categoryAxis: { axisLine: { lineStyle: { color: '#8b98a8' } }, axisLabel: { color: '#8b98a8' }, splitLine: { lineStyle: { color: '#1e2638' } } },
+    valueAxis: { axisLine: { lineStyle: { color: '#8b98a8' } }, axisLabel: { color: '#8b98a8' }, splitLine: { lineStyle: { color: '#1e2638' } } },
+    timeAxis: { axisLine: { lineStyle: { color: '#8b98a8' } }, axisLabel: { color: '#8b98a8' }, splitLine: { lineStyle: { color: '#1e2638' } } },
+    logAxis: { axisLine: { lineStyle: { color: '#8b98a8' } }, axisLabel: { color: '#8b98a8' }, splitLine: { lineStyle: { color: '#1e2638' } } },
+    title: { textStyle: { color: '#e8edf5' } },
+    legend: { textStyle: { color: '#8b98a8' } },
+    tooltip: { backgroundColor: 'rgba(18, 22, 42, 0.94)', borderColor: 'rgba(57,255,20,0.25)', textStyle: { color: '#e8edf5' } },
   });
 
   /* ── Helpers localStorage ── */
@@ -449,7 +451,13 @@
           if (boldCard) boldCard.hidden = true;
         } else {
           setLoginStatus('Correo vinculado. Tu plan actual es gratis (' + (state.messages_remaining_today != null ? state.messages_remaining_today : '—') + ' mensajes restantes hoy). Continúa abajo para pagar y activar el premium.', 'ok');
-          if (boldCard) boldCard.hidden = false;
+          if (boldCard) {
+            boldCard.hidden = false;
+            boldCard.setAttribute('data-api-base', getApiBase());
+          }
+          if (typeof window.PU_mountBoldCheckout === 'function') {
+            window.PU_mountBoldCheckout();
+          }
         }
       })
       .catch(function(err) {

@@ -24,9 +24,18 @@ import pandas as pd
 
 DEFAULT_TITLE = "Distribución Temporal de Operaciones"
 DEFAULT_SERIES_NAME = "Registros"
-DEFAULT_BAR_COLOR = "#ff6d00"
-DEFAULT_TITLE_COLOR = "#ffffff"
-DEFAULT_SPLIT_LINE_COLOR = "#333333"
+# Paleta mockup ejecutivo (visor multi-widget) — verde neon InsightFlow
+DEFAULT_BAR_COLOR = "#39FF14"
+DEFAULT_TITLE_COLOR = "#e8edf5"
+DEFAULT_SPLIT_LINE_COLOR = "#1e2638"
+DEFAULT_ACCENT_SOFT = "#7CFF6B"
+
+
+def strip_chart_title(option: Dict[str, Any]) -> Dict[str, Any]:
+    """Copia el option sin título (el shell HTML del card lo muestra)."""
+    out = dict(option)
+    out["title"] = {"show": False}
+    return out
 
 
 _MONTH_ORDER_ES = [
@@ -246,6 +255,44 @@ def build_line_option(
     }
 
 
+def build_area_option(
+    categories: Sequence[Any],
+    values: Sequence[Any],
+    *,
+    title: str = DEFAULT_TITLE,
+    series_name: str = DEFAULT_SERIES_NAME,
+    color: str = DEFAULT_BAR_COLOR,
+    smooth: bool = True,
+) -> Dict[str, Any]:
+    """Área suave: panel unificado del mockup ejecutivo."""
+    base = build_line_option(
+        categories,
+        values,
+        title=title,
+        series_name=series_name,
+        color=color,
+        smooth=smooth,
+    )
+    series = base.get("series") or []
+    if series:
+        s0 = dict(series[0])
+        s0["showSymbol"] = False
+        s0["areaStyle"] = {
+            "opacity": 0.35,
+            "color": {
+                "type": "linear",
+                "x": 0, "y": 0, "x2": 0, "y2": 1,
+                "colorStops": [
+                    {"offset": 0, "color": color},
+                    {"offset": 1, "color": "rgba(57,255,20,0.02)"},
+                ],
+            },
+        }
+        s0["lineStyle"] = {"width": 2, "color": color}
+        base["series"] = [s0]
+    return base
+
+
 def build_pie_option(
     categories: Sequence[Any],
     values: Sequence[Any],
@@ -265,7 +312,7 @@ def build_pie_option(
             "name": series_name, "type": "pie",
             "radius": ["38%", "70%"],
             "avoidLabelOverlap": True,
-            "itemStyle": {"borderColor": "#0e1116", "borderWidth": 2},
+            "itemStyle": {"borderColor": "#0b0e1b", "borderWidth": 2},
             "label": {"color": "#e8edf5"},
             "data": data,
         }],

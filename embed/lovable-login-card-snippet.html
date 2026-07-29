@@ -1,0 +1,44 @@
+<!--
+  LOVABLE — Embed tarjeta registro + pago Bold
+  ════════════════════════════════════════════
+
+  OPCIÓN 1 — iframe (recomendada)
+  ───────────────────────────────
+  En Lovable: bloque HTML / Embed / Custom Code con:
+
+  <iframe
+    src="https://TU-HOST/embed/lovable-login-card.html?api_base=https://TU-API.ngrok-free.dev"
+    title="Registro InsightFlow Premium"
+    style="width:100%;max-width:480px;height:620px;border:0;border-radius:16px;overflow:hidden;background:transparent;"
+    allow="payment *"
+    loading="lazy"
+  ></iframe>
+
+  Sustituye TU-HOST (WordPress Medios, CDN o ngrok sirviendo el HTML estático).
+
+  OPCIÓN 2 — Página completa
+  ───────────────────────────
+  Sube embed/lovable-login-card.html a Medios y usa su URL directa en Lovable.
+
+  CONFIGURACIÓN API (obligatorio en producción)
+  ─────────────────────────────────────────────
+  1. En .env del API Go:
+       CORS_ALLOWED_ORIGINS=https://tu-app.lovable.app,https://preview--tu-app.lovable.app
+  2. Query param api_base apuntando al API Malcom (ngrok en dev).
+
+  FLUJO
+  ─────
+  1. Usuario ingresa correo (+ nombre opcional)
+  2. POST /api/v1/billing/link-email { chat_id, email }
+  3. Si free → revela #pu-bold-mount y carga powerups-bold-checkout.js
+  4. GET /api/v1/billing/bold-checkout?chat_id= → botón Bold embebido
+  5. Tras pago → webhook Bold activa premium
+
+  ARCHIVOS RELACIONADOS
+  ─────────────────────
+  embed/lovable-login-card.html     — tarjeta completa (este flujo)
+  embed/powerups-bold-checkout.js   — monta botón Bold (window.PU_mountBoldCheckout)
+  embed/premium-portal.html         — portal WordPress con el mismo login
+-->
+
+<!-- Copia solo el iframe de arriba en tu página Lovable -->

@@ -405,9 +405,13 @@ func (h *BillingHandler) BoldCheckout(c *gin.Context) {
 	description := fmt.Sprintf("InsightFlow Pro — chat_id=%d", chatID)
 	redirectURL := h.premiumPortalURL
 	if redirectURL == "" {
-		redirectURL = "https://www.powerupsagencia.com/portal-premium"
+		redirectURL = "https://clarity-connector-18.lovable.app/insightflow/portal"
 	}
-	redirectURL = fmt.Sprintf("%s?chat_id=%d", redirectURL, chatID)
+	sep := "?"
+	if strings.Contains(redirectURL, "?") {
+		sep = "&"
+	}
+	redirectURL = fmt.Sprintf("%s%schat_id=%d", redirectURL, sep, chatID)
 
 	sig := bold.IntegritySignature(orderID, amount, currency, h.boldIntegritySecret)
 

@@ -91,15 +91,20 @@
     mount.appendChild(btn);
   }
 
-  function init() {
+  function shouldDeferUntilLogin() {
+    var card = el('pu-pro-card');
+    if (!card) return false;
+    if (card.getAttribute('data-bold-gate') !== 'login') return false;
+    return card.hidden || card.hasAttribute('hidden');
+  }
+
+  function mountBoldCheckout() {
     if (!el('pu-bold-mount')) return;
-    if (window.__PU_BOLD_CHECKOUT_INIT) return;
-    window.__PU_BOLD_CHECKOUT_INIT = true;
 
     var chatId = resolveChatId();
     if (!chatId) {
       setStatus(
-        'Abre el chat y pulsa «Activar mensajes ilimitados», o entra con ?chat_id=TU_ID en la URL.',
+        'Registra tu correo arriba para continuar, o abre con ?chat_id=TU_ID en la URL.',
         false
       );
       return;
@@ -136,9 +141,19 @@
       });
   }
 
+  function initAuto() {
+    if (!el('pu-bold-mount')) return;
+    if (window.__PU_BOLD_CHECKOUT_INIT) return;
+    window.__PU_BOLD_CHECKOUT_INIT = true;
+    if (shouldDeferUntilLogin()) return;
+    mountBoldCheckout();
+  }
+
+  window.PU_mountBoldCheckout = mountBoldCheckout;
+
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', initAuto);
   } else {
-    init();
+    initAuto();
   }
 })();

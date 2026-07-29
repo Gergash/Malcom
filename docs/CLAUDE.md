@@ -135,7 +135,7 @@ strict_tdd: false               # no hay suite de tests aún
 3. **Pagos** pasan exclusivamente por `internal/payment/`; nunca lógica de pagos en Python. Bold es el checkout principal; webhook auto-vincula `payer_email` si viene en el payload.
 4. **Timeouts:** techo API→Brain = `WORKER_REQUEST_TIMEOUT_SEC` (default 330). Timeout por llamada Gemini = `GEMINI_REQUEST_TIMEOUT_SEC` (default 90). El cliente Go ajusta el deadline según carga (datos / ECharts / report_config).
 5. **Reglas de producto (v2):** ver [`BUSINESS-RULES-v2.md`](BUSINESS-RULES-v2.md). Gratis = 15 msgs/día + portal + ECharts + multi-gráfica; pago $40k = mensajes ilimitados + PDF/Excel. Paywall solo bloquea nuevos mensajes.
-6. **ECharts:** `generate_echarts` es **condicional** en `internal/worker/client.go` (archivos subidos o keywords de gráfica/tablero). No enviar `true` en todos los mensajes — provoca latencia excesiva / deadline exceeded.
+6. **ECharts / dashboard multi-widget:** `generate_echarts` es **condicional** en `internal/worker/client.go` (archivos subidos o keywords). El Brain emite `echarts_option` (primario, compat) + `dashboard` (KPIs, widgets echarts/qa/bullets). El visor [`embed/premium-dashboard-session.html`](../embed/premium-dashboard-session.html) renderiza el grid ejecutivo; sin `dashboard` hace fallback a una card con el option legacy.
 7. **PDF/Excel:** gate autoritativo en Go (`download_handler` 403 + no emitir URLs en chat free). El worker aún puede generar archivos free (pendiente optimizar).
 8. **Login email:** portal (`premium-portal.html`) llama `POST /billing/link-email` y revela Bold. Widget chat aún sin formulario email.
 9. Al modificar agentes, verificar que el routing en `orchestrator.py` siga siendo correcto.

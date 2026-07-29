@@ -5,32 +5,35 @@ import "time"
 
 // User — identidad (email + chat_id), plan premium, contador (paywall) y branding premium.
 type User struct {
-	ID               uint `gorm:"primaryKey"`
-	ChatID           *int64 `gorm:"uniqueIndex"`
-	Email            *string `gorm:"uniqueIndex;size:320"`
-	Username         *string `gorm:"size:255"`
-	IsPremium        bool `gorm:"not null;default:false"`
-	MessageCount     int  `gorm:"not null;default:0"` // lifetime total (analytics)
-	MessagesToday    int  `gorm:"not null;default:0"` // cupo diario v2
-	QuotaDate        *time.Time `gorm:"type:date"`      // día calendario del contador (TZ quota)
-	FreeMessageLimit int  `gorm:"not null;default:15"`
+	ID               uint       `gorm:"primaryKey"`
+	ChatID           *int64     `gorm:"uniqueIndex"`
+	Email            *string    `gorm:"uniqueIndex;size:320"`
+	Username         *string    `gorm:"size:255"`
+	IsPremium        bool       `gorm:"not null;default:false"`
+	MessageCount     int        `gorm:"not null;default:0"` // lifetime total (analytics)
+	MessagesToday    int        `gorm:"not null;default:0"` // cupo diario v2
+	QuotaDate        *time.Time `gorm:"type:date"`          // día calendario del contador (TZ quota)
+	FreeMessageLimit int        `gorm:"not null;default:15"`
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 	PremiumSince     *time.Time
+	// PremiumExpiresAt — fin de la ventana premium (premium_since + 30 días); nil = nunca ha pagado.
+	// El ticker de expiración (cmd/api/main.go) revierte is_premium cuando now() la supera.
+	PremiumExpiresAt *time.Time
 	// Último JSON envuelto {"echarts_option":...} para reemitir token tras consumo one-shot.
 	LastDashboardJSON *string `gorm:"column:last_dashboard_json;type:text"`
 	// Branding premium — null = usar defaults del tier; solo aplica cuando is_premium = true.
-	BrandingColor    *string `gorm:"column:branding_color;size:7"`
-	BrandingColorSec *string `gorm:"column:branding_color_sec;size:7"`
-	BrandingFontBody *int    `gorm:"column:branding_font_body"`
-	BrandingFontTitle *int   `gorm:"column:branding_font_title"`
-	BrandingCharts   *string `gorm:"column:branding_charts;size:256"` // JSON: ["bars","heatmap"]
+	BrandingColor     *string `gorm:"column:branding_color;size:7"`
+	BrandingColorSec  *string `gorm:"column:branding_color_sec;size:7"`
+	BrandingFontBody  *int    `gorm:"column:branding_font_body"`
+	BrandingFontTitle *int    `gorm:"column:branding_font_title"`
+	BrandingCharts    *string `gorm:"column:branding_charts;size:256"` // JSON: ["bars","heatmap"]
 }
 
 // Conversation — historial de mensajes por chat_id.
 type Conversation struct {
-	ID        uint `gorm:"primaryKey"`
-	ChatID    int64 `gorm:"index;not null"`
+	ID        uint   `gorm:"primaryKey"`
+	ChatID    int64  `gorm:"index;not null"`
 	Role      string `gorm:"size:10;not null"`
 	Content   string `gorm:"type:text;not null"`
 	CreatedAt time.Time
@@ -38,9 +41,9 @@ type Conversation struct {
 
 // UserFile — metadatos de archivos en data/{chat_id}/ (paridad con SQLAlchemy).
 type UserFile struct {
-	ID            uint `gorm:"primaryKey"`
-	UserID        uint `gorm:"index;not null"`
-	ChatID        int64 `gorm:"index;not null"`
+	ID            uint   `gorm:"primaryKey"`
+	UserID        uint   `gorm:"index;not null"`
+	ChatID        int64  `gorm:"index;not null"`
 	Filename      string `gorm:"size:512;not null"`
 	FileType      string `gorm:"size:20;not null;default:other"`
 	FilePath      string `gorm:"size:1024;not null"`
@@ -67,12 +70,12 @@ type DownloadToken struct {
 
 // Payment — registro de webhooks de pago.
 type Payment struct {
-	ID          uint `gorm:"primaryKey"`
-	UserID      *uint `gorm:"index"`
-	Reference   string `gorm:"uniqueIndex;size:256;not null"`
-	AmountCOP   int    `gorm:"column:amount_cop;not null"`
-	Status      string `gorm:"size:20;not null;default:pending"`
-	Provider    string `gorm:"size:50;not null;default:wompi"`
+	ID          uint    `gorm:"primaryKey"`
+	UserID      *uint   `gorm:"index"`
+	Reference   string  `gorm:"uniqueIndex;size:256;not null"`
+	AmountCOP   int     `gorm:"column:amount_cop;not null"`
+	Status      string  `gorm:"size:20;not null;default:pending"`
+	Provider    string  `gorm:"size:50;not null;default:wompi"`
 	PayerEmail  *string `gorm:"size:320;index"`
 	PayerChatID *int64
 	PaidAt      *time.Time

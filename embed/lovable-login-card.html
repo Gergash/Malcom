@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>InsightFlow · Registro y pago Premium</title>
+  <meta name="robots" content="noindex,nofollow" />
+  <!--
+    LOVABLE — Tarjeta de registro + pago Bold
+    ─────────────────────────────────────────
+    Opción A (recomendada): iframe en Lovable apuntando a esta URL hospedada.
+    Opción B: copiar el bloque .pu-lovable-card + <script> en un Custom HTML.
+
+    Configuración (query string):
+      ?api_base=https://TU-API.ngrok-free.dev
+      ?chat_id=1234567890   (opcional; si no, se genera al registrarse)
+
+    Requisitos API:
+      CORS_ALLOWED_ORIGINS debe incluir el dominio de tu app Lovable.
+  -->
+  <style>
+    :root {
+      --pu-bg: #0b0e1b;
+      --pu-surface: #12162a;
+      --pu-border: rgba(124, 255, 107, 0.18);
+      --pu-text: #e8edf5;
+      --pu-muted: #8b98a8;
+      --pu-accent: #39ff14;
+      --pu-accent-soft: #7cff6b;
+      --pu-radius: 16px;
+      --pu-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      font-family: system-ui, "Segoe UI", Roboto, Arial, sans-serif;
+      font-size: 15px;
+      line-height: 1.5;
+      color: var(--pu-text);
+      background: transparent;
+    }
+    body.pu-lovable-body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+      background:
+        radial-gradient(ellipse 70% 50% at 50% -10%, rgba(57, 255, 20, 0.08), transparent),
+        var(--pu-bg);
+    }
+    .pu-lovable-card {
+      width: 100%;
+      max-width: 440px;
+      border: 1px solid var(--pu-border);
+      border-radius: var(--pu-radius);
+      background: linear-gradient(165deg, rgba(22, 27, 48, 0.95), var(--pu-surface));
+      box-shadow: var(--pu-shadow);
+      overflow: hidden;
+    }
+    .pu-lovable-card__head {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 20px 22px 0;
+    }
+    .pu-lovable-card__mark {
+      width: 8px;
+      height: 36px;
+      border-radius: 4px;
+      flex-shrink: 0;
+      background: linear-gradient(180deg, var(--pu-accent-soft), var(--pu-accent));
+      box-shadow: 0 0 16px rgba(57, 255, 20, 0.35);
+    }
+    .pu-lovable-card__brand {
+      margin: 0;
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+    .pu-lovable-card__tag {
+      margin: 2px 0 0;
+      font-size: 0.72rem;
+      color: var(--pu-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .pu-lovable-card__body {
+      padding: 18px 22px 22px;
+    }
+    .pu-lovable-card__title {
+      margin: 0 0 8px;
+      font-size: 1.15rem;
+      font-weight: 700;
+      line-height: 1.35;
+    }
+    .pu-lovable-card__desc {
+      margin: 0 0 18px;
+      color: var(--pu-muted);
+      font-size: 0.88rem;
+    }
+    .pu-lovable-card__desc strong {
+      color: var(--pu-accent-soft);
+      font-weight: 700;
+    }
+    .pu-lovable-field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .pu-lovable-field label {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--pu-muted);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .pu-lovable-field input[type="email"],
+    .pu-lovable-field input[type="text"] {
+      width: 100%;
+      padding: 13px 14px;
+      border-radius: 11px;
+      border: 1px solid var(--pu-border);
+      background: rgba(8, 10, 20, 0.85);
+      color: var(--pu-text);
+      font-size: 0.95rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .pu-lovable-field input:focus {
+      border-color: rgba(57, 255, 20, 0.55);
+      box-shadow: 0 0 0 3px rgba(57, 255, 20, 0.12);
+    }
+    .pu-lovable-field input::placeholder { color: #5c6778; }
+    .pu-lovable-btn {
+      width: 100%;
+      padding: 14px 18px;
+      border: none;
+      border-radius: 11px;
+      background: linear-gradient(135deg, var(--pu-accent-soft), var(--pu-accent));
+      color: #0a1208;
+      font-size: 0.95rem;
+      font-weight: 800;
+      font-family: inherit;
+      cursor: pointer;
+      transition: transform 0.12s, filter 0.15s;
+    }
+    .pu-lovable-btn:hover { filter: brightness(1.06); }
+    .pu-lovable-btn:active { transform: scale(0.98); }
+    .pu-lovable-btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      transform: none;
+    }
+    #login-status {
+      margin: 14px 0 0;
+      min-height: 1.2em;
+      font-size: 0.84rem;
+    }
+    #login-status.ok { color: #6bc9a8; }
+    #login-status.err { color: #ff8a8a; }
+    #login-status.pending { color: var(--pu-muted); }
+    .pu-lovable-perks {
+      margin: 16px 0 0;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px dashed var(--pu-border);
+      background: rgba(57, 255, 20, 0.04);
+      font-size: 0.8rem;
+      color: var(--pu-muted);
+    }
+    .pu-lovable-perks ul {
+      margin: 8px 0 0;
+      padding-left: 18px;
+    }
+    .pu-lovable-perks li { margin-bottom: 4px; }
+    #pu-pro-card {
+      margin-top: 18px;
+      padding-top: 18px;
+      border-top: 1px solid var(--pu-border);
+    }
+    #pu-pro-card[hidden] { display: none; }
+    #pu-bold-lead {
+      margin: 0 0 12px;
+      font-size: 0.86rem;
+      font-weight: 600;
+      color: var(--pu-text);
+    }
+    #pu-bold-hint, #pu-bold-error {
+      margin: 10px 0 0;
+      font-size: 0.84rem;
+    }
+    #pu-bold-hint { color: var(--pu-muted); }
+    #pu-bold-error { color: #ff8a8a; }
+    #pu-bold-mount iframe { max-width: 100%; }
+    .pu-lovable-premium-banner {
+      display: none;
+      margin-top: 16px;
+      padding: 14px;
+      border-radius: 10px;
+      border: 1px solid rgba(107, 201, 168, 0.35);
+      background: rgba(107, 201, 168, 0.08);
+      color: #6bc9a8;
+      font-size: 0.88rem;
+      font-weight: 600;
+      text-align: center;
+    }
+    .pu-lovable-premium-banner.is-visible { display: block; }
+    .pu-lovable-foot {
+      padding: 0 22px 18px;
+      font-size: 0.72rem;
+      color: #5c6778;
+      text-align: center;
+    }
+  </style>
+</head>
+<body class="pu-lovable-body">
+  <article class="pu-lovable-card" id="pu-lovable-root"
+           data-api-base=""
+           data-bold-script="https://www.powerupsagencia.com/wp-content/uploads/2026/07/powerups-bold-checkout.js">
+
+    <header class="pu-lovable-card__head">
+      <span class="pu-lovable-card__mark" aria-hidden="true"></span>
+      <div>
+        <p class="pu-lovable-card__brand">InsightFlow</p>
+        <p class="pu-lovable-card__tag">PowerUps · Edge BI</p>
+      </div>
+    </header>
+
+    <div class="pu-lovable-card__body" id="portal-login">
+      <h1 class="pu-lovable-card__title">Regístrate para activar Premium</h1>
+      <p class="pu-lovable-card__desc">
+        Ingresa tu correo para vincular tu cuenta. Luego podrás pagar
+        <strong>$40.000 COP</strong> con Bold y desbloquear mensajes ilimitados
+        en el chat y tableros.
+      </p>
+
+      <form id="lovable-login-form" novalidate>
+        <div class="pu-lovable-field">
+          <label for="login-email-input">Correo electrónico</label>
+          <input type="email" id="login-email-input" name="email"
+                 placeholder="tu@correo.com" autocomplete="email" required />
+        </div>
+        <div class="pu-lovable-field">
+          <label for="login-name-input">Nombre (opcional)</label>
+          <input type="text" id="login-name-input" name="name"
+                 placeholder="Tu nombre" autocomplete="name" maxlength="80" />
+        </div>
+        <button type="submit" class="pu-lovable-btn" id="login-email-btn">
+          Continuar al pago
+        </button>
+      </form>
+
+      <p id="login-status" role="status" aria-live="polite"></p>
+
+      <div class="pu-lovable-perks" id="login-perks">
+        <strong>Incluye Premium:</strong>
+        <ul>
+          <li>Mensajes ilimitados al analista IA</li>
+          <li>Iteración sin tope diario en tableros</li>
+          <li>Reportes PDF y Excel corporativos</li>
+        </ul>
+      </div>
+
+      <div class="pu-lovable-premium-banner" id="premium-banner">
+        ✓ Ya tienes Premium activo en este navegador
+      </div>
+
+      <div id="pu-pro-card" hidden data-bold-gate="login">
+        <p id="pu-bold-lead">Paga con Bold para activar tu plan:</p>
+        <div id="pu-bold-mount"></div>
+        <p id="pu-bold-hint">Cargando botón de pago…</p>
+        <p id="pu-bold-error" hidden></p>
+      </div>
+    </div>
+
+    <p class="pu-lovable-foot">Pago seguro vía Bold · Datos procesados en Colombia</p>
+  </article>
+
+  <script>
+(function () {
+  'use strict';
+
+  var CHAT_ID_KEY = 'powerups_edge_chat_id_v1';
+  var API_BASE_KEY = 'powerups_edge_api_base';
+  var EMAIL_KEY = 'powerups_edge_email';
+  var NAME_KEY = 'powerups_edge_display_name';
+  var DEFAULT_API_BASE = 'https://nonconfidential-suprarational-sage.ngrok-free.dev';
+
+  var root = document.getElementById('pu-lovable-root');
+
+  function qs(name) {
+    try {
+      return new URLSearchParams(window.location.search).get(name);
+    } catch (e) { return null; }
+  }
+
+  function resolveApiBase() {
+    var fromRoot = root && root.getAttribute('data-api-base');
+    if (fromRoot && String(fromRoot).trim()) return String(fromRoot).trim().replace(/\/$/, '');
+    var fromUrl = qs('api_base');
+    if (fromUrl && String(fromUrl).trim()) return String(fromUrl).trim().replace(/\/$/, '');
+    try {
+      var cfg = window.POWERUPS_WIDGET_CONFIG || {};
+      if (cfg.API_BASE && String(cfg.API_BASE).trim()) {
+        return String(cfg.API_BASE).trim().replace(/\/$/, '');
+      }
+      var stored = localStorage.getItem(API_BASE_KEY);
+      if (stored && String(stored).trim()) return String(stored).trim().replace(/\/$/, '');
+    } catch (e) { /* private mode */ }
+    return DEFAULT_API_BASE.replace(/\/$/, '');
+  }
+
+  function persistApiBase(base) {
+    try { localStorage.setItem(API_BASE_KEY, base); } catch (e) {}
+    if (root) root.setAttribute('data-api-base', base);
+    var card = document.getElementById('pu-pro-card');
+    if (card) card.setAttribute('data-api-base', base);
+  }
+
+  function getOrCreateChatId() {
+    var fromUrl = (qs('chat_id') || '').trim();
+    if (/^\d+$/.test(fromUrl)) {
+      try { localStorage.setItem(CHAT_ID_KEY, fromUrl); } catch (e) {}
+      return parseInt(fromUrl, 10);
+    }
+    var raw = null;
+    try { raw = localStorage.getItem(CHAT_ID_KEY); } catch (e) {}
+    var n = raw ? parseInt(raw, 10) : NaN;
+    if (!isFinite(n) || n <= 0) {
+      n = Math.floor(1e9 + Math.random() * 8.99e9);
+      try { localStorage.setItem(CHAT_ID_KEY, String(n)); } catch (e) {}
+    }
+    return n;
+  }
+
+  function apiHeaders(extra) {
+    var h = { 'ngrok-skip-browser-warning': 'true', Accept: 'application/json' };
+    if (extra) { for (var k in extra) { if (Object.prototype.hasOwnProperty.call(extra, k)) h[k] = extra[k]; } }
+    return h;
+  }
+
+  function setLoginStatus(msg, kind) {
+    var el = document.getElementById('login-status');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = kind || '';
+  }
+
+  function linkEmail(chatId, email) {
+    var apiBase = resolveApiBase();
+    return fetch(apiBase + '/api/v1/billing/link-email', {
+      method: 'POST',
+      mode: 'cors',
+      credentials: 'omit',
+      headers: apiHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ chat_id: chatId, email: email }),
+    }).then(function (res) {
+      return res.text().then(function (text) {
+        var body = {};
+        try { body = text ? JSON.parse(text) : {}; } catch (e) {}
+        if (!res.ok) throw new Error(body.detail || ('API respondió ' + res.status));
+        return body;
+      });
+    });
+  }
+
+  function fetchBillingStatus(chatId) {
+    var apiBase = resolveApiBase();
+    return fetch(apiBase + '/api/v1/billing/status?chat_id=' + encodeURIComponent(chatId), {
+      mode: 'cors', credentials: 'omit', headers: apiHeaders(),
+    }).then(function (res) {
+      return res.text().then(function (text) {
+        var body = {};
+        try { body = text ? JSON.parse(text) : {}; } catch (e) {}
+        if (!res.ok) throw new Error(body.detail || ('API respondió ' + res.status));
+        return body;
+      });
+    });
+  }
+
+  function loadBoldScript() {
+    return new Promise(function (resolve, reject) {
+      if (typeof window.PU_mountBoldCheckout === 'function') {
+        resolve();
+        return;
+      }
+      var src = (root && root.getAttribute('data-bold-script')) ||
+        'https://www.powerupsagencia.com/wp-content/uploads/2026/07/powerups-bold-checkout.js';
+      var s = document.createElement('script');
+      s.src = String(src).split('?')[0] + '?v=5';
+      s.async = true;
+      s.onload = function () { resolve(); };
+      s.onerror = function () { reject(new Error('No se pudo cargar el script de pago Bold.')); };
+      document.head.appendChild(s);
+    });
+  }
+
+  function revealBoldCheckout() {
+    var card = document.getElementById('pu-pro-card');
+    if (card) card.hidden = false;
+    loadBoldScript()
+      .then(function () {
+        if (typeof window.PU_mountBoldCheckout === 'function') {
+          window.PU_mountBoldCheckout();
+        }
+      })
+      .catch(function (err) {
+        var errEl = document.getElementById('pu-bold-error');
+        if (errEl) {
+          errEl.textContent = (err && err.message) ? err.message : 'Error al cargar Bold.';
+          errEl.hidden = false;
+        }
+      });
+  }
+
+  function showPremiumState(state) {
+    var banner = document.getElementById('premium-banner');
+    var perks = document.getElementById('login-perks');
+    var boldCard = document.getElementById('pu-pro-card');
+    var btn = document.getElementById('login-email-btn');
+    if (banner) banner.classList.add('is-visible');
+    if (perks) perks.hidden = true;
+    if (boldCard) boldCard.hidden = true;
+    if (btn) btn.disabled = true;
+    setLoginStatus(
+      '✓ Cuenta premium activa' +
+      (state && state.email ? ' (' + state.email + ')' : '') +
+      ' — mensajes ilimitados.',
+      'ok'
+    );
+  }
+
+  function handleLoginSubmit(ev) {
+    if (ev && ev.preventDefault) ev.preventDefault();
+
+    var input = document.getElementById('login-email-input');
+    var nameInput = document.getElementById('login-name-input');
+    var btn = document.getElementById('login-email-btn');
+    var email = (input && input.value || '').trim();
+    var name = (nameInput && nameInput.value || '').trim();
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setLoginStatus('Ingresa un correo válido.', 'err');
+      return;
+    }
+
+    var chatId = getOrCreateChatId();
+    var apiBase = resolveApiBase();
+    persistApiBase(apiBase);
+
+    if (btn) btn.disabled = true;
+    setLoginStatus('Registrando tu correo…', 'pending');
+
+    linkEmail(chatId, email)
+      .then(function () {
+        try {
+          localStorage.setItem(EMAIL_KEY, email);
+          if (name) localStorage.setItem(NAME_KEY, name);
+        } catch (e) {}
+        return fetchBillingStatus(chatId);
+      })
+      .then(function (state) {
+        if (state && state.is_premium) {
+          showPremiumState(state);
+          return;
+        }
+        setLoginStatus(
+          '✓ Registro listo. Completa el pago abajo para activar Premium.',
+          'ok'
+        );
+        revealBoldCheckout();
+      })
+      .catch(function (err) {
+        setLoginStatus(
+          (err && err.message) ? err.message : 'No se pudo registrar. Intenta de nuevo.',
+          'err'
+        );
+      })
+      .finally(function () {
+        if (btn) btn.disabled = false;
+      });
+  }
+
+  function init() {
+    var apiBase = resolveApiBase();
+    persistApiBase(apiBase);
+
+    var form = document.getElementById('lovable-login-form');
+    if (form) form.addEventListener('submit', handleLoginSubmit);
+
+    try {
+      var savedEmail = localStorage.getItem(EMAIL_KEY);
+      var savedName = localStorage.getItem(NAME_KEY);
+      var emailInput = document.getElementById('login-email-input');
+      var nameInput = document.getElementById('login-name-input');
+      if (savedEmail && emailInput) emailInput.value = savedEmail;
+      if (savedName && nameInput) nameInput.value = savedName;
+    } catch (e) {}
+
+    var chatId = getOrCreateChatId();
+    fetchBillingStatus(chatId)
+      .then(function (state) {
+        if (state && state.is_premium) {
+          showPremiumState(state);
+        }
+      })
+      .catch(function () { /* API offline — el usuario puede registrar igual */ });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+  </script>
+</body>
+</html>

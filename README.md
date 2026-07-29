@@ -468,7 +468,8 @@ WordPress (WooCommerce) ──genera referencia──► Wompi
 | Gráfica matplotlib | `data/{chat_id}/output_plot_{chat_id}.png` | Imagen en Telegram / URL firmada en web |
 | Reporte PDF | `data/{chat_id}/reporte_final.pdf` | Documento en Telegram / descarga segura |
 | Reporte Excel | `data/{chat_id}/reporte_final.xlsx` | Documento en Telegram / descarga segura |
-| Option ECharts | Campo `echarts_option` en JSON | Dashboard interactivo (todos los usuarios) |
+| Option ECharts | Campo `echarts_option` en JSON | Chart primario (widget + compat) |
+| Tablero multi-widget | Campo `dashboard` en JSON / snapshot | Visor ejecutivo (`premium-dashboard-session.html`) |
 
 ---
 
@@ -483,12 +484,13 @@ WordPress (WooCommerce) ──genera referencia──► Wompi
 
 ---
 
-## Estado del proyecto (2026-07-17)
+## Estado del proyecto (2026-07-23)
 
 - **Producción:** Widget web en WordPress/BeBuilder (assets `wp-content/uploads/2026/07/`). API Go + Worker Python en Docker.
 - **Billing Bold:** checkout firmado + webhook HMAC. $40.000 COP = mensajes ilimitados + PDF/Excel (portal/ECharts gratis). Flujo de pago: correo en portal → botón Bold.
 - **Producto v2:** contador diario (`messages_today`/`quota_date`, `America/Bogota`); ECharts/portal/multi-gráfica free; PDF/Excel gate en backend.
 - **Login email:** backend `link-email` + merge; auto-vínculo en webhook; **UI en `premium-portal.html`**. Pendiente: formulario en el widget y magic link/OTP.
-- **Rendimiento chat:** `generate_echarts` condicional; timeouts Gemini (90s) y worker (330s) — evita `context deadline exceeded` en mensajes simples.
+- **Rendimiento chat:** `generate_echarts` condicional; timeouts Gemini (90s) y worker (330s).
+- **Visor multi-widget:** payload `dashboard` + grid ejecutivo en `premium-dashboard-session.html` (KPIs, área, percepción, Q&A, bullets); `echarts_option` sigue siendo el primario.
 - **IA:** Gemini 3.x (flash-preview + fallbacks) + Ollama opcional. SDK `google.generativeai` deprecado (migración pendiente).
 - **Pendiente:** email UI en widget; no generar PDF/Excel free en worker; gate PDF/Excel en bot Telegram; tests E2E; eliminar `app/database/quota.db` si aún existe; desactivar `DEV_FORCE_PREMIUM` fuera de QA.

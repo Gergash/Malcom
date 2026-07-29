@@ -21,7 +21,7 @@ type Config struct {
 	PublicBaseURL    string
 	FreeMessageLimit int
 	QuotaTimezone    string // ej. America/Bogota — día calendario del cupo diario
-	EnablePublicData bool // cuando true, sirve /data/* sin restricción (solo DEV)
+	EnablePublicData bool   // cuando true, sirve /data/* sin restricción (solo DEV)
 
 	// CORSAllowedOrigins — lista separada por comas; vacío = permitir cualquier origen (solo desarrollo).
 	CORSAllowedOrigins []string
@@ -48,6 +48,9 @@ type Config struct {
 	BoldIntegritySecret string
 	// Monto fijo en COP para activar premium vía Bold (p. ej. 40000).
 	PremiumAmountCOP int
+	// URL a la que Bold devuelve al usuario tras el pago (data-redirection-url).
+	// Configurable con PREMIUM_PORTAL_URL; la API le añade ?chat_id=.
+	PremiumPortalURL string
 
 	// DevForcePremium: SOLO DESARROLLO. Si true, todos los chats se tratan como premium
 	// (sin paywall, con dashboard ECharts, gráficas múltiples y descargas). Útil para
@@ -56,6 +59,19 @@ type Config struct {
 	DevForcePremium bool
 	// WorkerRequestTimeoutSec — techo de espera API→Brain (alinear con WORKER_REQUEST_TIMEOUT_SEC).
 	WorkerRequestTimeoutSec int
+
+	// ── Email login (magic link) / Bold auth gate ──────────────────────────────
+	// ResendAPIKey — API key de Resend (https://resend.com) para el envío de magic links.
+	ResendAPIKey string
+	// MailFrom / MailFromName — remitente de los correos transaccionales (magic link).
+	MailFrom     string
+	MailFromName string
+	// AuthRateLimitRPS/Burst — límite por IP en POST /auth/request-magic-link (token bucket).
+	AuthRateLimitRPS   float64
+	AuthRateLimitBurst int
+	// LoginGateEnabled — feature flag: activa las rutas de auth, el gate de BoldCheckout y el
+	// ticker de expiración premium. false = comportamiento actual sin gate (rollback rápido).
+	LoginGateEnabled bool
 }
 
 // Load reads .env (if present) and environment variables.
@@ -144,6 +160,11 @@ func Load() (*Config, error) {
 		}
 	}
 
+	premiumPortalURL := strings.TrimSpace(os.Getenv("PREMIUM_PORTAL_URL"))
+	if premiumPortalURL == "" {
+		premiumPortalURL = "https://clarity-connector-18.lovable.app/insightflow/portal"
+	}
+
 	quotaTZ := strings.TrimSpace(os.Getenv("QUOTA_TIMEZONE"))
 	if quotaTZ == "" {
 		quotaTZ = "America/Bogota"
@@ -156,28 +177,58 @@ func Load() (*Config, error) {
 		}
 	}
 
+	resendAPIKey := strings.TrimSpace(os.Getenv("RESEND_API_KEY"))
+	mailFrom := strings.TrimSpace(os.Getenv("MAIL_FROM"))
+	mailFromName := strings.TrimSpace(os.Getenv("MAIL_FROM_NAME"))
+
+	authRPS := 0.1
+	if v := strings.TrimSpace(os.Getenv("AUTH_RATE_LIMIT_RPS")); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f >= 0 {
+			authRPS = f
+		}
+	}
+	authBurst := 3
+	if v := strings.TrimSpace(os.Getenv("AUTH_RATE_LIMIT_BURST")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			authBurst = n
+		}
+	}
+
+	loginGateEnabled := false
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("LOGIN_GATE_ENABLED"))) {
+	case "1", "true", "yes", "on":
+		loginGateEnabled = true
+	}
+
 	return &Config{
-		DatabaseURL:          NormalizeDatabaseURL(rawURL),
-		Port:                 port,
-		WorkerURL:            strings.TrimRight(workerURL, "/"),
-		DataDir:              dataDir,
-		PublicBaseURL:        strings.TrimSpace(os.Getenv("PUBLIC_BASE_URL")),
-		FreeMessageLimit:     freeLimit,
-		QuotaTimezone:        quotaTZ,
-		EnablePublicData:     enablePublicData,
-		CORSAllowedOrigins:   corsOrigins,
-		CSPFrameAncestors:    cspFrames,
-		ChatRateLimitRPS:     chatRPS,
-		ChatRateLimitBurst:   chatBurst,
-		UploadMaxMB:          uploadMB,
-		BillingWebhookSecret: webhookSecret,
-		WompiEventSecret:     wompiEvent,
-		BoldWebhookSecret:    boldWebhook,
-		BoldAPIKey:           boldAPIKey,
-		BoldIntegritySecret:  boldIntegrity,
-		PremiumAmountCOP:     premiumAmountCOP,
-		DevForcePremium:      devForcePremium,
+		DatabaseURL:             NormalizeDatabaseURL(rawURL),
+		Port:                    port,
+		WorkerURL:               strings.TrimRight(workerURL, "/"),
+		DataDir:                 dataDir,
+		PublicBaseURL:           strings.TrimSpace(os.Getenv("PUBLIC_BASE_URL")),
+		FreeMessageLimit:        freeLimit,
+		QuotaTimezone:           quotaTZ,
+		EnablePublicData:        enablePublicData,
+		CORSAllowedOrigins:      corsOrigins,
+		CSPFrameAncestors:       cspFrames,
+		ChatRateLimitRPS:        chatRPS,
+		ChatRateLimitBurst:      chatBurst,
+		UploadMaxMB:             uploadMB,
+		BillingWebhookSecret:    webhookSecret,
+		WompiEventSecret:        wompiEvent,
+		BoldWebhookSecret:       boldWebhook,
+		BoldAPIKey:              boldAPIKey,
+		BoldIntegritySecret:     boldIntegrity,
+		PremiumAmountCOP:        premiumAmountCOP,
+		PremiumPortalURL:        premiumPortalURL,
+		DevForcePremium:         devForcePremium,
 		WorkerRequestTimeoutSec: workerTimeoutSec,
+		ResendAPIKey:            resendAPIKey,
+		MailFrom:                mailFrom,
+		MailFromName:            mailFromName,
+		AuthRateLimitRPS:        authRPS,
+		AuthRateLimitBurst:      authBurst,
+		LoginGateEnabled:        loginGateEnabled,
 	}, nil
 }
 

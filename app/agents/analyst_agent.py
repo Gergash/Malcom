@@ -20,6 +20,11 @@ try:
     from app.agents.model_manager import ModelManager
     from app.agents.compliance_agent import ComplianceAgent
     from app.agents.data_cleaner import clean_structured_dataframe
+    from app.agents.csv_code_guards import (
+        extract_df_column_refs,
+        format_columns_hint,
+        validate_code_columns,
+    )
     from app.agents.knowledge_agent import KnowledgeAgent, DOC_EXTENSIONS
     from app.agents.report_generator import (
         generar_reporte_excel_avanzado,
@@ -32,6 +37,11 @@ except ModuleNotFoundError:
     from agents.model_manager import ModelManager
     from agents.compliance_agent import ComplianceAgent
     from agents.data_cleaner import clean_structured_dataframe
+    from agents.csv_code_guards import (
+        extract_df_column_refs,
+        format_columns_hint,
+        validate_code_columns,
+    )
     from agents.knowledge_agent import KnowledgeAgent, DOC_EXTENSIONS
     from agents.report_generator import (
         generar_reporte_excel_avanzado,
@@ -48,6 +58,7 @@ try:
         dataframe_to_echarts_option,
         build_bar_option,
         build_line_option,
+        build_area_option,
         build_pie_option,
         build_horizontal_bar_option,
         build_scatter_option,
@@ -55,6 +66,7 @@ try:
         build_stacked_bar_option,
         correlation_heatmap_from_df,
     )
+    from app.core.dashboard_builder import assemble_executive_dashboard
     from app.agents.report_generator import generar_reporte_premium_pdf
 except ModuleNotFoundError:
     # Cuando se ejecuta dentro de `app/`: `python main.py`
@@ -64,6 +76,7 @@ except ModuleNotFoundError:
         dataframe_to_echarts_option,
         build_bar_option,
         build_line_option,
+        build_area_option,
         build_pie_option,
         build_horizontal_bar_option,
         build_scatter_option,
@@ -71,6 +84,7 @@ except ModuleNotFoundError:
         build_stacked_bar_option,
         correlation_heatmap_from_df,
     )
+    from core.dashboard_builder import assemble_executive_dashboard
     from agents.report_generator import generar_reporte_premium_pdf
 
 load_dotenv()
@@ -327,6 +341,7 @@ class AnalystAgent:
         self._compliance_agent = ComplianceAgent(model_names=model_names or get_default_gemini_model_names())
         self._pending_pdf_report_path: Optional[str] = None
         self._pending_excel_report_path: Optional[str] = None
+        self._pending_dashboard: Optional[Dict[str, Any]] = None
 
     def peek_pending_pdf_report(self) -> Optional[str]:
         """Ruta absoluta del último reporte_final.pdf registrado tras exec (si lo hubo)."""
@@ -342,6 +357,13 @@ class AnalystAgent:
 
     def clear_pending_excel_report(self) -> None:
         self._pending_excel_report_path = None
+
+    def peek_pending_dashboard(self) -> Optional[Dict[str, Any]]:
+        """Tablero ejecutivo multi-widget ensamblado tras generate_echarts."""
+        return self._pending_dashboard
+
+    def clear_pending_dashboard(self) -> None:
+        self._pending_dashboard = None
 
     def get_knowledge_agent(self, chat_id: int) -> KnowledgeAgent:
         """Devuelve el KnowledgeAgent para un chat_id, creándolo si no existe."""
@@ -378,6 +400,18 @@ class AnalystAgent:
         has_analysis = any(ind in codigo for ind in _CODE_INDICATORS)
         non_comment_lines = [l for l in codigo.splitlines() if l.strip() and not l.strip().startswith("#")]
         return bool(has_analysis and non_comment_lines)
+
+    @staticmethod
+    def _extract_df_column_refs(codigo: str) -> set:
+        return extract_df_column_refs(codigo)
+
+    @staticmethod
+    def _validate_code_columns(codigo: str, schema_columns: List[str]) -> None:
+        validate_code_columns(codigo, schema_columns)
+
+    @staticmethod
+    def _format_columns_hint(schema_columns: List[str]) -> str:
+        return format_columns_hint(schema_columns)
 
     def _get_document_context(self, user_query: str, chat_id: Optional[int] = None, top_k: int = 5) -> str:
         """Contexto de documentos indexados del usuario (búsqueda semántica aislada por chat_id)."""
@@ -726,7 +760,17 @@ class AnalystAgent:
             "      `print('ECHARTS_JSON_OUTPUT:' + json.dumps(_ec_opt))`\n"
             "   Donde `_ec_opt` es el dict devuelto por el helper elegido. Si tu primer intento devuelve None, "
             "   prueba otro helper o cambia la columna; NO te rindas en silencio. NO uses matplotlib para esto.\n"
-            "   PROHIBIDO siempre usar el mismo helper: cada análisis distinto debe justificar su tipo de gráfica."
+            "   PROHIBIDO siempre usar el mismo helper: cada análisis distinto debe justificar su tipo de gráfica.\n"
+            "15. COLUMNAS — SOLO LAS DEL ESQUEMA (NO negociable):\n"
+            "   - Usa EXCLUSIVAMENTE los nombres listados en ESTRUCTURA DEL ARCHIVO / COLUMNAS_DISPONIBLES.\n"
+            "   - PROHIBIDO inventar columnas (ej. 'Sector', 'Categoria_Producto', 'Producto') si no aparecen literalmente.\n"
+            "   - Si necesitas una categoría, elige la columna real más cercana del esquema (ej. 'Industry', 'Category').\n"
+            "16. NUMÉRICOS ANTES DE AGREGAR (NO negociable):\n"
+            "   - Antes de nlargest, nsmallest, mean, sum, median, max, min, quantile o corr sobre una columna "
+            "que pueda venir como texto (montos con $, comas, Export($), Import($), USD, etc.), "
+            "OBLIGATORIO: `df['col'] = pd.to_numeric(df['col'], errors='coerce')` "
+            "(o limpia `$`/`,` y luego to_numeric).\n"
+            "   - NUNCA llames nlargest/mean/sum sobre una Serie con dtype object/str sin coerce previo."
         )
         doc_block = ""
         if document_context:
@@ -759,8 +803,11 @@ class AnalystAgent:
         report_config: Optional[ReportConfig] = None,
         generate_echarts: bool = False,
         domain: str = "financial_compliance",
+        schema_columns: Optional[List[str]] = None,
     ) -> Tuple[str, Optional[Dict[str, Any]]]:
         """Ejecuta el código generado, captura stdout y pide al modelo un resumen cruzado."""
+        if schema_columns:
+            self._validate_code_columns(codigo_python, schema_columns)
         ruta_img = plot_filename or None
         generar_pdf = functools.partial(
             generar_reporte_pdf, ruta_grafica=ruta_img, report_config=report_config
@@ -782,11 +829,14 @@ class AnalystAgent:
                 csv_encoding=csv_encoding,
                 chat_id=chat_id,
             ),
+            # Lista canónica de columnas para que el código generado no invente nombres
+            "COLUMNAS_DISPONIBLES": list(schema_columns) if schema_columns else [],
             # ECharts helpers: disponibles en el sandbox para que el LLM elija el tipo más adecuado.
             "aggregate_and_build_option": aggregate_and_build_option,
             "dataframe_to_echarts_option": dataframe_to_echarts_option,
             "build_bar_option": build_bar_option,
             "build_line_option": build_line_option,
+            "build_area_option": build_area_option,
             "build_pie_option": build_pie_option,
             "build_horizontal_bar_option": build_horizontal_bar_option,
             "build_scatter_option": build_scatter_option,
@@ -917,6 +967,41 @@ class AnalystAgent:
         except Exception as e:
             print(f"DEBUG: re-render premium PDF falló (se conserva el original): {e}")
 
+        # Tablero ejecutivo multi-widget (visor). Nunca bloquea si falla.
+        self._pending_dashboard = None
+        if generate_echarts and opt:
+            try:
+                primary_color = None
+                if report_config is not None:
+                    primary_color = getattr(report_config, "primary_color", None) or None
+                    if isinstance(primary_color, str) and not primary_color.strip():
+                        primary_color = None
+                self._pending_dashboard = assemble_executive_dashboard(
+                    primary_option=opt,
+                    narrative=text or "",
+                    user_query=user_query or "",
+                    primary_color=primary_color,
+                    title="Panel unificado",
+                    subtitle="InsightFlow · Análisis",
+                )
+            except Exception as dash_exc:
+                print(f"DEBUG: assemble_executive_dashboard falló: {dash_exc}")
+                self._pending_dashboard = {
+                    "title": "Panel unificado",
+                    "subtitle": "InsightFlow · Análisis",
+                    "live": True,
+                    "metrics": [],
+                    "widgets": [
+                        {
+                            "id": "main_trend",
+                            "kind": "echarts",
+                            "title": "Panel unificado",
+                            "span": "wide",
+                            "option": opt,
+                        }
+                    ],
+                }
+
         return self._cap(text), opt
 
     # ── Punto de entrada principal ───────────────────────────────────────
@@ -940,6 +1025,7 @@ class AnalystAgent:
         document_context = self._get_document_context(user_query, chat_id=chat_id)
         self._pending_pdf_report_path = None
         self._pending_excel_report_path = None
+        self._pending_dashboard = None
 
         # Separar documentos (PDF/DOCX/TXT) de archivos de datos (CSV/Excel)
         data_file_path: Optional[str] = None
@@ -971,12 +1057,18 @@ class AnalystAgent:
         # Archivo de datos (CSV/Excel) presente → generar código de análisis
         try:
             df_sample, csv_encoding = _read_schema_sample(data_file_path)
-            schema_info = f"Columnas: {list(df_sample.columns)}\nMuestra: {df_sample.to_dict('records')}"
+            schema_columns = [str(c) for c in df_sample.columns.tolist()]
+            cols_hint = self._format_columns_hint(schema_columns)
+            schema_info = (
+                f"Columnas: {schema_columns}\n"
+                f"COLUMNAS_DISPONIBLES (usa SOLO estos nombres literales): [{cols_hint}]\n"
+                f"Muestra: {df_sample.to_dict('records')}"
+            )
         except Exception as e:
             return f"Error al leer la estructura del archivo local: {e}", None
 
-        domain = classify_domain(list(df_sample.columns))
-        print(f"DEBUG: dominio clasificado → {domain} | columnas: {list(df_sample.columns)[:8]}")
+        domain = classify_domain(schema_columns)
+        print(f"DEBUG: dominio clasificado → {domain} | columnas: {schema_columns[:8]}")
 
         clean_path = data_file_path.replace("\\", "/")
         path_lower = clean_path.lower()
@@ -1016,54 +1108,62 @@ class AnalystAgent:
         if not self._looks_like_python_code(codigo_python):
             return self._cap(respuesta_texto), None
 
-        try:
-            return self._run_code_and_summarize(
-                codigo_python,
-                user_query,
-                chat_id,
-                clean_path,
-                csv_encoding,
-                document_context,
-                report_pdf_path,
-                report_excel_path,
-                plot_filename,
-                report_config=report_config,
-                generate_echarts=generate_echarts,
-                domain=domain,
-            )
-        except Exception as e:
-            print(f"Error ejecutando código local: {e}")
-            # Pedir al modelo que corrija el error usando el esquema real del archivo
+        max_attempts = 3
+        last_error: Optional[Exception] = None
+        for attempt in range(1, max_attempts + 1):
             try:
-                fix_prompt = (
-                    f"El siguiente código Python falló con el error: {e}\n\n"
-                    f"Esquema REAL del archivo (usa EXACTAMENTE estos nombres de columna):\n{schema_info}\n\n"
-                    "Corrige el código para que use exclusivamente los nombres de columna del esquema real. "
-                    "Responde SOLO con el bloque ```python corregido."
+                return self._run_code_and_summarize(
+                    codigo_python,
+                    user_query,
+                    chat_id,
+                    clean_path,
+                    csv_encoding,
+                    document_context,
+                    report_pdf_path,
+                    report_excel_path,
+                    plot_filename,
+                    report_config=report_config,
+                    generate_echarts=generate_echarts,
+                    domain=domain,
+                    schema_columns=schema_columns,
                 )
-                fix_response = self._generate(fix_prompt)
-                codigo_corregido = self._sanitize_code(self._extraer_codigo(fix_response.text))
-                if self._looks_like_python_code(codigo_corregido):
-                    return self._run_code_and_summarize(
-                        codigo_corregido,
-                        user_query,
-                        chat_id,
-                        clean_path,
-                        csv_encoding,
-                        document_context,
-                        report_pdf_path,
-                        report_excel_path,
-                        plot_filename,
-                        report_config=report_config,
-                        generate_echarts=generate_echarts,
-                        domain=domain,
+            except Exception as e:
+                last_error = e
+                print(f"Error ejecutando código local (intento {attempt}/{max_attempts}): {e}")
+                if attempt >= max_attempts:
+                    break
+                # Pedir corrección con esquema + reglas de numéricos
+                try:
+                    fix_prompt = (
+                        f"El siguiente código Python falló (intento {attempt}/{max_attempts}) "
+                        f"con el error:\n{e}\n\n"
+                        f"Código fallido:\n```python\n{codigo_python}\n```\n\n"
+                        f"Esquema REAL del archivo — usa EXACTAMENTE estos nombres:\n{schema_info}\n\n"
+                        "REGLAS DE CORRECCIÓN:\n"
+                        f"1. Solo columnas de esta lista: [{cols_hint}]. No inventes nombres.\n"
+                        "2. Antes de nlargest/mean/sum/median/max/min sobre montos o columnas object/str, "
+                        "haz `df['col'] = pd.to_numeric(df['col'], errors='coerce')` "
+                        "(limpia `$` y comas si hace falta).\n"
+                        "3. Sigue cargando con `df = cargar_dataframe_limpio()`.\n"
+                        "Responde SOLO con el bloque ```python corregido."
                     )
-            except Exception as e2:
-                print(f"Error en reintento de corrección: {e2}")
-            return (
-                self._cap(
-                    f"Encontré un problema al analizar el archivo: {e}. "
-                    "Por favor verifica que el archivo CSV esté bien formado o intenta con otra pregunta."
-                ),
-                None,
-            )
+                    fix_response = self._generate(fix_prompt)
+                    codigo_corregido = self._sanitize_code(self._extraer_codigo(fix_response.text))
+                    if self._looks_like_python_code(codigo_corregido):
+                        codigo_python = codigo_corregido
+                    else:
+                        break
+                except Exception as e2:
+                    print(f"Error generando corrección (intento {attempt}): {e2}")
+                    break
+
+        err_msg = str(last_error) if last_error else "error desconocido"
+        return (
+            self._cap(
+                f"Encontré un problema al analizar el archivo: {err_msg}. "
+                f"Columnas disponibles en tu CSV: [{cols_hint}]. "
+                "Reformula la pregunta usando esos nombres exactos "
+                "(no inventes columnas como Sector o Categoria_Producto)."
+            ),
+            None,
+        )
