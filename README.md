@@ -162,7 +162,9 @@ Crea un archivo `.env` basado en `.env.example`:
 
 ```env
 # ── Obligatorias ──────────────────────────────────────────────────────────────
-DATABASE_URL=postgresql+asyncpg://insightflow:insightflow@localhost:5432/insightflow
+POSTGRES_PASSWORD=cambia_esta_password_fuerte
+# En Docker el host es `postgres`. Fuera de Compose (dev bare-metal): localhost.
+DATABASE_URL=postgresql+asyncpg://insightflow:cambia_esta_password_fuerte@postgres:5432/insightflow
 GEMINI_API_KEY=                    # Google AI Studio → API key
 TELEGRAM_TOKEN=                    # BotFather token
 
@@ -170,7 +172,7 @@ TELEGRAM_TOKEN=                    # BotFather token
 API_PORT=8080
 WORKER_URL=http://brain:8001       # URL interna del Worker Python
 DATA_DIR=data                      # Ruta al volumen de archivos de usuario
-PUBLIC_BASE_URL=https://tu-dominio.com
+PUBLIC_BASE_URL=https://tu-dominio.com   # prod: HTTPS real; no ngrok
 
 # ── Límites y seguridad ───────────────────────────────────────────────────────
 FREE_MESSAGE_LIMIT=15               # Cupo diario gratis (mensajes/día)
@@ -189,14 +191,17 @@ BOLD_API_KEY=                      # Llave de identidad Bold (Botón de pagos, p
 BOLD_INTEGRITY_SECRET=             # Llave secreta Bold para el hash de integridad del botón (solo servidor)
 PREMIUM_AMOUNT_COP=40000           # Monto fijo en COP para activar premium vía Bold
 
-# ── Desarrollo ────────────────────────────────────────────────────────────────
-DEV_FORCE_PREMIUM=false            # true → todos los chats actúan como premium
+# ── Desarrollo / producción ───────────────────────────────────────────────────
+DEV_FORCE_PREMIUM=false            # true SOLO QA; false en VPS
 ENABLE_PUBLIC_DATA=false           # true → /data/* sin auth (SOLO desarrollo)
 
-# ── Ollama (opcional, soberanía de datos) ─────────────────────────────────────
-OLLAMA_BASE_URL=http://localhost:11434
+# ── Ollama (opcional; host + extra_hosts en brain) ────────────────────────────
+OLLAMA_BASE_URL=http://host.docker.internal:11434
 OLLAMA_MODEL=llama3.1
+OLLAMA_TIMEOUT_SEC=300
 ```
+
+Plantilla completa: [`.env.example`](.env.example). Despliegue VPS: [`docs/VPS-DEPLOY.md`](docs/VPS-DEPLOY.md).
 
 ---
 
@@ -206,18 +211,21 @@ OLLAMA_MODEL=llama3.1
 
 ```bash
 cp .env.example .env
-# Editar .env con tus claves
+# Editar .env: POSTGRES_PASSWORD, DATABASE_URL (@postgres), claves, DEV_FORCE_PREMIUM=false
 
 docker compose up --build
 ```
 
 Servicios que levanta:
+
 | Servicio | Puerto host | Descripción |
 |---|---|---|
-| `postgres` | 5432 | PostgreSQL 16 |
-| `brain` | — (interno) | Worker Python FastAPI |
-| `api` | **8080** | API Go pública |
+| `postgres` | — (solo red Compose) | PostgreSQL 16; no publicar `5432` en prod |
+| `brain` | — (interno `:8001`) | Worker Python FastAPI |
+| `api` | **127.0.0.1:8080** | API Go (loopback; delante Caddy/ngrok) |
 | `bot` | — | Bot de Telegram |
+
+Producción en VPS (fases, UFW, Git, Ollama): ver [`docs/VPS-DEPLOY.md`](docs/VPS-DEPLOY.md).
 
 ### Sin Docker (desarrollo local)
 
@@ -388,6 +396,7 @@ Archivos del widget / embed:
 - `powerups-bold-checkout.js` — botón Bold firmado + `PU_mountBoldCheckout`
 - `embed/INTEGRATION-BEBUILDER.txt` — inventario y checklist de despliegue
 - `docs/BOLD-SETUP.txt` — guía Bold + WordPress + Lovable + webhook + ngrok
+- `docs/VPS-DEPLOY.md` — go-live Hostinger (fases, UFW, Compose endurecido, Ollama)
 
 ---
 
@@ -487,13 +496,14 @@ WordPress (WooCommerce) ──genera referencia──► Wompi
 
 ---
 
-## Estado del proyecto (2026-07-30)
+## Estado del proyecto (2026-08-14)
 
-- **Producción / embed:** Widget WordPress/BeBuilder (assets `wp-content/uploads/2026/07/`). API Go + Worker Python en Docker. Tarjeta Lovable para registro → pago.
+- **VPS Hostinger (go-live):** Fase 1–3 hechas (SSH `insightflow`, UFW 22/80/443, Docker, clone en `~/apps/insightflow`). Compose endurecido (Postgres sin puerto público, credenciales por `.env`, API en loopback). Pendiente: DNS/SSL (Caddy/Dokploy), `compose up` prod, Bold/CORS al dominio, Ollama `llama3.1` en el host. Guía: [`docs/VPS-DEPLOY.md`](docs/VPS-DEPLOY.md).
+- **Producción / embed:** Widget WordPress/BeBuilder. API Go + Worker Python en Docker. Tarjeta Lovable para registro → pago.
 - **Billing Bold:** checkout firmado + webhook HMAC. $40.000 COP = mensajes ilimitados + PDF/Excel (portal/ECharts gratis). Flujo: correo → `PU_mountBoldCheckout` (portal o Lovable).
 - **Producto v2:** contador diario (`messages_today`/`quota_date`, `America/Bogota`); ECharts/portal/multi-gráfica free; PDF/Excel gate en backend.
 - **Login email:** backend `link-email` + merge; auto-vínculo en webhook; **UI en `premium-portal.html` y `lovable-login-card.html`**. Pendiente: formulario en el widget y magic link/OTP.
 - **Rendimiento chat:** `generate_echarts` condicional; timeouts Gemini (90s) y worker (330s).
 - **Visor multi-widget:** payload `dashboard` + grid ejecutivo en `premium-dashboard-session.html` (KPIs, área, percepción, Q&A, bullets); `echarts_option` sigue siendo el primario.
-- **IA:** Gemini 3.x (flash-preview + fallbacks) + Ollama opcional. Guards CSV (`csv_code_guards.py`). SDK `google.generativeai` deprecado (migración pendiente).
-- **Pendiente:** email UI en widget; no generar PDF/Excel free en worker; gate PDF/Excel en bot Telegram; tests E2E de recuperación premium por email; desactivar `DEV_FORCE_PREMIUM` fuera de QA.
+- **IA:** Gemini 3.x (flash-preview + fallbacks) + Ollama opcional (`host.docker.internal` vía `extra_hosts` en `brain`). Guards CSV (`csv_code_guards.py`).
+- **Pendiente:** email UI en widget; no generar PDF/Excel free en worker; gate PDF/Excel en bot Telegram; tests E2E premium por email; fases 4–7 del VPS; `DEV_FORCE_PREMIUM=false` en prod.
