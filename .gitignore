@@ -1,5 +1,11 @@
 # --- Seguridad ---
 .env
+# Backups del .env de producción (contienen secretos reales)
+.env.bak.*
+.env.*.bak
+# Override local para dev (p. ej. publicar el puerto 5432 hacia DBeaver).
+# Nunca debe llegar al compose que va a producción.
+docker-compose.override.yml
 
 # --- Datos de Usuarios y Temporales ---
 data/
