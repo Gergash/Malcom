@@ -1,12 +1,12 @@
-InsightFlow · Embed modular (BeBuilder / WordPress)
-====================================================
-Última actualización: 2026-07-17
+InsightFlow · Embed modular (BeBuilder / WordPress / Lovable)
+=============================================================
+Última actualización: 2026-07-30
 
 Reglas de producto v2: docs/BUSINESS-RULES-v2.md
-  · Gratis: 15 msgs/día + portal + dashboard ECharts + multi-gráfica
+  · Gratis: 15 msgs/día + portal + dashboard ECharts multi-widget + multi-gráfica
   · Pago $40k Bold: mensajes ilimitados + PDF/Excel + branding
   · Paywall: solo bloquea nuevos mensajes, no portal/tablero
-  · Pago: correo en portal-premium/#portal-login → revela botón Bold
+  · Pago: correo → revela botón Bold (portal WP o tarjeta Lovable)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 INVENTARIO DE ARCHIVOS
@@ -21,7 +21,7 @@ powerups-edge-frame.html
 powerups-edge-widget.js
     Lógica completa del chat: CONFIG, llamadas a la API, ECharts inline, barra
     de uso diaria (X/15), paywall, resize, postMessage al host, localStorage.
-    NO incluye formulario de email (eso vive en premium-portal.html).
+    NO incluye formulario de email (eso vive en premium-portal / lovable-login-card).
 
 powerups-edge-widget.css
     Todos los estilos del panel, burbuja, composer y estados del widget.
@@ -49,14 +49,27 @@ PÁGINAS (WordPress → pegar HTML)
 premium-portal.html
     Portal "Mis tableros" + LOGIN POR CORREO (#portal-login):
       1. Usuario ingresa email → POST /api/v1/billing/link-email
-      2. Si free → revela #pu-pro-card / #pu-bold-mount (botón Bold)
-      3. Si premium → oculta pago y muestra plan ilimitado
+      2. Si free → revela #pu-pro-card / #pu-bold-mount (data-bold-gate=login)
+      3. Llama window.PU_mountBoldCheckout()
+      4. Si premium → oculta pago y muestra plan ilimitado
     También: grid de gráficas desde localStorage, demo, acceso por token.
     URL: https://www.powerupsagencia.com/portal-premium/
 
 premium-dashboard-session.html
-    Visor ECharts a pantalla completa (token o fallback localStorage).
+    Visor ejecutivo multi-widget (KPIs, echarts, qa, bullets).
+    Lee token → GET /api/v1/dashboard/session/:token
+    Fallback: echarts_option legacy o localStorage.
     URL: https://www.powerupsagencia.com/dashboard-premium-echarts/
+
+LOVABLE
+─────────────────────────────────────────────────────
+lovable-login-card.html
+    Tarjeta autónoma registro (correo) + pago Bold.
+    Flujo: email → POST link-email → revela botón Bold embebido.
+    Config: ?api_base=URL_API  (y CORS en el API con dominio Lovable).
+
+lovable-login-card-snippet.html
+    Instrucciones + ejemplo de <iframe> para pegar en Lovable.
 
 SNIPPETS BEBUILDER
 ─────────────────────────────────────────────────────
@@ -65,14 +78,10 @@ bebuilder-pro-card-snippet.html
       https://www.powerupsagencia.com/portal-premium/#portal-login
     Pegar SOLO div+style (BeBuilder elimina <script>).
 
-lovable-login-card.html
-    Tarjeta autónoma registro (correo) + pago Bold para apps Lovable.
-    Flujo: email → POST link-email → revela botón Bold embebido.
-    Config: ?api_base=URL_API  (y CORS en el API con dominio Lovable).
-    Ver embed/lovable-login-card-snippet.html para iframe en Lovable.
-
 powerups-bold-checkout.js  (Medios 2026/07/)
     GET /api/v1/billing/bold-checkout?chat_id= → monta botón Bold.
+    Expone window.PU_mountBoldCheckout (montaje bajo demanda).
+    Si #pu-pro-card tiene data-bold-gate="login" y está hidden, NO monta al cargar.
     Guía: docs/BOLD-SETUP.txt
 
 LEGACY (no usar en producción)
@@ -104,6 +113,10 @@ WordPress (hook Bottom)
               └─ powerups-edge-frame.html → widget.js
                     └─ guarda API_BASE en localStorage['powerups_edge_api_base']
 
+Lovable
+  └─ iframe → lovable-login-card.html?api_base=…
+        └─ link-email → PU_mountBoldCheckout → Bold SDK
+
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 CLAVES DE localStorage (origen del iframe / portal)
@@ -115,7 +128,8 @@ powerups_edge_charts_{chatId}     → array de opciones ECharts (max 6, LIFO)
 powerups_edge_dash_tok_{chatId}   → token del último tablero
 powerups_edge_panel_size_v1       → tamaño del panel
 powerups_edge_api_base            → API_BASE para el visor/portal
-powerups_edge_email               → email vinculado (portal login)
+powerups_edge_email               → email vinculado (portal / Lovable login)
+powerups_edge_display_name        → nombre opcional (tarjeta Lovable)
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -126,14 +140,16 @@ Medios (2026/07/):
   ✓ powerups-edge-frame.html
   ✓ powerups-edge-widget.js
   ✓ powerups-edge-widget.css
-  ✓ powerups-bold-checkout.js
+  ✓ powerups-bold-checkout.js   ← re-subir si cambió el gate login
   ✓ widget-loader.js (opcional si usas loader inline)
+  ✓ lovable-login-card.html (si se usa desde Medios / CDN)
 
-NO van a Medios:
+NO van a Medios (o van a páginas WP / Lovable):
   · bebuilder-install-snippet.html  → Hook Bottom
   · premium-portal.html             → página WP
   · premium-dashboard-session.html  → página WP
   · bebuilder-pro-card-snippet.html → elemento HTML BeBuilder
+  · lovable-login-card-snippet.html → referencia (iframe en Lovable)
   · powerups-edge-chat-widget.html  → legacy
   · INTEGRATION-BEBUILDER.txt       → solo referencia
 
@@ -152,14 +168,15 @@ Widget (powerups-edge-widget.js):
   POST /api/v1/chat
   POST /api/v1/chat/upload
   GET  /api/v1/chat/:id/credits  (o billing/status según implementación)
+  POST /api/v1/chat/token/refresh
   GET  /download/:token          (charts free; pdf/excel → 403 si free)
 
-Portal (premium-portal.html):
+Portal / Lovable:
   POST /api/v1/billing/link-email
   GET  /api/v1/billing/status?chat_id=
   GET  /api/v1/billing/bold-checkout?chat_id=  (vía powerups-bold-checkout.js)
 
 Dashboard session:
   GET  /api/v1/dashboard/session/{token}
-       → 200 { echarts_option }
+       → 200 { echarts_option?, dashboard? }
        → 202 preparando / 404 → fallback localStorage

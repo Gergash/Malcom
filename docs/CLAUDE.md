@@ -2,9 +2,9 @@
 
 Scope de Gentle AI para el proyecto **InsightFlow Malcom**: chatbot de análisis de datos con Telegram, motor Python de IA, y API Go para gestión de usuarios y pagos.
 
-**Última actualización:** 2026-07-17  
+**Última actualización:** 2026-07-30  
 **Reglas de producto:** [`BUSINESS-RULES-v2.md`](BUSINESS-RULES-v2.md) (fuente de verdad).  
-**Estado v2:** cuota diaria, portal/ECharts free, PDF/Excel premium (gate Go), Bold + login correo en portal — implementados. Pendiente: email UI en widget, magic link, no generar PDF/Excel free en worker.
+**Estado v2:** cuota diaria, portal/ECharts free, visor multi-widget, PDF/Excel premium (gate Go), Bold + login correo en portal y tarjeta Lovable — implementados. Pendiente: email UI en widget, magic link, no generar PDF/Excel free en worker.
 
 ---
 
@@ -12,24 +12,26 @@ Scope de Gentle AI para el proyecto **InsightFlow Malcom**: chatbot de análisis
 
 ```
 Telegram Bot (Python)
-       │
-       ▼
-   Go API (Gin)          ← auth, uploads, billing, dashboard
-       │
-       ▼
- Python Worker (FastAPI) ← orquestación de agentes IA
-       │
-  ┌────┴──────────────────────┐
-  │         Agentes           │
-  │  AnalystAgent             │
-  │  PredictorAgent           │
-  │  KnowledgeAgent           │
-  │  ComplianceAgent          │
-  │  ReportGeneratorAgent     │
-  └───────────────────────────┘
-       │
-  PostgreSQL  ←  Go (GORM) + Python (SQLAlchemy async)
+       |
+       v
+   Go API (Gin)          <- auth, uploads, billing, dashboard
+       |
+       v
+ Python Worker (FastAPI) <- orquestacion de agentes IA
+       |
+  +----+----------------------+
+  |         Agentes           |
+  |  AnalystAgent             |
+  |  PredictorAgent           |
+  |  KnowledgeAgent           |
+  |  ComplianceAgent          |
+  |  ReportGeneratorAgent     |
+  +---------------------------+
+       |
+  PostgreSQL  <-  Go (GORM) + Python (SQLAlchemy async)
 ```
+
+**Canales web:** widget WordPress/BeBuilder (`embed/`), portal premium, visor dashboard, tarjeta Lovable (`lovable-login-card.html`).
 
 **Regla de routing (orchestrator.py):** keywords de predicción → `PredictorAgent`; archivos de documentos → `KnowledgeAgent`; resto → `AnalystAgent`.
 
@@ -45,6 +47,7 @@ Telegram Bot (Python)
 | Pagos | Wompi, Bold (`internal/payment/`) |
 | Base de datos | PostgreSQL — GORM (Go) + SQLAlchemy async (Python) |
 | IA | Gemini (Google) + Ollama local (fallback) |
+| Dashboard | Apache ECharts (`echarts_builder` + `dashboard_builder`) |
 | Contenedores | Docker + docker-compose |
 
 ---
@@ -58,11 +61,14 @@ app/
   core/
     orchestrator.py  — routing de mensajes a agentes
     echarts_builder.py
+    dashboard_builder.py  — tablero multi-widget (KPIs, qa, bullets)
   agents/
     analyst_agent.py
     predictor_agent.py
     knowledge_agent.py
     compliance_agent.py
+    csv_code_guards.py
+    data_cleaner.py
     report_generator_agent.py
   api/
     routes/          — rutas FastAPI públicas
@@ -83,7 +89,7 @@ internal/
   config/
   worker/            — cliente HTTP → Python worker
 
-embed/               — assets estáticos embebidos en el binario Go
+embed/               — widget, portal, visor, Lovable login, Bold checkout
 data/                — archivos de usuario por chat_id (volumen compartido)
 ```
 
@@ -112,6 +118,7 @@ data/                — archivos de usuario por chat_id (volumen compartido)
 - Se guardan en `data/{chat_id}/`.
 - PDF, Excel y gráficas se eliminan del disco tras enviarlos al usuario.
 - `chart_path` viene del worker, nunca del CWD raíz.
+- Respuesta chat puede incluir `echarts_option` (primario) + `dashboard` (multi-widget) + `dashboard_url`.
 
 ---
 
@@ -137,9 +144,9 @@ strict_tdd: false               # no hay suite de tests aún
 5. **Reglas de producto (v2):** ver [`BUSINESS-RULES-v2.md`](BUSINESS-RULES-v2.md). Gratis = 15 msgs/día + portal + ECharts + multi-gráfica; pago $40k = mensajes ilimitados + PDF/Excel. Paywall solo bloquea nuevos mensajes.
 6. **ECharts / dashboard multi-widget:** `generate_echarts` es **condicional** en `internal/worker/client.go` (archivos subidos o keywords). El Brain emite `echarts_option` (primario, compat) + `dashboard` (KPIs, widgets echarts/qa/bullets). El visor [`embed/premium-dashboard-session.html`](../embed/premium-dashboard-session.html) renderiza el grid ejecutivo; sin `dashboard` hace fallback a una card con el option legacy.
 7. **PDF/Excel:** gate autoritativo en Go (`download_handler` 403 + no emitir URLs en chat free). El worker aún puede generar archivos free (pendiente optimizar).
-8. **Login email:** portal (`premium-portal.html`) llama `POST /billing/link-email` y revela Bold. Widget chat aún sin formulario email.
+8. **Login email:** portal (`premium-portal.html`) y tarjeta Lovable (`lovable-login-card.html`) llaman `POST /billing/link-email` y revelan Bold vía `PU_mountBoldCheckout` (`data-bold-gate=login`). Widget chat aún sin formulario email. Para Lovable: `CORS_ALLOWED_ORIGINS` + `?api_base=` en el iframe.
 9. Al modificar agentes, verificar que el routing en `orchestrator.py` siga siendo correcto.
-10. Variables requeridas: `TELEGRAM_TOKEN`, `WORKER_URL`, `DATABASE_URL`, `GEMINI_API_KEY`. Modelos: `GEMINI_MODEL` / `GEMINI_MODELS` (defaults actuales: `gemini-3-flash-preview` + fallbacks). Opcionales: `OLLAMA_*`, Bold keys, `DEV_FORCE_PREMIUM` (solo QA).
+10. Variables requeridas: `TELEGRAM_TOKEN`, `WORKER_URL`, `DATABASE_URL`, `GEMINI_API_KEY`. Modelos: `GEMINI_MODEL` / `GEMINI_MODELS` (defaults actuales: `gemini-3-flash-preview` + fallbacks). Opcionales: `OLLAMA_*`, Bold keys, `DEV_FORCE_PREMIUM` (solo QA), `CORS_ALLOWED_ORIGINS` (Lovable / WordPress).
 
 ---
 
