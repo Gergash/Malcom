@@ -3,12 +3,12 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: insightflow
-      POSTGRES_PASSWORD: insightflow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD es obligatorio (definir en .env)}
       POSTGRES_DB: insightflow
     volumes:
       - pgdata:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    # Sin ports: Postgres solo es accesible desde la red interna de Compose.
+    # Para inspeccionarlo: docker compose exec postgres psql -U insightflow
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U insightflow"]
       interval: 5s
@@ -21,10 +21,14 @@ services:
     command: uvicorn app.worker:app --host 0.0.0.0 --port 8001
     env_file: .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://insightflow:insightflow@postgres:5432/insightflow
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL es obligatorio (definir en .env)}
     working_dir: /app
     volumes:
       - ./data:/app/data
+    # Permite alcanzar Ollama en el host (OLLAMA_BASE_URL=http://host.docker.internal:11434)
+    # tanto en Linux como en Windows.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
@@ -37,12 +41,15 @@ services:
       dockerfile: Dockerfile.api
     env_file: .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://insightflow:insightflow@postgres:5432/insightflow
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL es obligatorio (definir en .env)}
       WORKER_URL: http://brain:8001
       DATA_DIR: /app/data
       API_PORT: "8080"
     ports:
-      - "8080:8080"
+      # Solo loopback: Docker publica puertos saltándose UFW, así que exponer
+      # 0.0.0.0:8080 dejaría la API abierta a internet pese al firewall.
+      # El acceso público entra por el reverse proxy (Caddy) o ngrok, ambos vía localhost.
+      - "127.0.0.1:8080:8080"
     volumes:
       - ./data:/app/data
     depends_on:
@@ -57,7 +64,7 @@ services:
     command: python app/main.py
     env_file: .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://insightflow:insightflow@postgres:5432/insightflow
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL es obligatorio (definir en .env)}
     volumes:
       - ./data:/app/data
     depends_on:
