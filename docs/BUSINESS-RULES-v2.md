@@ -1,7 +1,7 @@
 # InsightFlow — Reglas de negocio v2
 
-**Última actualización:** 2026-07-17  
-**Estado:** **Implementado en producción (API Go + embed)** para cuota diaria, portal/dashboard gratis, multi-gráfica free, PDF/Excel premium en backend, Bold checkout/webhook, y login por correo en el portal (gate del botón Bold).  
+**Última actualización:** 2026-07-30  
+**Estado:** **Implementado (API Go + Brain + embed)** para cuota diaria, portal/dashboard gratis, multi-gráfica free, visor multi-widget ejecutivo, PDF/Excel premium en backend, Bold checkout/webhook, login por correo en portal **y** tarjeta Lovable (gate del botón Bold).  
 **Pendiente:** formulario email en el widget del chat; magic link / OTP (fase 2); no generar PDF/Excel en el worker para free; paridad de gate PDF/Excel en el bot Telegram.
 
 **Precio premium:** $40.000 COP (Bold)  
@@ -97,22 +97,26 @@ Restricción: sin cupo diario no pueden enviar mensajes nuevos hasta el reset o 
 | `POST /api/v1/billing/link-email` | ✅ Backend (merge si el email ya existe) |
 | `GET /api/v1/billing/status?chat_id=` / `?email=` | ✅ |
 | Auto-vínculo email en webhook Bold (`ExtractPayerEmail`) | ✅ Fase 0 |
-| UI portal: correo → revela botón Bold | ✅ `embed/premium-portal.html` (`#portal-login`) |
+| UI portal: correo → revela botón Bold | ✅ `embed/premium-portal.html` (`#portal-login`, `data-bold-gate=login`) |
 | CTA WordPress → portal | ✅ `bebuilder-pro-card-snippet.html` → `/portal-premium/#portal-login` |
+| Tarjeta Lovable: correo → Bold embebido | ✅ `embed/lovable-login-card.html` (+ snippet iframe) |
+| Bold JS diferido hasta login | ✅ `powerups-bold-checkout.js` → `window.PU_mountBoldCheckout` |
 | Formulario email en el **widget** del chat | ❌ Pendiente |
 | Magic link / OTP / verificación de correo | ❌ Fase 2 |
 
-**Flujo en producción (portal):**
+**Flujo en producción (portal / Lovable):**
 
 ```
 CTA «Ingresar con mi correo para pagar»
-  → /portal-premium/#portal-login
+  → portal (#portal-login)  O  tarjeta Lovable (iframe lovable-login-card.html)
   → usuario ingresa email
   → POST /billing/link-email { chat_id, email }
-  → si free: se revela #pu-pro-card + botón Bold
+  → si free: se revela #pu-pro-card + PU_mountBoldCheckout()
   → pago → webhook → is_premium=true (+ email del pagador si Bold lo envía)
   → en otro navegador: mismo email → LinkEmail reasigna chat_id / recupera premium
 ```
+
+**Lovable / CORS:** la tarjeta llama al API desde otro origen. En `.env` del API Go incluir el dominio Lovable en `CORS_ALLOWED_ORIGINS` y pasar `?api_base=` en el iframe.
 
 ### 4.3 Identificar “usuario que pagó”
 
@@ -165,6 +169,8 @@ si no → messages_today++, paywall=false
 | Contador diario bot | ✅ Alineado |
 | `ModelManager` | ✅ Defaults `gemini-3-flash-preview` (+ fallbacks); `GEMINI_REQUEST_TIMEOUT_SEC` |
 | Worker hard timeout | ✅ `WORKER_REQUEST_TIMEOUT_SEC` (default 330) |
+| Dashboard multi-widget | ✅ `dashboard_builder.py` + ensamble en `analyst_agent` |
+| Guards CSV / columnas | ✅ `csv_code_guards.py` + `data_cleaner.py` |
 | Generar PDF/Excel aunque free | ⏳ Pendiente optimizar (Go bloquea entrega) |
 
 ### 6.3 Frontend embed
@@ -172,9 +178,11 @@ si no → messages_today++, paywall=false
 | Archivo | Estado |
 |---|---|
 | `powerups-edge-widget.js` | ✅ Contador diario; no oculta portal/dashboard |
-| `premium-portal.html` | ✅ Login correo + gate Bold |
+| `premium-portal.html` | ✅ Login correo + gate Bold (`data-bold-gate=login`) |
+| `premium-dashboard-session.html` | ✅ Visor multi-widget (fallback legacy `echarts_option`) |
 | `bebuilder-pro-card-snippet.html` | ✅ CTA a `#portal-login` |
-| `powerups-bold-checkout.js` | ✅ Checkout firmado |
+| `lovable-login-card.html` | ✅ Registro correo + Bold para Lovable |
+| `powerups-bold-checkout.js` | ✅ Checkout firmado; `PU_mountBoldCheckout` tras login |
 | Email UI en widget | ❌ Pendiente |
 
 ### 6.4 WordPress / Bold
@@ -233,11 +241,13 @@ Respuesta actual (`BillingStatusResponse` en Go) — **no** incluye el objeto `f
 3. ~~Quitar gates premium en dashboard/ECharts~~  
 4. ~~Widget contador diario / copy~~  
 5. ~~Login email en portal + CTA Bold~~  
-6. **Login email en widget** (opcional, misma API `link-email`)  
-7. **Magic link / OTP** (fase 2)  
-8. Propagar tier al worker para **no generar** PDF/Excel en free  
-9. Paridad PDF/Excel en **bot Telegram**  
-10. Desactivar `DEV_FORCE_PREMIUM` en producción cuando no se necesite QA  
+6. ~~Tarjeta Lovable registro → Bold~~  
+7. ~~Visor multi-widget ejecutivo~~  
+8. **Login email en widget** (opcional, misma API `link-email`)  
+9. **Magic link / OTP** (fase 2)  
+10. Propagar tier al worker para **no generar** PDF/Excel en free  
+11. Paridad PDF/Excel en **bot Telegram**  
+12. Desactivar `DEV_FORCE_PREMIUM` en producción cuando no se necesite QA  
 
 ---
 
@@ -249,6 +259,8 @@ Respuesta actual (`BillingStatusResponse` en Go) — **no** incluye el objeto `f
 - [x] Tras pago Bold $40k, `is_premium=true` y mensajes ilimitados  
 - [x] Copy “mensajes ilimitados”, no “desbloquea dashboard”  
 - [x] Portal: correo → botón Bold  
+- [x] Lovable: tarjeta correo → botón Bold (con `CORS_ALLOWED_ORIGINS`)  
+- [x] Visor multi-widget con payload `dashboard` (fallback `echarts_option`)  
 - [ ] Email recupera premium en otro navegador (backend listo; validar E2E en prod)  
 - [ ] Formulario email en el widget del chat  
 
@@ -266,8 +278,10 @@ Respuesta actual (`BillingStatusResponse` en Go) — **no** incluye el objeto `f
 | `generate_echarts` condicional | `internal/worker/client.go` |
 | Dashboard multi-widget | `app/core/dashboard_builder.py`, `premium-dashboard-session.html` |
 | Timeouts Gemini / worker | `model_manager.py`, `app/worker.py`, `client.go` |
+| Guards columnas CSV | `app/agents/csv_code_guards.py` |
 | Widget paywall UI | `powerups-edge-widget.js` |
 | Login portal + Bold | `premium-portal.html`, `powerups-bold-checkout.js` |
+| Login Lovable + Bold | `lovable-login-card.html`, `lovable-login-card-snippet.html` |
 | Bold webhook + payer email | `billing_handler.go`, `internal/payment/bold/` |
 | Link email | `POST /api/v1/billing/link-email` |
 
@@ -275,7 +289,7 @@ Respuesta actual (`BillingStatusResponse` en Go) — **no** incluye el objeto `f
 
 ## 12. Changelog de implementación
 
-### Julio 2026 — núcleo v2
+### Julio 2026 — núcleo v2 + Lovable
 
 | Capa | Estado |
 |---|---|
@@ -286,7 +300,9 @@ Respuesta actual (`BillingStatusResponse` en Go) — **no** incluye el objeto `f
 | PDF/Excel gate backend | ✅ |
 | Bold checkout + webhook | ✅ |
 | Auto-vínculo email en webhook | ✅ |
-| Login UI portal → Bold | ✅ (2026-07) |
+| Login UI portal → Bold | ✅ |
+| Login UI Lovable → Bold | ✅ (2026-07-27) |
+| Bold diferido hasta login (`PU_mountBoldCheckout`) | ✅ |
 | `generate_echarts` solo con datos/keywords | ✅ (fix latencia free) |
 | Timeouts Gemini + techo worker 330s | ✅ |
 
@@ -294,6 +310,6 @@ Respuesta actual (`BillingStatusResponse` en Go) — **no** incluye el objeto `f
 
 **PDF/Excel:** enforcement en `download_handler.go` y omisión de `download_url` en chat free. El worker aún puede *generar* el archivo en disco para free (solo se bloquea la entrega).
 
-**Login:** Fase 0 (webhook) + Fase 1 mínima (portal). Falta UI en widget y Fase 2 (verificación).
+**Login:** Fase 0 (webhook) + Fase 1 (portal + tarjeta Lovable). Falta UI en widget y Fase 2 (verificación magic link/OTP).
 
 **Documentos alineados:** este archivo, `docs/README.md`, `docs/CLAUDE.md`, `README.md`, `docs/BOLD-SETUP.txt`, `embed/INTEGRATION-BEBUILDER.txt`, `.env.example`.

@@ -17,7 +17,7 @@ Plataforma de Business Intelligence conversacional para Colombia. Combina un bot
 ┌─────────────────────────────────────────────────────────────────┐
 │  Canales de entrada                                             │
 │   Telegram Bot (app/main.py)                                   │
-│   Widget Web WordPress / BeBuilder (embed/)                    │
+│   Widget Web WordPress / BeBuilder / Lovable (embed/)          │
 └──────────────────────────┬──────────────────────────────────────┘
                            │ HTTP
                            ▼
@@ -56,7 +56,7 @@ Plataforma de Business Intelligence conversacional para Colombia. Combina un bot
 3. El **Orchestrator** decide si es consulta de predicción o análisis general.
 4. El **AnalystAgent** genera código Python, lo ejecuta en sandbox (`safe_exec`) y resume los resultados con Gemini.
 5. El **ComplianceAgent** añade un bloque de cumplimiento normativo colombiano.
-6. La API Go devuelve texto + artefactos (PDF, Excel, gráfica, option ECharts para el dashboard).
+6. La API Go devuelve texto + artefactos (PDF, Excel, gráfica, `echarts_option` + `dashboard` multi-widget).
 
 ---
 
@@ -69,11 +69,11 @@ Plataforma de Business Intelligence conversacional para Colombia. Combina un bot
 | LLM local | Ollama (`llama3.1`) — modo soberanía de datos |
 | Base de datos | PostgreSQL 16 (async: asyncpg + SQLAlchemy 2.0; Go: GORM) |
 | Reportes | fpdf2 (PDF), xlsxwriter (Excel), matplotlib, seaborn |
-| Dashboard | Apache ECharts (vía helpers `echarts_builder.py`) |
+| Dashboard | Apache ECharts (`echarts_builder.py` + `dashboard_builder.py`) |
 | RAG | Embeddings Gemini `gemini-embedding-001`, almacén JSON local |
 | Pagos | Wompi Colombia + Bold (HMAC-SHA256) |
 | Bot | python-telegram-bot, httpx |
-| Widget web | JavaScript vanilla + iframe (WordPress/BeBuilder) |
+| Widget web | JavaScript vanilla + iframe (WordPress/BeBuilder + tarjeta Lovable) |
 | Infraestructura | Docker Compose (4 servicios: postgres, brain, api, bot) |
 
 ---
@@ -375,17 +375,19 @@ window.POWERUPS_WIDGET_LOADER = {
 <!-- Preferir el loader inline de bebuilder-install-snippet.html; widget-loader.js es alternativa -->
 ```
 
-Archivos del widget:
+Archivos del widget / embed:
 - `widget-loader.js` / snippet inline — crea el iframe en el host
 - `powerups-edge-frame.html` — documento raíz del iframe
 - `powerups-edge-widget.js` — chat, upload, paywall diario, ECharts inline
 - `powerups-edge-widget.css`
-- `premium-dashboard-session.html` — visor ECharts
-- `premium-portal.html` — portal + **login por correo** + gate del botón Bold
+- `premium-dashboard-session.html` — visor ejecutivo multi-widget (KPIs + cards)
+- `premium-portal.html` — portal + **login por correo** + gate Bold (`data-bold-gate=login`)
+- `lovable-login-card.html` — tarjeta registro → Bold para apps Lovable
+- `lovable-login-card-snippet.html` — ejemplo iframe Lovable
 - `bebuilder-pro-card-snippet.html` — CTA → `/portal-premium/#portal-login`
-- `powerups-bold-checkout.js` — botón Bold firmado (`GET /billing/bold-checkout`)
+- `powerups-bold-checkout.js` — botón Bold firmado + `PU_mountBoldCheckout`
 - `embed/INTEGRATION-BEBUILDER.txt` — inventario y checklist de despliegue
-- `docs/BOLD-SETUP.txt` — guía Bold + webhook + ngrok
+- `docs/BOLD-SETUP.txt` — guía Bold + WordPress + Lovable + webhook + ngrok
 
 ---
 
@@ -407,14 +409,14 @@ Archivos del widget:
 ### Bold (checkout embebido, monto fijo)
 
 ```
-CTA / tarjeta Pro ──► /portal-premium/#portal-login
+CTA / tarjeta Pro ──► portal (#portal-login)  O  Lovable (lovable-login-card.html)
                            │
                     usuario ingresa email
                     POST /api/v1/billing/link-email
                            │
-                    se revela #pu-bold-mount
+                    se revela #pu-pro-card → PU_mountBoldCheckout()
                            │
-Widget/portal ──GET /api/v1/billing/bold-checkout?chat_id=──► API Go
+GET /api/v1/billing/bold-checkout?chat_id= ──► API Go
                                                                    │
                                           Genera order_id="IF-{chat_id}-{unix}"
                                           Firma integridad: SHA256(order_id + amount + currency + BOLD_INTEGRITY_SECRET)
@@ -438,7 +440,8 @@ Widget/portal ──GET /api/v1/billing/bold-checkout?chat_id=──► API Go
 
 - Precio: `PREMIUM_AMOUNT_COP` (por defecto **$40.000 COP**).
 - `BOLD_API_KEY` (pública) y `BOLD_INTEGRITY_SECRET` (privada) son llaves distintas.
-- Ver `docs/BOLD-SETUP.txt` para WordPress + panel Bold + curl del webhook + ngrok.
+- Lovable: incluir dominio en `CORS_ALLOWED_ORIGINS` y `?api_base=` en el iframe.
+- Ver `docs/BOLD-SETUP.txt` para WordPress + Lovable + panel Bold + curl del webhook + ngrok.
 
 ### Wompi (webhook genérico)
 
@@ -484,13 +487,13 @@ WordPress (WooCommerce) ──genera referencia──► Wompi
 
 ---
 
-## Estado del proyecto (2026-07-23)
+## Estado del proyecto (2026-07-30)
 
-- **Producción:** Widget web en WordPress/BeBuilder (assets `wp-content/uploads/2026/07/`). API Go + Worker Python en Docker.
-- **Billing Bold:** checkout firmado + webhook HMAC. $40.000 COP = mensajes ilimitados + PDF/Excel (portal/ECharts gratis). Flujo de pago: correo en portal → botón Bold.
+- **Producción / embed:** Widget WordPress/BeBuilder (assets `wp-content/uploads/2026/07/`). API Go + Worker Python en Docker. Tarjeta Lovable para registro → pago.
+- **Billing Bold:** checkout firmado + webhook HMAC. $40.000 COP = mensajes ilimitados + PDF/Excel (portal/ECharts gratis). Flujo: correo → `PU_mountBoldCheckout` (portal o Lovable).
 - **Producto v2:** contador diario (`messages_today`/`quota_date`, `America/Bogota`); ECharts/portal/multi-gráfica free; PDF/Excel gate en backend.
-- **Login email:** backend `link-email` + merge; auto-vínculo en webhook; **UI en `premium-portal.html`**. Pendiente: formulario en el widget y magic link/OTP.
+- **Login email:** backend `link-email` + merge; auto-vínculo en webhook; **UI en `premium-portal.html` y `lovable-login-card.html`**. Pendiente: formulario en el widget y magic link/OTP.
 - **Rendimiento chat:** `generate_echarts` condicional; timeouts Gemini (90s) y worker (330s).
 - **Visor multi-widget:** payload `dashboard` + grid ejecutivo en `premium-dashboard-session.html` (KPIs, área, percepción, Q&A, bullets); `echarts_option` sigue siendo el primario.
-- **IA:** Gemini 3.x (flash-preview + fallbacks) + Ollama opcional. SDK `google.generativeai` deprecado (migración pendiente).
-- **Pendiente:** email UI en widget; no generar PDF/Excel free en worker; gate PDF/Excel en bot Telegram; tests E2E; eliminar `app/database/quota.db` si aún existe; desactivar `DEV_FORCE_PREMIUM` fuera de QA.
+- **IA:** Gemini 3.x (flash-preview + fallbacks) + Ollama opcional. Guards CSV (`csv_code_guards.py`). SDK `google.generativeai` deprecado (migración pendiente).
+- **Pendiente:** email UI en widget; no generar PDF/Excel free en worker; gate PDF/Excel en bot Telegram; tests E2E de recuperación premium por email; desactivar `DEV_FORCE_PREMIUM` fuera de QA.

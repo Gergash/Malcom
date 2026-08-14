@@ -126,9 +126,9 @@ BOLD_WEBHOOK_SECRET=
 
 ### Estado Actual del Ecosistema InsightFlow / Malcom
 
-> Ver estado vigente en `docs/BUSINESS-RULES-v2.md` y `README.md` (2026-07-17):
+> Ver estado vigente en `docs/BUSINESS-RULES-v2.md` y `README.md` (2026-07-30):
 
-- Producto v2: 15 msgs/día free; portal + ECharts gratis; $40k Bold = mensajes ilimitados + PDF/Excel.
-- Login correo en `premium-portal.html` (gate del botón Bold); `link-email` + auto-vínculo en webhook.
+- Producto v2: 15 msgs/día free; portal + ECharts multi-widget gratis; $40k Bold = mensajes ilimitados + PDF/Excel.
+- Login correo en `premium-portal.html` y `lovable-login-card.html` (gate Bold con `PU_mountBoldCheckout`); `link-email` + auto-vínculo en webhook.
 - Assets WordPress en `wp-content/uploads/2026/07/`.
 - Pendiente: email UI en widget, magic link, no generar PDF/Excel free en worker.

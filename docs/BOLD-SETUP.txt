@@ -1,6 +1,6 @@
 InsightFlow — Bold checkout rápido ($40.000 COP)
 ================================================
-Última actualización: 2026-07-17
+Última actualización: 2026-07-30
 
 Reglas de producto: docs/BUSINESS-RULES-v2.md
   · El pago activa MENSAJES ILIMITADOS + PDF/Excel (portal + ECharts son gratis).
@@ -8,10 +8,12 @@ Reglas de producto: docs/BUSINESS-RULES-v2.md
 Flujo de pago recomendado (producción)
 --------------------------------------
 1. Usuario agota 15 msgs/día → paywall en el chat (portal/tablero siguen visibles).
-2. CTA «Ingresar con mi correo para pagar» (tarjeta BeBuilder o widget)
-   → https://www.powerupsagencia.com/portal-premium/#portal-login
-3. En el portal: ingresa correo → POST /api/v1/billing/link-email
-4. Se revela el botón Bold (#pu-pro-card / #pu-bold-mount)
+2. CTA «Ingresar con mi correo para pagar»:
+     · WordPress: https://www.powerupsagencia.com/portal-premium/#portal-login
+     · Lovable: iframe a lovable-login-card.html?api_base=<API>
+3. Usuario ingresa correo → POST /api/v1/billing/link-email
+4. Se revela el botón Bold (#pu-pro-card / #pu-bold-mount) vía PU_mountBoldCheckout
+   (powerups-bold-checkout.js respeta data-bold-gate="login")
 5. Pago aprobado → webhook → is_premium=true (+ email del pagador si Bold lo envía)
 6. Chat sin límite; PDF/Excel desbloqueados
 
@@ -26,10 +28,28 @@ Opción alternativa: página checkout dedicada
   (el botón redirige a /portal-premium/#portal-login; NO monta Bold en la tarjeta)
 - Subir embed/powerups-bold-checkout.js a Medios:
   https://www.powerupsagencia.com/wp-content/uploads/2026/07/powerups-bold-checkout.js
+  (tras cambios de gate login, sube de nuevo con ?v=5 o mayor)
 - Hook Bottom: bebuilder-install-snippet.html (carga el JS si hay #pu-bold-mount)
 - BeBuilder ELIMINA <script> del bloque HTML; el loader va en Hook Bottom
 
-2) Panel Bold
+2) Lovable
+----------
+- Hostear embed/lovable-login-card.html (Medios WP, CDN o static host)
+- En Lovable pegar iframe (ver embed/lovable-login-card-snippet.html):
+
+  <iframe
+    src="https://TU-HOST/lovable-login-card.html?api_base=https://TU-API"
+    title="Registro InsightFlow Premium"
+    style="width:100%;max-width:480px;height:620px;border:0;border-radius:16px;"
+    allow="payment *"
+    loading="lazy"
+  ></iframe>
+
+- En .env del API Go añadir orígenes Lovable:
+
+  CORS_ALLOWED_ORIGINS=https://tu-app.lovable.app,https://preview--tu-app.lovable.app
+
+3) Panel Bold
 -------------
 - Link / botón de pago: monto fijo 40.000 COP
 - data-amount="40000" y data-currency="COP" (los firma el endpoint bold-checkout)
@@ -43,12 +63,13 @@ Opción alternativa: página checkout dedicada
 
 - Copiar el secreto del webhook → BOLD_WEBHOOK_SECRET en .env de la API
 
-3) Variables .env (API Go)
+4) Variables .env (API Go)
 --------------------------
 BOLD_API_KEY=<llave de identidad — Botón de pagos>
 BOLD_INTEGRITY_SECRET=<llave secreta — hash del botón, distinta de la API key>
 BOLD_WEBHOOK_SECRET=<secreto del webhook Bold>
 PREMIUM_AMOUNT_COP=40000
+CORS_ALLOWED_ORIGINS=<dominios WordPress y/o Lovable, separados por coma>
 
 IMPORTANTE: si defines data-amount en el botón Bold, también son obligatorios
 data-order-id y data-integrity-signature. Sin ellos aparece el error BTN-001.
@@ -58,14 +79,14 @@ Reiniciar API tras cambiar .env:
 
   docker compose up -d --build api
 
-4) Verificar
+5) Verificar
 ------------
 GET /api/v1/billing/status?chat_id=12345678
 GET /api/v1/billing/status?email=user@example.com
 
   { "is_premium": true, "plan": "premium", "paywall_active": false }
 
-5) chat_id en el webhook
+6) chat_id en el webhook
 ------------------------
 La API busca chat_id en este orden:
   - metadata.chat_id
@@ -74,7 +95,7 @@ La API busca chat_id en este orden:
 
 Si Bold envía el correo del pagador, se auto-vincula al usuario (Fase 0 login).
 
-6) Prueba local del webhook (curl)
+7) Prueba local del webhook (curl)
 ----------------------------------
 # Generar firma HMAC-SHA256 del body con BOLD_WEBHOOK_SECRET
 # Header: X-Bold-Signature: <hex o sha256=<hex>>
@@ -86,10 +107,11 @@ curl -X POST http://localhost:8080/api/v1/billing/bold-webhook \
 
 Respuesta esperada: success=true, is_premium=true
 
-7) Ngrok (dev)
+8) Ngrok (dev)
 --------------
 Desde Test/ngrok-v3-stable-windows-amd64:
 
   ./ngrok.exe http 8080 --url=nonconfidential-suprarational-sage.ngrok-free.dev
 
 La API Docker debe estar en :8080 (docker compose up -d api brain postgres).
+Health check: curl http://localhost:8080/health
