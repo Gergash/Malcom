@@ -84,13 +84,23 @@ docker ps               # sin sudo
 sudo sshd -T | grep -E 'permitrootlogin|passwordauthentication'
 ```
 
-Estado actual del SSH: `permitrootlogin no`, `pubkeyauthentication yes`, **`passwordauthentication yes`**.
+Estado actual del SSH: `permitrootlogin no`, `pubkeyauthentication yes`, **`passwordauthentication no`**, `kbdinteractiveauthentication no`.
 
-> 🔲 **Pendiente de endurecer.** El acceso por contraseña sigue activo como respaldo. Para cerrarlo, tras confirmar que la llave funciona desde todas tus máquinas:
+El acceso por contraseña se deshabilitó el 2026-08-19. La config vive en `/etc/ssh/sshd_config.d/00-hardening.conf`:
+
+```
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+```
+
+⚠️ **El prefijo `00-` es obligatorio, no estético.** Ver [Trampas conocidas](#trampas-conocidas).
+
+> **Solo hay una llave autorizada** (`insightflow-vps`, ed25519). Para dar acceso a otra máquina:
 > ```bash
-> printf 'PasswordAuthentication no\n' | sudo tee -a /etc/ssh/sshd_config.d/99-hardening.conf
-> sudo sshd -t && sudo systemctl reload ssh
+> ssh-copy-id -i ~/.ssh/id_ed25519.pub insightflow@2.25.107.229
 > ```
+> Si se pierde la llave, el único acceso es la **consola de navegador de Hostinger** (hPanel → VPS → Browser terminal), que no pasa por SSH. `sudo` sigue pidiendo contraseña con normalidad.
 
 **No abrir `5432` ni `8080` en UFW.** Ver el aviso sobre Docker y UFW en [Trampas conocidas](#trampas-conocidas).
 
@@ -181,6 +191,8 @@ ENABLE_PUBLIC_DATA=false
 CORS_ALLOWED_ORIGINS=https://www.powerupsagencia.com,https://powerupsagencia.com,https://clarity-connector-18.lovable.app
 CSP_FRAME_ANCESTORS=https://www.powerupsagencia.com https://powerupsagencia.com
 BILLING_WEBHOOK_SECRET=<openssl rand -hex 32>
+# Opcional. Default: 127.0.0.1,::1,172.16.0.0/12 — ver "Trusted proxies" abajo.
+# TRUSTED_PROXIES=127.0.0.1,::1,172.16.0.0/12
 ```
 
 ### Pagos (pendientes de configurar)
@@ -323,6 +335,30 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST -H 'Content-Type: application/j
 
 ---
 
+## Trusted proxies (IP real del cliente)
+
+Gin por defecto confía en **cualquier** peer y acepta el `X-Forwarded-For` que mande el cliente, así que cualquiera puede falsear su IP y saltarse el rate limit por IP. Se restringe con `TRUSTED_PROXIES` (`cmd/api/main.go` → `router.SetTrustedProxies`).
+
+⚠️ **El valor correcto NO es `127.0.0.1`.** La API corre en Docker: cuando Caddy la alcanza por el puerto publicado, el peer que ve Gin es la **gateway del bridge** (`172.18.0.1`), no loopback. Si la lista solo tiene `127.0.0.1`, Gin deja de confiar en el proxy, ignora `X-Forwarded-For` y devuelve la IP de la gateway **para todos los clientes** — el rate limit pasa a ser un cubo global y un solo abusador estrangula a todo el mundo. Es peor que no tocar nada.
+
+Default aplicado: `127.0.0.1,::1,172.16.0.0/12` (el rango `172.16.0.0/12` cubre todos los bridges que Docker asigna, `172.17`–`172.31`, así que sobrevive a recrear la red).
+
+Verificación — las dos peticiones deben registrar tu IP real, no `1.2.3.4` ni `172.18.0.1`:
+
+```bash
+curl -s -o /dev/null https://api.powerupsecosistem.online/health
+curl -s -o /dev/null -H 'X-Forwarded-For: 1.2.3.4' https://api.powerupsecosistem.online/health
+ssh insightflow@2.25.107.229 'cd ~/apps/insightflow && docker compose logs --tail=5 api | grep GIN'
+```
+
+Consultar la gateway real si cambia la red:
+
+```bash
+docker network inspect insightflow_default --format '{{range .IPAM.Config}}{{.Subnet}} {{.Gateway}}{{end}}'
+```
+
+---
+
 ## Orden de despliegue seguro
 
 El orden importa. Publicar antes de cerrar deja una ventana explotable:
@@ -343,6 +379,14 @@ El orden importa. Publicar antes de cerrar deja una ventana explotable:
 **El log a fichero de Caddy tumba el servicio.** Un bloque `log { output file /var/log/caddy/api.log }` hace fallar el arranque con `permission denied`, **aunque** el directorio sea `caddy:caddy 755` y `sudo -u caddy touch` ahí funcione. La causa probable es confinamiento AppArmor (el `touch` va sin confinar, el servicio no). Lo peor: `sudo caddy validate` pasa sin quejarse, así que no se ve venir hasta el restart. Solución: no usar log a fichero; leer accesos con `journalctl -u caddy -f`.
 
 **Un `reload` fallido deja Caddy colgado.** `systemctl reload caddy` con config inválida deja el servicio en estado `reloading` durante minutos, repitiendo `Reload operation timed out`, sin propagar el error. Usar `systemctl restart` para salir de ahí, y preferir `restart` cuando se cambia la config a fondo.
+
+**En sshd gana la PRIMERA aparición, y cloud-init te pisa la config.** La imagen de Hostinger trae `/etc/ssh/sshd_config.d/50-cloud-init.conf` con `PasswordAuthentication yes`. Como `sshd_config` hace `Include /etc/ssh/sshd_config.d/*.conf` en la línea 12 y los archivos se leen en orden alfabético, un `99-hardening.conf` **nunca** llega a aplicarse: gana el `50-`. El síntoma es desconcertante — el archivo contiene `PasswordAuthentication no`, `sshd -t` valida, el reload dice OK, y `sshd -T` sigue reportando `yes`. Por eso el archivo se llama `00-hardening.conf`. Comprobar SIEMPRE el estado efectivo, no el contenido del archivo:
+
+```bash
+sudo sshd -T | grep -E 'passwordauthentication|permitrootlogin'
+```
+
+**`sudo -S` y los heredocs se pelean por stdin.** `echo "$PASS" | sudo -S tee -a fichero <<EOF ... EOF` hace que la contraseña acabe dentro del heredoc: el comando falla, no escribe nada, y los `&& echo OK` posteriores pueden imprimir éxito igualmente. Usar `echo "$PASS" | sudo -S sh -c 'printf "..." >> fichero'`, y verificar siempre el resultado.
 
 **La rama es `master`, no `main`.** Cualquier runbook con `git pull origin main` falla.
 
@@ -446,9 +490,10 @@ sudo systemctl restart caddy
 | 2 | Añadir `BOLD_API_KEY`, `BOLD_INTEGRITY_SECRET`, `BOLD_WEBHOOK_SECRET` | Los pagos no activan premium (401) |
 | 3 | Repuntar el webhook en el panel de Bold a `https://api.powerupsecosistem.online/api/v1/billing/bold-webhook` | Pagos |
 | 4 | Actualizar `API_BASE` en WordPress y Lovable al dominio nuevo | Widget y portal |
-| 5 | Fijar trusted proxies de Gin a `127.0.0.1` | Gin avisa que confía en todos los proxies; permite falsear la IP y saltarse el rate limit por IP |
-| 6 | `PasswordAuthentication no` en SSH | Endurecimiento |
-| 7 | Ollama en el host (fase 7) | Fallback local de IA |
+| 5 | Añadir una segunda llave SSH autorizada | Hoy solo una máquina tiene acceso |
+| 6 | Ollama en el host (fase 7) | Fallback local de IA |
+
+Cerrados el 2026-08-19: trusted proxies de Gin (commit `1748ee1`) y `PasswordAuthentication no`.
 
 ---
 
