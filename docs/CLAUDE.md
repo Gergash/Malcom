@@ -2,10 +2,10 @@
 
 Scope de Gentle AI para el proyecto **InsightFlow Malcom**: chatbot de análisis de datos con Telegram, motor Python de IA, y API Go para gestión de usuarios y pagos.
 
-**Última actualización:** 2026-08-14  
+**Última actualización:** 2026-08-19  
 **Reglas de producto:** [`BUSINESS-RULES-v2.md`](BUSINESS-RULES-v2.md) (fuente de verdad).  
-**Despliegue VPS:** [`VPS-DEPLOY.md`](VPS-DEPLOY.md) (go-live Hostinger 2026-08-14).  
-**Estado v2:** cuota diaria, portal/ECharts free, visor multi-widget, PDF/Excel premium (gate Go), Bold + login correo en portal y tarjeta Lovable — implementados. Pendiente: email UI en widget, magic link, no generar PDF/Excel free en worker. Go-live VPS: fases 1–3 hechas; proxy/SSL, `compose up` prod y Ollama pendientes.
+**Despliegue VPS:** [`VPS-DEPLOY.md`](VPS-DEPLOY.md) — en producción en `https://api.powerupsecosistem.online`.  
+**Estado v2:** cuota diaria, portal/ECharts free, visor multi-widget, PDF/Excel premium (gate Go), Bold + login correo en portal y tarjeta Lovable — implementados. Pendiente: email UI en widget, magic link, no generar PDF/Excel free en worker. Go-live VPS: fases 1–5 hechas (stack en marcha tras Caddy + SSL); pendientes secretos Bold, rotar llaves expuestas y Ollama.
 
 ---
 
@@ -178,10 +178,11 @@ uvicorn app.worker:app --port 8001 --reload
 go build -o api.exe ./cmd/api
 ```
 
-### Convenciones prod (2026-08-14)
+### Convenciones prod (2026-08-19)
 
 1. Postgres **no** se publica (`ports`); solo red Compose. Password vía `POSTGRES_PASSWORD` + `DATABASE_URL` en `.env`.
-2. API solo en `127.0.0.1:8080`; delante Caddy/Dokploy (80/443) o ngrok en dev.
-3. `DEV_FORCE_PREMIUM=false` y `PUBLIC_BASE_URL=https://dominio-real` en VPS.
+2. API solo en `127.0.0.1:8080`; delante Caddy (80/443) con SSL Let's Encrypt, o ngrok en dev. Docker publica puertos saltándose UFW, así que un bind a `0.0.0.0` queda expuesto a internet aunque el firewall lo niegue.
+3. `DEV_FORCE_PREMIUM=false` y `PUBLIC_BASE_URL=https://api.powerupsecosistem.online` en VPS.
 4. Ollama en el **host**; `brain` usa `host.docker.internal` (`extra_hosts`). Detalle en [`VPS-DEPLOY.md`](VPS-DEPLOY.md).
-5. Flujo de cambios: editar en local → push GitHub → `git pull` en VPS (nunca commitear `.env` real).
+5. Flujo de cambios: editar en local → push GitHub (rama `master`) → `git pull` en VPS (nunca commitear `.env` real).
+6. `BILLING_WEBHOOK_SECRET` es **obligatorio** en producción: sin él, `POST /api/v1/billing/webhook` pasa sin autenticar y cualquiera puede activarse premium. El webhook de Bold, en cambio, falla cerrado sin `BOLD_WEBHOOK_SECRET`.
