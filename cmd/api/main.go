@@ -85,6 +85,13 @@ func main() {
 	router := gin.Default()
 	router.MaxMultipartMemory = uploadMaxBytes
 
+	// Sin esto Gin confía en cualquier peer y acepta el X-Forwarded-For que envíe
+	// el cliente, lo que permite falsear la IP y saltarse el rate limit por IP.
+	if err := router.SetTrustedProxies(cfg.TrustedProxies); err != nil {
+		log.Fatalf("TRUSTED_PROXIES inválido %v: %v", cfg.TrustedProxies, err)
+	}
+	log.Printf("Trusted proxies: %v", cfg.TrustedProxies)
+
 	router.Use(middleware.DefaultSecurityHeaders())
 	router.Use(middleware.BuildCORS(cfg.CORSAllowedOrigins))
 	if len(cfg.CORSAllowedOrigins) > 0 {

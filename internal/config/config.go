@@ -29,6 +29,13 @@ type Config struct {
 	// Formato: "https://powerups.com.co https://www.powerups.com.co". Vacío = solo 'self'.
 	CSPFrameAncestors string
 
+	// TrustedProxies — de qué peers acepta Gin la cabecera X-Forwarded-For para
+	// resolver la IP del cliente. Debe listar al proxy, no a la API: cuando la API
+	// corre en Docker detrás de Caddy, el peer es la gateway del bridge
+	// (172.x), no 127.0.0.1. Si la lista no incluye al peer real, ClientIP()
+	// devuelve la IP de la gateway para todos y el rate limit pasa a ser global.
+	TrustedProxies []string
+
 	// Límite aproximado de peticiones /chat y /chat/upload por IP (token bucket). Cero = desactivado.
 	ChatRateLimitRPS   float64
 	ChatRateLimitBurst int
@@ -119,6 +126,13 @@ func Load() (*Config, error) {
 	enablePublicData := strings.ToLower(strings.TrimSpace(os.Getenv("ENABLE_PUBLIC_DATA"))) == "true"
 
 	corsOrigins := parseCommaList(os.Getenv("CORS_ALLOWED_ORIGINS"))
+	trustedProxies := parseCommaList(os.Getenv("TRUSTED_PROXIES"))
+	if len(trustedProxies) == 0 {
+		// Loopback (API en el host) + rango privado de los bridges de Docker
+		// (172.16.0.0/12 cubre 172.17–172.31), que es el peer cuando Caddy
+		// alcanza al contenedor por el puerto publicado.
+		trustedProxies = []string{"127.0.0.1", "::1", "172.16.0.0/12"}
+	}
 	cspFrames := strings.TrimSpace(os.Getenv("CSP_FRAME_ANCESTORS"))
 
 	chatRPS := 8.0
@@ -210,6 +224,7 @@ func Load() (*Config, error) {
 		QuotaTimezone:           quotaTZ,
 		EnablePublicData:        enablePublicData,
 		CORSAllowedOrigins:      corsOrigins,
+		TrustedProxies:          trustedProxies,
 		CSPFrameAncestors:       cspFrames,
 		ChatRateLimitRPS:        chatRPS,
 		ChatRateLimitBurst:      chatBurst,
