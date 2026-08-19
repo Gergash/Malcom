@@ -44,6 +44,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL es obligatorio (definir en .env)}
       WORKER_URL: http://brain:8001
       DATA_DIR: /app/data
+      EMBED_DIR: /app/embed
       API_PORT: "8080"
     ports:
       # Solo loopback: Docker publica puertos saltándose UFW, así que exponer
@@ -52,6 +53,9 @@ services:
       - "127.0.0.1:8080:8080"
     volumes:
       - ./data:/app/data
+      # Solo lectura: son clientes estáticos públicos y se actualizan con git pull,
+      # sin necesidad de reconstruir la imagen.
+      - ./embed:/app/embed:ro
     depends_on:
       postgres:
         condition: service_healthy

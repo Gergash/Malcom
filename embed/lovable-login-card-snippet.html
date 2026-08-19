@@ -2,29 +2,44 @@
   LOVABLE — Embed tarjeta registro + pago Bold
   ════════════════════════════════════════════
 
+  Página Lovable: https://clarity-connector-18.lovable.app
+  API producción: https://api.powerupsecosistem.online
+
+  La tarjeta se sirve desde la propia API (mismo origen que los endpoints que
+  llama), así que no hace falta alojarla en WordPress ni en un CDN.
+
   OPCIÓN 1 — iframe (recomendada)
   ───────────────────────────────
   En Lovable: bloque HTML / Embed / Custom Code con:
 
   <iframe
-    src="https://TU-HOST/embed/lovable-login-card.html?api_base=https://api.powerupsecosistem.online"
+    src="https://api.powerupsecosistem.online/embed/lovable-login-card.html?api_base=https://api.powerupsecosistem.online"
     title="Registro InsightFlow Premium"
     style="width:100%;max-width:480px;height:620px;border:0;border-radius:16px;overflow:hidden;background:transparent;"
     allow="payment *"
     loading="lazy"
   ></iframe>
 
-  Sustituye TU-HOST (WordPress Medios, CDN o ngrok sirviendo el HTML estático).
+  El ?api_base= es redundante ahora que la tarjeta vive en el mismo origen que
+  la API, pero se deja explícito para que el iframe siga funcionando aunque
+  alguien copie el HTML a otro host.
 
-  OPCIÓN 2 — Página completa
-  ───────────────────────────
-  Sube embed/lovable-login-card.html a Medios y usa su URL directa en Lovable.
+  OPCIÓN 2 — Página completa (enlace directo, sin iframe)
+  ───────────────────────────────────────────────────────
+  Enlazar o redirigir a:
 
-  CONFIGURACIÓN API (obligatorio en producción)
+  https://api.powerupsecosistem.online/embed/lovable-login-card.html?api_base=https://api.powerupsecosistem.online
+
+  Útil como página de registro independiente o si el iframe da problemas de
+  altura en móvil.
+
+  CONFIGURACIÓN API (ya aplicada en producción)
   ─────────────────────────────────────────────
-  1. En .env del API Go:
-       CORS_ALLOWED_ORIGINS=https://tu-app.lovable.app,https://preview--tu-app.lovable.app
-  2. Query param api_base apuntando al API Malcom (ngrok en dev).
+  En el .env del API Go:
+      CORS_ALLOWED_ORIGINS=https://www.powerupsagencia.com,https://powerupsagencia.com,https://clarity-connector-18.lovable.app,https://preview--clarity-connector-18.lovable.app
+
+  ⚠️ El dominio de PREVIEW de Lovable (preview--…) debe estar en la lista o el
+  editor de Lovable recibirá 403 en todas las llamadas mientras desarrollas.
 
   FLUJO
   ─────
@@ -34,6 +49,10 @@
   4. GET /api/v1/billing/bold-checkout?chat_id= → botón Bold embebido
   5. Tras pago → webhook Bold activa premium
 
+  ESTADO: el paso 4 devuelve 503 ("Bold no configurado") hasta que se añadan
+  BOLD_API_KEY y BOLD_INTEGRITY_SECRET al .env de la VPS. Los pasos 1–2
+  (registro por correo) ya funcionan.
+
   ARCHIVOS RELACIONADOS
   ─────────────────────
   embed/lovable-login-card.html     — tarjeta completa (este flujo)
@@ -41,4 +60,4 @@
   embed/premium-portal.html         — portal WordPress con el mismo login
 -->
 
-<!-- Copia solo el iframe de arriba en tu página Lovable -->
+<!-- Copia solo el iframe de la OPCIÓN 1 en tu página Lovable -->

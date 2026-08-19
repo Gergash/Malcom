@@ -103,6 +103,20 @@ func main() {
 		log.Println("ENABLE_PUBLIC_DATA=true: /data expuesto sin token (solo desarrollo).")
 	}
 
+	// Clientes embebibles (tarjeta Lovable, portal, widget). Servirlos desde el
+	// mismo origen que la API evita configurar un host aparte y deja las llamadas
+	// del propio cliente como same-origin. Son estáticos públicos, sin secretos.
+	embedDir := os.Getenv("EMBED_DIR")
+	if strings.TrimSpace(embedDir) == "" {
+		embedDir = "embed"
+	}
+	if info, err := os.Stat(embedDir); err == nil && info.IsDir() {
+		router.Static("/embed", embedDir)
+		log.Printf("Clientes embebibles servidos en /embed (desde %s)", embedDir)
+	} else {
+		log.Printf("Aviso: directorio embed no encontrado en %q — /embed no se sirve.", embedDir)
+	}
+
 	router.GET("/download/:token", downloadHandler.Download)
 	router.GET("/dashboard", middleware.DashboardPageSecurity(cfg.CSPFrameAncestors), dashboardHandler.Page)
 
