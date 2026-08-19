@@ -165,7 +165,7 @@ cd Test/ngrok-v3-stable-windows-amd64
 ./ngrok.exe http 8080 --url=nonconfidential-suprarational-sage.ngrok-free.dev
 
 # VPS (prod)
-ssh insightflow@2.25.107.229
+ssh <usuario>@<ip-vps>   # ver docs/VPS-DEPLOY.md (local, fuera del repo)
 cd ~/apps/insightflow && git pull && docker compose up -d --build
 
 # Solo el bot (desarrollo local)

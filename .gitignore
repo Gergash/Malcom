@@ -29,3 +29,7 @@ Test/DBF-ECV-Salud-2025/
 *.sav
 *.SAV
 *.csv
+
+# --- Documentacion operativa sensible (IPs, hostnames, topologia) ---
+# Se mantiene solo en local; el repo es publico.
+docs/VPS-DEPLOY.md
