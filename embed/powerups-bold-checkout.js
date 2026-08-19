@@ -9,7 +9,7 @@
 (function () {
   'use strict';
 
-  var DEFAULT_API_BASE = 'https://nonconfidential-suprarational-sage.ngrok-free.dev';
+  var DEFAULT_API_BASE = 'https://api.powerupsecosistem.online';
   var STORAGE_CHAT = 'powerups_edge_chat_id_v1';
   var STORAGE_API = 'powerups_edge_api_base';
   var BOLD_SDK = 'https://checkout.bold.co/library/boldPaymentButton.js';
