@@ -96,11 +96,11 @@ except ModuleNotFoundError:
     from agents.model_manager import get_default_gemini_model_names
 
 _DATA_EXTENSIONS = (".csv", ".xlsx", ".xls")
-MAX_RESPONSE_CHARS = 4096 - 30
+MAX_RESPONSE_CHARS = 12000
 LENGTH_INSTRUCTION = (
-    f"LÍMITE ESTRICTO: tu respuesta debe tener MÁXIMO {MAX_RESPONSE_CHARS} caracteres (límite del canal). "
-    "Redacta de forma concisa: prioriza hallazgos clave, evita listas interminables y repeticiones. "
-    "Si el análisis es extenso, resume en secciones breves con los números y conclusiones más importantes."
+    f"LÍMITE DE RESPUESTA WEB: tu respuesta debe tener MÁXIMO {MAX_RESPONSE_CHARS} caracteres. "
+    "Redacta con suficiente detalle para una persona no técnica, prioriza hallazgos y evita repeticiones. "
+    "Usa párrafos y listas breves cuando ayuden a leer el resultado."
 )
 
 _CODE_INDICATORS = (
@@ -325,12 +325,12 @@ class AnalystAgent:
             "Actúas como Ingeniero de Datos Senior experto en idiosincrasia de archivos corporativos y gubernamentales de Colombia "
             "(DIAN, RIPS, extractos bancarios).\n"
             "Tu propósito es transformar datos complejos en insights de negocio claros.\n"
-            "Siempre te presentas como el Analista Senior de InsightFlow.\n"
             "Cuando hay archivos CSV/Excel, generas código Python local para analizarlos.\n"
             "Para informes PDF existe `generar_reporte_pdf` y para Excel `generar_reporte_excel_avanzado` inyectadas en ejecución; "
             "el contexto de manuales va en `contexto_documentos`. La plataforma envía reporte_final.pdf y reporte_final.xlsx al chat cuando se generan.\n"
             "Cuando hay PDFs o documentos indexados, usas el contexto textual proporcionado (nunca código para leerlos).\n"
-            f"Siempre que des una respuesta en texto, respétala máximo {MAX_RESPONSE_CHARS} caracteres (límite del canal): sé conciso, prioriza hallazgos clave."
+            f"Siempre que des una respuesta en texto, respétala máximo {MAX_RESPONSE_CHARS} caracteres para el canal web: "
+            "sé claro, natural y prioriza hallazgos clave."
         )
         self._manager = ModelManager(
             model_names=model_names or get_default_gemini_model_names(),
@@ -377,7 +377,7 @@ class AnalystAgent:
         return self._manager.generate_content(content, **kwargs)
 
     def _cap(self, text: str) -> str:
-        """Recorta al límite de mensaje Telegram."""
+        """Recorta al límite web; Telegram divide la respuesta antes de enviarla."""
         if not text or len(text) <= MAX_RESPONSE_CHARS:
             return text or ""
         return text[: MAX_RESPONSE_CHARS - 50].rstrip() + "\n\n[— Respuesta recortada por límite del mensaje.]"
@@ -890,7 +890,7 @@ class AnalystAgent:
         prompt_final = (
             f"El código se ejecutó con éxito. Resultados técnicos del análisis de datos:\n{resultados}\n\n"
             f"{narrative_contract}"
-            "Responde como Analista Senior de InsightFlow. No menciones el código, solo conclusiones y "
+            "No menciones el código ni tu identidad, solo conclusiones y "
             f"hallazgos en lenguaje natural.{cross_reference} {LENGTH_INSTRUCTION}"
         )
         response = self._generate(prompt_final)
@@ -1065,7 +1065,8 @@ class AnalystAgent:
                 f"Muestra: {df_sample.to_dict('records')}"
             )
         except Exception as e:
-            return f"Error al leer la estructura del archivo local: {e}", None
+            print(f"Error leyendo estructura del archivo local: {e}")
+            return "No pude preparar este archivo para el análisis. El sistema registró el incidente.", None
 
         domain = classify_domain(schema_columns)
         print(f"DEBUG: dominio clasificado → {domain} | columnas: {schema_columns[:8]}")
@@ -1103,7 +1104,8 @@ class AnalystAgent:
             respuesta_texto = response.text
             codigo_python = self._sanitize_code(self._extraer_codigo(respuesta_texto))
         except Exception as e:
-            return f"Error de comunicación con el modelo de análisis: {str(e)}", None
+            print(f"Error de comunicación con el modelo de análisis: {e}")
+            return "No pude completar el análisis en este momento. El sistema registró el incidente.", None
 
         if not self._looks_like_python_code(codigo_python):
             return self._cap(respuesta_texto), None
@@ -1157,13 +1159,8 @@ class AnalystAgent:
                     print(f"Error generando corrección (intento {attempt}): {e2}")
                     break
 
-        err_msg = str(last_error) if last_error else "error desconocido"
+        print(f"Análisis agotó sus reintentos: {last_error}")
         return (
-            self._cap(
-                f"Encontré un problema al analizar el archivo: {err_msg}. "
-                f"Columnas disponibles en tu CSV: [{cols_hint}]. "
-                "Reformula la pregunta usando esos nombres exactos "
-                "(no inventes columnas como Sector o Categoria_Producto)."
-            ),
+            "No pude completar este análisis automáticamente. El sistema registró el incidente.",
             None,
         )

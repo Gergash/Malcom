@@ -477,13 +477,34 @@
    * - imageUrl: inserta <img> debajo del texto si es mensaje de bot.
    * - downloadInfo: { url, label } → inserta un botón de descarga del reporte.
    */
+  function renderMessageText(text) {
+    var fragment = document.createDocumentFragment();
+    var source = String(text || '');
+    var pattern = /(\*\*|__)([\s\S]*?)\1/g;
+    var cursor = 0;
+    var match;
+    while ((match = pattern.exec(source)) !== null) {
+      if (match.index > cursor) {
+        fragment.appendChild(document.createTextNode(source.slice(cursor, match.index)));
+      }
+      var strong = document.createElement('strong');
+      strong.textContent = match[2];
+      fragment.appendChild(strong);
+      cursor = pattern.lastIndex;
+    }
+    if (cursor < source.length) {
+      fragment.appendChild(document.createTextNode(source.slice(cursor)));
+    }
+    return fragment;
+  }
+
   function appendMessage(role, text, imageUrl, downloadInfo) {
     var box = el('powerups-edge-messages');
     var d = document.createElement('div');
     d.className = 'powerups-edge__msg powerups-edge__msg--' + (role === 'user' ? 'user' : role === 'sys' ? 'sys' : 'bot');
     var textEl = document.createElement('div');
     textEl.className = 'powerups-edge__msg-text';
-    textEl.textContent = text;
+    textEl.appendChild(renderMessageText(text));
     d.appendChild(textEl);
     if (imageUrl && role === 'bot') {
       var img = document.createElement('img');
@@ -852,7 +873,7 @@
       applyDashboardFromChatResponse(out);
       await refreshCredits();
     } catch (e) {
-      appendMessage('sys', 'No se pudo completar la acción: ' + (e.message || e), null);
+      appendMessage('sys', 'No pude completar esta acción en este momento.', null);
     }
   }
 
@@ -952,7 +973,7 @@
         }
         applyDashboardFromChatResponse(out);
       } catch (err) {
-        appendMessage('sys', 'Error: ' + (err.message || err), null, null);
+        appendMessage('sys', 'No pude completar el análisis en este momento.', null, null);
       } finally {
         // BUG FIX: setComposerSending(false) va primero para garantizar que el
         // compositor se re-habilite incluso si refreshCredits() falla o devuelve
@@ -990,7 +1011,7 @@
         appendMessage('bot', msg, null);
         pushHistory('bot', msg);
       } catch (err) {
-        appendMessage('sys', 'No se pudo subir el archivo: ' + (err.message || err), null);
+        appendMessage('sys', 'No pude preparar este archivo en este momento.', null);
       }
     });
   }

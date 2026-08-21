@@ -152,4 +152,5 @@ class PredictorAgent:
             response = self.model.generate_content(prompt)
             return response.text
         except Exception as e:
-            return f"Error al generar la recomendación: {str(e)}"
+            print(f"Error generando recomendación: {e}")
+            return "No pude completar esta recomendación en este momento. El sistema registró el incidente."
