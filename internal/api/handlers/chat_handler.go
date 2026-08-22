@@ -137,8 +137,9 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 	requireStrict := filesystem.HasUploadedDataFiles(h.dataDir, req.ChatID)
 	result, err := h.worker.ProcessMessage(ctx, req.ChatID, req.Message, rc, requireStrict)
 	if err != nil {
+		slog.Error("worker process message failed", "chat_id", req.ChatID, "error", err)
 		c.JSON(http.StatusInternalServerError, types.ErrorResponse{
-			Detail: fmt.Sprintf("Error procesando la consulta: %v", err),
+			Detail: "No se pudo completar el análisis en este momento.",
 		})
 		return
 	}

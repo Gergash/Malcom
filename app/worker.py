@@ -97,7 +97,10 @@ async def internal_process_message(body: ProcessMessageRequest):
         ) from None
     except Exception as exc:
         logger.exception("process-message chat_id=%s", body.chat_id)
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=500,
+            detail="No se pudo completar el análisis en este momento.",
+        ) from exc
 
 
 def _ingest_sync(body: IngestFileRequest) -> dict[str, Any]:
@@ -138,4 +141,7 @@ async def internal_ingest_file(body: IngestFileRequest):
         ) from None
     except Exception as exc:
         logger.exception("ingest-file chat_id=%s", body.chat_id)
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=500,
+            detail="No se pudo preparar el archivo en este momento.",
+        ) from exc

@@ -152,7 +152,8 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     except Exception as exc:
         logger.exception("Error ingesting file chat_id=%s", chat_id)
         await update.message.reply_text(
-            f"✅ Archivo '{original_name}' recibido.\n⚠️ Error al procesar: {exc}"
+            f"✅ Archivo '{original_name}' recibido.\n"
+            "No pude prepararlo en este momento; el sistema registró el incidente."
         )
 
 
@@ -190,7 +191,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         logger.exception("Worker error chat_id=%s", chat_id)
         await context.bot.send_message(
             chat_id=chat_id,
-            text=f"⚠️ Tuvimos un problema técnico: {exc}",
+            text="No pude completar el análisis en este momento. El sistema registró el incidente.",
         )
         return
 
