@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>InsightFlow · Staging ngrok (sin WordPress)</title>
+  <style>
+    :root {
+      --bg: #0c1017;
+      --panel: #141a24;
+      --text: #e8edf5;
+      --muted: #8b97ab;
+      --accent: #3d8bfd;
+      --ok: #3ecf8e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, "Segoe UI", Roboto, Arial, sans-serif;
+      background:
+        radial-gradient(ellipse 80% 50% at 20% 0%, #1a2740 0%, transparent 55%),
+        var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    main {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 48px 24px 120px;
+    }
+    h1 { font-size: 1.75rem; font-weight: 650; margin: 0 0 8px; }
+    .badge {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--ok);
+      border: 1px solid rgba(62, 207, 142, 0.35);
+      background: rgba(62, 207, 142, 0.08);
+      padding: 4px 10px;
+      border-radius: 999px;
+      margin-bottom: 16px;
+    }
+    p { color: var(--muted); margin: 0 0 16px; }
+    .card {
+      background: var(--panel);
+      border: 1px solid #243044;
+      border-radius: 16px;
+      padding: 20px 22px;
+      margin: 24px 0;
+    }
+    .card h2 { font-size: 1rem; margin: 0 0 12px; color: var(--text); }
+    code, .mono {
+      font-family: ui-monospace, Consolas, monospace;
+      font-size: 0.85em;
+      color: #b8d4ff;
+      word-break: break-all;
+    }
+    a { color: var(--accent); }
+    ul { margin: 0; padding-left: 1.2rem; color: var(--muted); }
+    li { margin-bottom: 8px; }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 16px;
+      border-radius: 10px;
+      border: 1px solid #2a3a55;
+      background: #1a2333;
+      color: var(--text);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+    .btn:hover { border-color: var(--accent); }
+    .btn-primary {
+      background: linear-gradient(145deg, #2a6fdb, #1e4fa8);
+      border-color: transparent;
+    }
+    #health {
+      font-size: 0.85rem;
+      margin-top: 12px;
+      color: var(--muted);
+    }
+    #health.ok { color: var(--ok); }
+    #health.err { color: #ff6b7a; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="badge">Staging · ngrok · sin WordPress</div>
+    <h1>InsightFlow local</h1>
+    <p>
+      Esta página carga el mismo widget que WordPress, pero los assets y la API
+      salen del túnel ngrok (tu Docker en <span class="mono">:8080</span>).
+      El chat aparece abajo a la derecha.
+    </p>
+
+    <div class="card">
+      <h2>API</h2>
+      <p class="mono" id="api-label">…</p>
+      <div id="health">Comprobando /health…</div>
+      <div class="row">
+        <a class="btn btn-primary" href="#" id="btn-open">Abrir widget</a>
+        <a class="btn" id="link-portal" href="#">Portal premium</a>
+        <a class="btn" id="link-login" href="#">Login / Bold</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Cómo usarlo</h2>
+      <ul>
+        <li>Docker: <span class="mono">docker compose up -d</span> (api + brain + postgres).</li>
+        <li>Ngrok: <span class="mono">./ngrok.exe http 8080</span>.</li>
+        <li><span class="mono">PUBLIC_BASE_URL</span> en tu <span class="mono">.env</span> = esta misma URL ngrok.</li>
+        <li>Abre esta página vía ngrok (no como archivo <span class="mono">file://</span>).</li>
+      </ul>
+    </div>
+  </main>
+
+  <script>
+  (function () {
+    // Misma origin que el túnel: assets + API sin CORS ni Medios WP.
+    var API = window.location.origin.replace(/\/$/, '');
+    var EMBED = API + '/embed';
+
+    document.getElementById('api-label').textContent = API;
+
+    document.getElementById('link-portal').href = EMBED + '/premium-portal.html';
+    document.getElementById('link-login').href =
+      EMBED + '/lovable-login-card.html?api_base=' + encodeURIComponent(API);
+
+    try {
+      localStorage.setItem('powerups_edge_api_base', API);
+    } catch (e) {}
+
+    window.POWERUPS_WIDGET_LOADER = {
+      assetsBase: EMBED + '/',
+      frameUrl: EMBED + '/powerups-edge-frame.html',
+      boldCheckoutUrl: EMBED + '/powerups-bold-checkout.js',
+    };
+    window.POWERUPS_WIDGET_CONFIG = {
+      API_BASE: API,
+      // Checkout / portal de prod solo como referencia; en staging usa Login / Bold de arriba
+      CHECKOUT_URL: EMBED + '/lovable-login-card.html?api_base=' + encodeURIComponent(API) + '&chat_id={chatId}',
+      PREMIUM_PORTAL_URL: EMBED + '/premium-portal.html',
+      DASHBOARD_SESSION_URL: API + '/dashboard',
+    };
+
+    var healthEl = document.getElementById('health');
+    fetch(API + '/health', {
+      headers: { 'ngrok-skip-browser-warning': 'true' },
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        healthEl.textContent = 'API OK · /health ' + r.status;
+        healthEl.className = 'ok';
+      })
+      .catch(function (err) {
+        healthEl.textContent = 'API no responde: ' + err + ' (¿Docker + ngrok activos?)';
+        healthEl.className = 'err';
+      });
+
+    // Cargar el mismo loader inline que BeBuilder (copiado / adaptado).
+    var s = document.createElement('script');
+    s.src = EMBED + '/staging-ngrok/loader-inline.js?v=1';
+    s.onerror = function () {
+      // Fallback: inyectar loader desde bebuilder path relativo si falta loader-inline
+      console.warn('loader-inline.js no cargó; abriendo frame directo');
+    };
+    document.body.appendChild(s);
+
+    document.getElementById('btn-open').addEventListener('click', function (ev) {
+      ev.preventDefault();
+      if (window.POWERUPS_WIDGET_LOADER_API && window.POWERUPS_WIDGET_LOADER_API.abrirInsightFlow) {
+        window.POWERUPS_WIDGET_LOADER_API.abrirInsightFlow();
+      } else {
+        var btn = document.querySelector('#powerups-edge-widget-host iframe');
+        if (btn) btn.contentWindow.postMessage({ type: 'insightflow-widget', action: 'open' }, '*');
+      }
+    });
+  })();
+  </script>
+</body>
+</html>

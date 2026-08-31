@@ -5,6 +5,7 @@ Scope de Gentle AI para el proyecto **InsightFlow Malcom**: chatbot de análisis
 **Última actualización:** 2026-08-19  
 **Reglas de producto:** [`BUSINESS-RULES-v2.md`](BUSINESS-RULES-v2.md) (fuente de verdad).  
 **Despliegue VPS:** [`VPS-DEPLOY.md`](VPS-DEPLOY.md) — en producción en `https://api.powerupsecosistem.online`.  
+**Staging local (Docker en PC):** [`LOCAL-DOCKER-STAGING.md`](LOCAL-DOCKER-STAGING.md) — probar `master` antes de `git pull` en la VPS.  
 **Estado v2:** cuota diaria, portal/ECharts free, visor multi-widget, PDF/Excel premium (gate Go), Bold + login correo en portal y tarjeta Lovable — implementados. Pendiente: email UI en widget, magic link, no generar PDF/Excel free en worker. Go-live VPS: fases 1–5 hechas (stack en marcha tras Caddy + SSL); pendientes secretos Bold, rotar llaves expuestas y Ollama.
 
 ---
@@ -157,12 +158,21 @@ strict_tdd: false               # no hay suite de tests aún
 # Stack Docker (API en 127.0.0.1:8080; brain interno :8001; Postgres sin puerto host)
 docker compose up -d --build
 
+# Staging local completo: ver docs/LOCAL-DOCKER-STAGING.md
+#   cp .env.local.example .env && cp docker-compose.override.example.yml docker-compose.override.yml
+
 # Solo api + brain tras cambios
 docker compose up -d --build api brain
+
+# Widget WordPress (staging ngrok, sin tocar Medios de prod)
+# Abre: https://TU.ngrok/embed/staging-ngrok/standalone-harness.html
+# Ver: embed/staging-ngrok/README.md
 
 # Ngrok (dev en PC) → API loopback :8080
 cd Test/ngrok-v3-stable-windows-amd64
 ./ngrok.exe http 8080 --url=nonconfidential-suprarational-sage.ngrok-free.dev
+# Luego: PUBLIC_BASE_URL=esa URL en .env + recreate api
+# UI sin WP: https://…ngrok…/embed/staging-ngrok/standalone-harness.html
 
 # VPS (prod)
 ssh <usuario>@<ip-vps>   # ver docs/VPS-DEPLOY.md (local, fuera del repo)

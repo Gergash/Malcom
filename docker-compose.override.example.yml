@@ -1,0 +1,25 @@
+# Staging local — copia a docker-compose.override.yml (gitignored).
+# Compose fusiona esto con docker-compose.yml automáticamente.
+#
+#   cp docker-compose.override.example.yml docker-compose.override.yml
+#
+# NO subas override.yml a la VPS: producción usa solo docker-compose.yml.
+
+services:
+  # Postgres accesible desde el host (DBeaver, psql en Windows).
+  # En la VPS este bloque NO existe → Postgres solo red interna.
+  postgres:
+    ports:
+      - "127.0.0.1:5433:5432"
+
+  # Montar código en caliente solo si desarrollas sin rebuild (opcional).
+  # Descomenta para iterar Python sin rebuild de imagen brain:
+  #
+  # brain:
+  #   volumes:
+  #     - ./app:/app/app:ro
+  #     - ./data:/app/data
+
+  # El bot compite con prod si usas el MISMO TELEGRAM_TOKEN (polling).
+  # En local: bot de prueba de BotFather O levanta sin bot:
+  #   docker compose up -d --build api brain postgres

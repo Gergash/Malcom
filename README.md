@@ -201,7 +201,9 @@ OLLAMA_MODEL=llama3.1
 OLLAMA_TIMEOUT_SEC=300
 ```
 
-Plantilla completa: [`.env.example`](.env.example). Despliegue VPS: [`docs/VPS-DEPLOY.md`](docs/VPS-DEPLOY.md).
+Plantilla completa: [`.env.example`](.env.example).  
+Staging local: [`.env.local.example`](.env.local.example) + [`docs/LOCAL-DOCKER-STAGING.md`](docs/LOCAL-DOCKER-STAGING.md).  
+Producción VPS: [`docs/VPS-DEPLOY.md`](docs/VPS-DEPLOY.md).
 
 ---
 
@@ -225,7 +227,8 @@ Servicios que levanta:
 | `api` | **127.0.0.1:8080** | API Go (loopback; delante Caddy/ngrok) |
 | `bot` | — | Bot de Telegram |
 
-Producción en VPS (fases, UFW, Git, Ollama): ver [`docs/VPS-DEPLOY.md`](docs/VPS-DEPLOY.md).
+Producción en VPS: [`docs/VPS-DEPLOY.md`](docs/VPS-DEPLOY.md).  
+Probar cambios de `master` en tu PC antes de desplegar: [`docs/LOCAL-DOCKER-STAGING.md`](docs/LOCAL-DOCKER-STAGING.md).
 
 ### Sin Docker (desarrollo local)
 
@@ -397,6 +400,7 @@ Archivos del widget / embed:
 - `embed/INTEGRATION-BEBUILDER.txt` — inventario y checklist de despliegue
 - `docs/BOLD-SETUP.txt` — guía Bold + WordPress + Lovable + webhook + ngrok
 - `docs/VPS-DEPLOY.md` — go-live Hostinger (fases, UFW, Compose endurecido, Ollama)
+- `docs/LOCAL-DOCKER-STAGING.md` — Docker local = staging de `master` antes de la VPS
 
 ---
 

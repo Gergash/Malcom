@@ -1,0 +1,44 @@
+<!--
+  STAGING NGROK — pegar SOLO el <script>…</script> en WordPress (Hook Bottom).
+  NO uses esto en el sitio de producción de clientes.
+
+  Assets salen del túnel (API Docker local), no de Medios WP.
+  Cambia NGROK_BASE si tu URL de ngrok es distinta.
+-->
+<script>
+(function () {
+  var NGROK_BASE = "https://nonconfidential-suprarational-sage.ngrok-free.dev";
+  var EMBED = NGROK_BASE + "/embed";
+
+  window.POWERUPS_WIDGET_LOADER = {
+    assetsBase: EMBED + "/",
+    frameUrl: EMBED + "/powerups-edge-frame.html",
+    boldCheckoutUrl: EMBED + "/powerups-bold-checkout.js",
+  };
+  window.POWERUPS_WIDGET_CONFIG = Object.assign(
+    {
+      API_BASE: NGROK_BASE,
+      CHECKOUT_URL:
+        EMBED +
+        "/lovable-login-card.html?api_base=" +
+        encodeURIComponent(NGROK_BASE) +
+        "&chat_id={chatId}",
+      PREMIUM_PORTAL_URL: EMBED + "/premium-portal.html",
+      DASHBOARD_SESSION_URL: NGROK_BASE + "/dashboard",
+    },
+    window.POWERUPS_WIDGET_CONFIG || {},
+  );
+
+  try {
+    localStorage.setItem("powerups_edge_api_base", NGROK_BASE);
+  } catch (e) {}
+
+  if (typeof document === "undefined") return;
+  if (window.__POWERUPS_WIDGET_LOADER_RAN) return;
+
+  var s = document.createElement("script");
+  s.src = EMBED + "/staging-ngrok/loader-inline.js?v=1";
+  s.async = true;
+  document.head.appendChild(s);
+})();
+</script>
