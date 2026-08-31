@@ -2,11 +2,11 @@
 
 Scope de Gentle AI para el proyecto **InsightFlow Malcom**: chatbot de análisis de datos con Telegram, motor Python de IA, y API Go para gestión de usuarios y pagos.
 
-**Última actualización:** 2026-08-19  
+**Última actualización:** 2026-08-31  
 **Reglas de producto:** [`BUSINESS-RULES-v2.md`](BUSINESS-RULES-v2.md) (fuente de verdad).  
-**Despliegue VPS:** [`VPS-DEPLOY.md`](VPS-DEPLOY.md) — en producción en `https://api.powerupsecosistem.online`.  
+**Despliegue VPS:** runbook `VPS-DEPLOY.md` (local, fuera del repo) — en producción en `https://api.powerupsecosistem.online`.  
 **Staging local (Docker en PC):** [`LOCAL-DOCKER-STAGING.md`](LOCAL-DOCKER-STAGING.md) — probar `master` antes de `git pull` en la VPS.  
-**Estado v2:** cuota diaria, portal/ECharts free, visor multi-widget, PDF/Excel premium (gate Go), Bold + login correo en portal y tarjeta Lovable — implementados. Pendiente: email UI en widget, magic link, no generar PDF/Excel free en worker. Go-live VPS: fases 1–5 hechas (stack en marcha tras Caddy + SSL); pendientes secretos Bold, rotar llaves expuestas y Ollama.
+**Estado v2:** cuota diaria, portal/ECharts free, visor multi-widget, PDF/Excel premium (gate Go), Bold + login correo en portal y tarjeta Lovable — implementados. Pendiente de producto: email UI en widget, magic link, no generar PDF/Excel free en worker. Go-live VPS completo: stack en marcha tras Caddy + SSL, llaves Bold cargadas y checkout firmado en vivo. Ollama descartado en la VPS. Pendiente de operación: registrar el webhook Bold en el panel, prueba de pago real y rotar la `BOLD_API_KEY` que estuvo expuesta.
 
 ---
 
@@ -91,6 +91,7 @@ internal/
   config/
   worker/            — cliente HTTP → Python worker
 
+scripts/             — utilidades de operación (set-bold-env.sh: llaves Bold en la VPS)
 embed/               — widget, portal, visor, Lovable login, Bold checkout
 data/                — archivos de usuario por chat_id (volumen compartido)
 ```
@@ -188,11 +189,11 @@ uvicorn app.worker:app --port 8001 --reload
 go build -o api.exe ./cmd/api
 ```
 
-### Convenciones prod (2026-08-19)
+### Convenciones prod (2026-08-31)
 
 1. Postgres **no** se publica (`ports`); solo red Compose. Password vía `POSTGRES_PASSWORD` + `DATABASE_URL` en `.env`.
 2. API solo en `127.0.0.1:8080`; delante Caddy (80/443) con SSL Let's Encrypt, o ngrok en dev. Docker publica puertos saltándose UFW, así que un bind a `0.0.0.0` queda expuesto a internet aunque el firewall lo niegue.
 3. `DEV_FORCE_PREMIUM=false` y `PUBLIC_BASE_URL=https://api.powerupsecosistem.online` en VPS.
-4. Ollama en el **host**; `brain` usa `host.docker.internal` (`extra_hosts`). Detalle en [`VPS-DEPLOY.md`](VPS-DEPLOY.md).
+4. Ollama **no** corre en la VPS: producción usa solo Gemini. El soporte sigue en el código (`brain` con `host.docker.internal` vía `extra_hosts`) para desarrollo local.
 5. Flujo de cambios: editar en local → push GitHub (rama `master`) → `git pull` en VPS (nunca commitear `.env` real).
 6. `BILLING_WEBHOOK_SECRET` es **obligatorio** en producción: sin él, `POST /api/v1/billing/webhook` pasa sin autenticar y cualquiera puede activarse premium. El webhook de Bold, en cambio, falla cerrado sin `BOLD_WEBHOOK_SECRET`.

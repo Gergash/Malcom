@@ -1,6 +1,6 @@
 InsightFlow — Bold checkout rápido ($40.000 COP)
 ================================================
-Última actualización: 2026-07-30
+Última actualización: 2026-08-31
 
 Reglas de producto: docs/BUSINESS-RULES-v2.md
   · El pago activa MENSAJES ILIMITADOS + PDF/Excel (portal + ECharts son gratis).
@@ -80,6 +80,20 @@ El snippet llama GET /api/v1/billing/bold-checkout?chat_id= para obtenerlos firm
 Reiniciar API tras cambiar .env:
 
   docker compose up -d --build api
+
+Atajo: scripts/set-bold-env.sh pide las llaves por consola (sin eco), hace backup
+del .env, activa las cuatro variables, valida `docker compose config` y reconstruye
+la api. Correrlo desde ~/apps/insightflow en la VPS.
+
+GOTCHA (costó una sesión entera): las llaves pueden estar en el .env pero
+COMENTADAS con '#'. Compose no las pasa al contenedor y bold-checkout responde
+503 "Bold no configurado" como si faltaran. Diagnóstico en un comando:
+
+  docker compose exec api printenv | grep BOLD_
+
+Vacío + .env con contenido = líneas comentadas. Otro modo de falla silencioso:
+un '$' dentro de un valor del .env lo interpola Compose y corrompe la llave;
+hay que escribirlo duplicado ($$).
 
 5) Verificar
 ------------

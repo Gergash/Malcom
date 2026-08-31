@@ -2,7 +2,7 @@
 
 **Objetivo:** en tu PC levantar **el mismo stack** que producción (Postgres + brain + api [+ bot]) usando el mismo `docker-compose.yml`, validar cambios de `master`, y **solo entonces** desplegar en la KVM con `git pull`.
 
-**Producción:** [`VPS-DEPLOY.md`](VPS-DEPLOY.md) · `ssh insightflow@2.25.107.229` · `~/apps/insightflow`
+**Producción:** runbook `VPS-DEPLOY.md` (local, fuera del repo) · `~/apps/insightflow`
 
 ---
 
@@ -23,7 +23,7 @@
                     git push master (cuando OK)
                               ▼
 ┌────────────────────────────── VPS (prod) ────────────────────────────────┐
-│  ssh insightflow@2.25.107.229                                             │
+│  ssh <usuario>@<ip-vps>                                                   │
 │  cd ~/apps/insightflow && git pull origin master                          │
 │  docker compose up -d --build                                             │
 │  Caddy → https://api.powerupsecosistem.online → 127.0.0.1:8080           │
@@ -41,7 +41,7 @@
 | Docker Desktop (Windows) | `docker compose` |
 | Git | clonar / pull `master` |
 | Repo | `PowerUps/InsightFlow/Malcom` o clone de GitHub |
-| (Opcional) Ollama | `llama3.1` en el host para paridad con prod futuro |
+| (Opcional) Ollama | `llama3.1` en el host, solo para pruebas locales |
 | (Opcional) ngrok | probar widget WordPress y webhooks Bold sin tocar prod |
 
 ---
@@ -135,7 +135,7 @@ docker compose up -d --build
 | `PUBLIC_BASE_URL` | ngrok o `http://127.0.0.1:8080` | `https://api.powerupsecosistem.online` |
 | `DEV_FORCE_PREMIUM` | `true` OK para QA | **siempre `false`** |
 | Telegram | bot de **prueba** | bot de **producción** |
-| Ollama | host Windows `:11434` | host Linux (fase pendiente) |
+| Ollama | host Windows `:11434` | no se usa — descartado en la VPS |
 
 Usar el **mismo** `docker-compose.yml` que prod evita sorpresas; el `docker-compose.override.yml` solo existe en tu PC (está en `.gitignore`).
 
@@ -208,7 +208,7 @@ cd Test/ngrok-v3-stable-windows-amd64
 6. Probar: health, chat, upload, embed (ngrok), paywall (DEV_FORCE_PREMIUM=false un rato)
 7. Commit + push a master (o PR → merge master)
 8. En VPS:
-     ssh insightflow@2.25.107.229
+     ssh <usuario>@<ip-vps>
      cd ~/apps/insightflow
      git pull origin master
      docker compose up -d --build
@@ -265,7 +265,7 @@ docker compose up -d --force-recreate api brain
 | [`docker-compose.override.example.yml`](../docker-compose.override.example.yml) | Plantilla solo PC |
 | [`.env.local.example`](../.env.local.example) | Plantilla `.env` local |
 | [`.env.example`](../.env.example) | Documentación de todas las variables |
-| [`VPS-DEPLOY.md`](VPS-DEPLOY.md) | Producción Hostinger |
+| `VPS-DEPLOY.md` | Producción Hostinger — runbook local, fuera del repo |
 
 ---
 

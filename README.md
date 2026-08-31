@@ -203,7 +203,7 @@ OLLAMA_TIMEOUT_SEC=300
 
 Plantilla completa: [`.env.example`](.env.example).  
 Staging local: [`.env.local.example`](.env.local.example) + [`docs/LOCAL-DOCKER-STAGING.md`](docs/LOCAL-DOCKER-STAGING.md).  
-Producción VPS: [`docs/VPS-DEPLOY.md`](docs/VPS-DEPLOY.md).
+Producción VPS: runbook `docs/VPS-DEPLOY.md` (local, fuera del repo).
 
 ---
 
@@ -227,7 +227,7 @@ Servicios que levanta:
 | `api` | **127.0.0.1:8080** | API Go (loopback; delante Caddy/ngrok) |
 | `bot` | — | Bot de Telegram |
 
-Producción en VPS: [`docs/VPS-DEPLOY.md`](docs/VPS-DEPLOY.md).  
+Producción en VPS: runbook `docs/VPS-DEPLOY.md` (local, fuera del repo).  
 Probar cambios de `master` en tu PC antes de desplegar: [`docs/LOCAL-DOCKER-STAGING.md`](docs/LOCAL-DOCKER-STAGING.md).
 
 ### Sin Docker (desarrollo local)
@@ -399,7 +399,8 @@ Archivos del widget / embed:
 - `powerups-bold-checkout.js` — botón Bold firmado + `PU_mountBoldCheckout`
 - `embed/INTEGRATION-BEBUILDER.txt` — inventario y checklist de despliegue
 - `docs/BOLD-SETUP.txt` — guía Bold + WordPress + Lovable + webhook + ngrok
-- `docs/VPS-DEPLOY.md` — go-live Hostinger (fases, UFW, Compose endurecido, Ollama)
+- `docs/VPS-DEPLOY.md` — go-live Hostinger (UFW, Caddy + SSL, Compose endurecido). Runbook local, fuera del repo
+- `scripts/set-bold-env.sh` — carga las llaves Bold en el `.env` de la VPS sin exponerlas
 - `docs/LOCAL-DOCKER-STAGING.md` — Docker local = staging de `master` antes de la VPS
 
 ---
@@ -500,14 +501,14 @@ WordPress (WooCommerce) ──genera referencia──► Wompi
 
 ---
 
-## Estado del proyecto (2026-08-14)
+## Estado del proyecto (2026-08-31)
 
-- **VPS Hostinger (go-live):** Fase 1–3 hechas (SSH `insightflow`, UFW 22/80/443, Docker, clone en `~/apps/insightflow`). Compose endurecido (Postgres sin puerto público, credenciales por `.env`, API en loopback). Pendiente: DNS/SSL (Caddy/Dokploy), `compose up` prod, Bold/CORS al dominio, Ollama `llama3.1` en el host. Guía: [`docs/VPS-DEPLOY.md`](docs/VPS-DEPLOY.md).
+- **VPS Hostinger (go-live):** En producción en `https://api.powerupsecosistem.online`. SSH endurecido, UFW 22/80/443, Docker, Caddy + SSL Let's Encrypt. Compose endurecido (Postgres sin puerto público, credenciales por `.env`, API en loopback). `DEV_FORCE_PREMIUM=false`, `ENABLE_PUBLIC_DATA=false`. Bold y CORS apuntando al dominio; checkout firmado verificado en vivo. Ollama descartado en la VPS. Runbook: `docs/VPS-DEPLOY.md` (local, fuera del repo).
 - **Producción / embed:** Widget WordPress/BeBuilder. API Go + Worker Python en Docker. Tarjeta Lovable para registro → pago.
 - **Billing Bold:** checkout firmado + webhook HMAC. $40.000 COP = mensajes ilimitados + PDF/Excel (portal/ECharts gratis). Flujo: correo → `PU_mountBoldCheckout` (portal o Lovable).
 - **Producto v2:** contador diario (`messages_today`/`quota_date`, `America/Bogota`); ECharts/portal/multi-gráfica free; PDF/Excel gate en backend.
 - **Login email:** backend `link-email` + merge; auto-vínculo en webhook; **UI en `premium-portal.html` y `lovable-login-card.html`**. Pendiente: formulario en el widget y magic link/OTP.
 - **Rendimiento chat:** `generate_echarts` condicional; timeouts Gemini (90s) y worker (330s).
 - **Visor multi-widget:** payload `dashboard` + grid ejecutivo en `premium-dashboard-session.html` (KPIs, área, percepción, Q&A, bullets); `echarts_option` sigue siendo el primario.
-- **IA:** Gemini 3.x (flash-preview + fallbacks) + Ollama opcional (`host.docker.internal` vía `extra_hosts` en `brain`). Guards CSV (`csv_code_guards.py`).
-- **Pendiente:** email UI en widget; no generar PDF/Excel free en worker; gate PDF/Excel en bot Telegram; tests E2E premium por email; fases 4–7 del VPS; `DEV_FORCE_PREMIUM=false` en prod.
+- **IA:** Gemini 3.x (flash-preview + fallbacks). Ollama sigue soportado en el código (`host.docker.internal` vía `extra_hosts` en `brain`) pero solo para desarrollo local — no se instala en la VPS. Guards CSV (`csv_code_guards.py`).
+- **Pendiente:** registrar la URL del webhook Bold en el panel + prueba de pago real end-to-end; rotar la `BOLD_API_KEY` que estuvo expuesta en `.env.example`; email UI en widget; no generar PDF/Excel free en worker; gate PDF/Excel en bot Telegram; tests E2E premium por email.

@@ -10,7 +10,7 @@
 | [`BOLD-SETUP.txt`](BOLD-SETUP.txt) | Despliegue Bold + WordPress + Lovable + webhook + flujo correo |
 | [`bin_automation-README.md`](bin_automation-README.md) | Proyecto BIN + changelog histórico Malcom |
 | [`skill-registry.md`](skill-registry.md) | Índice de skills Gentle AI (tooling dev) |
-| [`VPS-DEPLOY.md`](VPS-DEPLOY.md) | Go-live Hostinger: SSH, Caddy, SSL, compose endurecido |
+| `VPS-DEPLOY.md` | Go-live Hostinger: SSH, Caddy, SSL, compose endurecido — runbook local, fuera del repo |
 | [`LOCAL-DOCKER-STAGING.md`](LOCAL-DOCKER-STAGING.md) | Probar `master` en Docker local antes de `git pull` en la VPS |
 | [`../embed/staging-ngrok/README.md`](../embed/staging-ngrok/README.md) | Frontend staging vía ngrok (sin WordPress o con snippet WP) |
 
