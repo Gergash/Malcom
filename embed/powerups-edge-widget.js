@@ -477,24 +477,219 @@
    * - imageUrl: inserta <img> debajo del texto si es mensaje de bot.
    * - downloadInfo: { url, label } → inserta un botón de descarga del reporte.
    */
-  function renderMessageText(text) {
-    var fragment = document.createDocumentFragment();
-    var source = String(text || '');
-    var pattern = /(\*\*|__)([\s\S]*?)\1/g;
+  /**
+   * Renderiza Markdown a nodos DOM.
+   *
+   * Se construye con createElement/createTextNode y NUNCA con innerHTML: el
+   * texto viene del LLM y podría contener HTML; al crear nodos, cualquier
+   * etiqueta que llegue en el contenido se muestra como texto literal en vez
+   * de ejecutarse. Por eso no se usa una librería de markdown genérica.
+   *
+   * Soporta: encabezados, negrita, cursiva, tachado, código en línea, bloques
+   * de código, listas ordenadas y sin ordenar, citas, reglas horizontales,
+   * enlaces y saltos de línea.
+   */
+
+  // Protocolos admitidos en enlaces. Bloquea javascript:, data:, vbscript:.
+  var POWERUPS_SAFE_LINK = /^(https?:\/\/|mailto:|tel:)/i;
+
+  function renderInline(source, parent) {
+    // El orden importa: el código en línea se resuelve primero para que su
+    // contenido no se reinterprete como negrita o enlace.
+    var pattern = /(`+)([\s\S]*?)\1|\[([^\]\n]+)\]\(([^\s)]+)\)|(\*\*|__)([\s\S]+?)\5|(\*|_)([^\s*_][\s\S]*?[^\s*_]|[^\s*_])\7|(~~)([\s\S]+?)\9|(https?:\/\/[^\s<>()]+)/g;
+
     var cursor = 0;
     var match;
+
     while ((match = pattern.exec(source)) !== null) {
       if (match.index > cursor) {
-        fragment.appendChild(document.createTextNode(source.slice(cursor, match.index)));
+        parent.appendChild(document.createTextNode(source.slice(cursor, match.index)));
       }
-      var strong = document.createElement('strong');
-      strong.textContent = match[2];
-      fragment.appendChild(strong);
+
+      if (match[2] !== undefined) {
+        var code = document.createElement('code');
+        code.className = 'powerups-edge__code-inline';
+        code.textContent = match[2].trim();
+        parent.appendChild(code);
+      } else if (match[3] !== undefined) {
+        parent.appendChild(makeLink(match[4], match[3]));
+      } else if (match[6] !== undefined) {
+        var strong = document.createElement('strong');
+        renderInline(match[6], strong);
+        parent.appendChild(strong);
+      } else if (match[8] !== undefined) {
+        var em = document.createElement('em');
+        renderInline(match[8], em);
+        parent.appendChild(em);
+      } else if (match[10] !== undefined) {
+        var del = document.createElement('del');
+        renderInline(match[10], del);
+        parent.appendChild(del);
+      } else if (match[11] !== undefined) {
+        parent.appendChild(makeLink(match[11], match[11]));
+      }
+
       cursor = pattern.lastIndex;
     }
+
     if (cursor < source.length) {
-      fragment.appendChild(document.createTextNode(source.slice(cursor)));
+      parent.appendChild(document.createTextNode(source.slice(cursor)));
     }
+  }
+
+  function makeLink(href, label) {
+    var url = String(href || '').trim();
+    // Un href que no sea http(s), mailto o tel se degrada a texto plano.
+    if (!POWERUPS_SAFE_LINK.test(url)) {
+      return document.createTextNode(label);
+    }
+    var a = document.createElement('a');
+    a.href = url;
+    a.textContent = label;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer nofollow';
+    a.className = 'powerups-edge__link';
+    return a;
+  }
+
+  function makeParagraph(lines) {
+    var p = document.createElement('p');
+    p.className = 'powerups-edge__p';
+    renderInline(lines.join('\n'), p);
+    return p;
+  }
+
+  function renderMessageText(text) {
+    var fragment = document.createDocumentFragment();
+    var source = String(text == null ? '' : text).replace(/\r\n?/g, '\n');
+    var lines = source.split('\n');
+    var i = 0;
+    var buffer = [];
+
+    function flushParagraph() {
+      if (buffer.length) {
+        fragment.appendChild(makeParagraph(buffer));
+        buffer = [];
+      }
+    }
+
+    while (i < lines.length) {
+      var line = lines[i];
+
+      // Bloque de código delimitado por tres acentos graves.
+      var fence = /^\s*`{3,}\s*(\S*)\s*$/.exec(line);
+      if (fence) {
+        flushParagraph();
+        var body = [];
+        i++;
+        while (i < lines.length && !/^\s*`{3,}\s*$/.test(lines[i])) {
+          body.push(lines[i]);
+          i++;
+        }
+        i++; // consume el cierre
+        var pre = document.createElement('pre');
+        pre.className = 'powerups-edge__code-block';
+        var codeEl = document.createElement('code');
+        if (fence[1]) { codeEl.setAttribute('data-lang', fence[1]); }
+        codeEl.textContent = body.join('\n');
+        pre.appendChild(codeEl);
+        fragment.appendChild(pre);
+        continue;
+      }
+
+      // Regla horizontal
+      if (/^\s*([-*_])\s*(\1\s*){2,}$/.test(line)) {
+        flushParagraph();
+        fragment.appendChild(document.createElement('hr'));
+        i++;
+        continue;
+      }
+
+      // Encabezado
+      var heading = /^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
+      if (heading) {
+        flushParagraph();
+        var level = Math.min(heading[1].length, 6);
+        // Se marca por clase y no con h1-h6 reales para no romper la
+        // jerarquía de encabezados del documento anfitrión.
+        var h = document.createElement('div');
+        h.className = 'powerups-edge__h powerups-edge__h--' + level;
+        h.setAttribute('role', 'heading');
+        h.setAttribute('aria-level', String(Math.min(level + 2, 6)));
+        renderInline(heading[2], h);
+        fragment.appendChild(h);
+        i++;
+        continue;
+      }
+
+      // Cita
+      if (/^\s{0,3}>\s?/.test(line)) {
+        flushParagraph();
+        var quoted = [];
+        while (i < lines.length && /^\s{0,3}>\s?/.test(lines[i])) {
+          quoted.push(lines[i].replace(/^\s{0,3}>\s?/, ''));
+          i++;
+        }
+        var bq = document.createElement('blockquote');
+        bq.className = 'powerups-edge__quote';
+        renderInline(quoted.join('\n'), bq);
+        fragment.appendChild(bq);
+        continue;
+      }
+
+      // Listas
+      var bullet = /^(\s*)([-*+])\s+(.+)$/.exec(line);
+      var numbered = /^(\s*)(\d{1,9})[.)]\s+(.+)$/.exec(line);
+      if (bullet || numbered) {
+        flushParagraph();
+        var ordered = !!numbered;
+        var list = document.createElement(ordered ? 'ol' : 'ul');
+        list.className = 'powerups-edge__list';
+        if (ordered) {
+          var start = parseInt(numbered[2], 10);
+          if (start !== 1) { list.setAttribute('start', String(start)); }
+        }
+
+        while (i < lines.length) {
+          var b = /^(\s*)([-*+])\s+(.+)$/.exec(lines[i]);
+          var n = /^(\s*)(\d{1,9})[.)]\s+(.+)$/.exec(lines[i]);
+          var current = ordered ? n : b;
+          if (!current) { break; }
+
+          var item = document.createElement('li');
+          var itemLines = [current[3]];
+          i++;
+          // Continuación de la misma viñeta: línea indentada que no abre otra.
+          while (
+            i < lines.length &&
+            lines[i].trim() !== '' &&
+            /^\s+/.test(lines[i]) &&
+            !/^(\s*)([-*+])\s+/.test(lines[i]) &&
+            !/^(\s*)(\d{1,9})[.)]\s+/.test(lines[i])
+          ) {
+            itemLines.push(lines[i].trim());
+            i++;
+          }
+          renderInline(itemLines.join(' '), item);
+          list.appendChild(item);
+        }
+
+        fragment.appendChild(list);
+        continue;
+      }
+
+      // Línea en blanco: cierra el párrafo en curso.
+      if (line.trim() === '') {
+        flushParagraph();
+        i++;
+        continue;
+      }
+
+      buffer.push(line);
+      i++;
+    }
+
+    flushParagraph();
     return fragment;
   }
 

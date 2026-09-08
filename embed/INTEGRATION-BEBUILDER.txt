@@ -86,7 +86,9 @@ powerups-bold-checkout.js  (Medios 2026/07/)
 
 LEGACY (no usar en producción)
 ─────────────────────────────────────────────────────
-powerups-edge-chat-widget.html — monolito antiguo.
+powerups-edge-chat-widget.html — monolito antiguo. Mantiene paridad de
+    renderizado markdown con powerups-edge-widget.js, pero NO se sube a
+    produccion ni a Lovable: el widget vivo es frame + widget.js + widget.css.
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -761,9 +761,100 @@
   border: 1px dashed var(--pu-border);
 }
 .powerups-edge__msg-text {
-  white-space: pre-wrap;
+  /* El renderizador ya produce bloques reales (p, ul, pre…), así que
+     pre-wrap sobra y además duplicaría los saltos entre párrafos.
+     Se conserva solo el corte de palabras largas (URLs, códigos). */
   word-break: break-word;
+  overflow-wrap: anywhere;
 }
+
+/* ---- Markdown dentro de la burbuja ---------------------------------- */
+
+.powerups-edge__msg-text > *:first-child { margin-top: 0; }
+.powerups-edge__msg-text > *:last-child { margin-bottom: 0; }
+
+.powerups-edge__p {
+  margin: 0 0 0.55em;
+  white-space: pre-wrap;
+}
+
+.powerups-edge__h {
+  margin: 0.9em 0 0.4em;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.powerups-edge__h--1 { font-size: 1.18em; }
+.powerups-edge__h--2 { font-size: 1.1em; }
+.powerups-edge__h--3 { font-size: 1.04em; }
+.powerups-edge__h--4,
+.powerups-edge__h--5,
+.powerups-edge__h--6 {
+  font-size: 1em;
+  opacity: 0.85;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.powerups-edge__list {
+  margin: 0 0 0.55em;
+  padding-left: 1.25em;
+}
+.powerups-edge__list li { margin: 0.16em 0; }
+.powerups-edge__list .powerups-edge__list { margin-bottom: 0; }
+
+.powerups-edge__quote {
+  margin: 0 0 0.55em;
+  padding: 0.1em 0 0.1em 0.7em;
+  border-left: 3px solid currentColor;
+  opacity: 0.85;
+  font-style: italic;
+  white-space: pre-wrap;
+}
+
+.powerups-edge__code-inline {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.88em;
+  padding: 0.12em 0.36em;
+  border-radius: 4px;
+  background: rgba(127, 127, 127, 0.18);
+  word-break: break-all;
+}
+
+.powerups-edge__code-block {
+  margin: 0 0 0.55em;
+  padding: 0.6em 0.75em;
+  border-radius: 8px;
+  background: rgba(127, 127, 127, 0.16);
+  /* El código no se reajusta: se desplaza dentro de su propio bloque para
+     que una línea larga no ensanche la burbuja ni la ventana del chat. */
+  overflow-x: auto;
+  max-width: 100%;
+}
+.powerups-edge__code-block code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  line-height: 1.45;
+  white-space: pre;
+  word-break: normal;
+}
+
+.powerups-edge__msg-text hr {
+  margin: 0.8em 0;
+  border: 0;
+  border-top: 1px solid currentColor;
+  opacity: 0.25;
+}
+
+.powerups-edge__link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.powerups-edge__link:hover { opacity: 0.8; }
+
+.powerups-edge__msg-text strong { font-weight: 700; }
+.powerups-edge__msg-text em { font-style: italic; }
+.powerups-edge__msg-text del { opacity: 0.7; }
 .powerups-edge__chart {
   display: block;
   max-width: 100%;
