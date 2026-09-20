@@ -49,6 +49,15 @@ PREDICTION_KEYWORDS = (
     "esta semana", "this week", "semanas", "weeks", "predic",
 )
 
+try:
+    from app.listening.service import handle_listening_message, is_listening_query
+except ModuleNotFoundError:
+    try:
+        from listening.service import handle_listening_message, is_listening_query  # type: ignore
+    except ModuleNotFoundError:
+        handle_listening_message = None  # type: ignore
+        is_listening_query = None  # type: ignore
+
 
 class Orchestrator:
     """
@@ -123,18 +132,58 @@ class Orchestrator:
         report_config=None,
         require_strict_data: bool = False,
         generate_echarts: bool = False,
+        is_premium: bool = False,
     ) -> dict:
         """
         Procesa un mensaje de texto y devuelve un dict con response, flags de
         artefactos (PDF/Excel/gráfica), rutas opcionales y, si generate_echarts
         es True y el modelo emitió bloque echarts-json, la clave echarts_option
         (dict listo para serializar a JSON).
+
+        is_premium: Termómetro Cultural / listening solo si True.
         """
         loop = asyncio.get_event_loop()
+        self._echarts_option = None
+        self._dashboard = None
+
+        # Termómetro Cultural / listening-api → gráficas sin pasar por CSV.
+        if (
+            handle_listening_message is not None
+            and is_listening_query is not None
+            and is_listening_query(message)
+        ):
+            if not is_premium:
+                return {
+                    "response": (
+                        "El **Termómetro Cultural** (escucha social, sentimiento y gráficas en vivo) "
+                        "está disponible solo en el plan **Premium**.\n\n"
+                        "Activa Premium para consultar el motor de escucha y graficar resultados desde el chat."
+                    ),
+                    "has_pdf": False,
+                    "has_excel": False,
+                    "has_chart": False,
+                    "source": "listening_engine",
+                }
+            try:
+                listening = await handle_listening_message(message)
+                self._echarts_option = listening.get("echarts_option")
+                self._dashboard = listening.get("dashboard")
+                out = self._build_result(listening.get("response") or "")
+                out["source"] = "listening_engine"
+                return out
+            except Exception as exc:
+                return {
+                    "response": (
+                        "No pude consultar el Termómetro Cultural en este momento "
+                        f"({type(exc).__name__}). Revisa que `listening-api` esté arriba e inténtalo de nuevo."
+                    ),
+                    "has_pdf": False,
+                    "has_excel": False,
+                    "has_chart": False,
+                    "source": "listening_engine",
+                }
 
         if self._is_prediction_query(message):
-            self._echarts_option = None
-            self._dashboard = None
             response_text = await loop.run_in_executor(
                 None, self._run_predictor, message
             )

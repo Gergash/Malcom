@@ -46,6 +46,8 @@ class ProcessMessageRequest(BaseModel):
     require_strict_data: bool = False
     # v2: ECharts para todos los usuarios cuando el Brain lo genera.
     generate_echarts: bool = False
+    # Premium: habilita Termómetro Cultural / listening_engine.
+    is_premium: bool = False
 
 
 class IngestFileRequest(BaseModel):
@@ -60,6 +62,54 @@ async def health():
     return {"status": "ok", "service": "InsightFlow Brain"}
 
 
+class ListeningOverviewRequest(BaseModel):
+    days: int | None = Field(None, ge=1, le=90)
+    trigger_scrape: bool = False
+    scrape_note: str | None = None
+
+
+@app.post("/internal/listening/overview")
+async def internal_listening_overview(body: ListeningOverviewRequest | None = None):
+    """Overview chart-ready del Termómetro para la API Go / dashboard."""
+    try:
+        from app.listening.service import build_listening_overview
+    except ModuleNotFoundError:
+        from listening.service import build_listening_overview  # type: ignore
+
+    req = body or ListeningOverviewRequest()
+    try:
+        result = await asyncio.wait_for(
+            build_listening_overview(
+                days=req.days,
+                trigger_scrape=req.trigger_scrape,
+                scrape_note=req.scrape_note,
+            ),
+            timeout=min(_worker_timeout_sec, 60.0),
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="Timeout al consultar el Termómetro.") from None
+    except Exception:
+        logger.exception("listening overview")
+        raise HTTPException(
+            status_code=502,
+            detail="No se pudo obtener el overview del Termómetro Cultural.",
+        ) from None
+
+    if not result.get("ok"):
+        raise HTTPException(
+            status_code=502,
+            detail=result.get("response") or "listening-api no disponible",
+        )
+    return {
+        "response": result.get("response", ""),
+        "echarts_option": result.get("echarts_option"),
+        "dashboard": result.get("dashboard"),
+        "raw": result.get("raw"),
+        "scraped": bool(result.get("scraped")),
+        "source": "listening_engine",
+    }
+
+
 @app.post("/internal/process-message")
 async def internal_process_message(body: ProcessMessageRequest):
     async def _run() -> dict[str, Any]:
@@ -69,6 +119,7 @@ async def internal_process_message(body: ProcessMessageRequest):
             report_config=body.report_config,
             require_strict_data=body.require_strict_data,
             generate_echarts=body.generate_echarts,
+            is_premium=body.is_premium,
         )
         payload: dict[str, Any] = {
             "response": result.get("response", ""),
@@ -85,6 +136,8 @@ async def internal_process_message(body: ProcessMessageRequest):
         dash = result.get("dashboard")
         if dash is not None:
             payload["dashboard"] = dash
+        if result.get("source"):
+            payload["source"] = result["source"]
         return payload
 
     try:

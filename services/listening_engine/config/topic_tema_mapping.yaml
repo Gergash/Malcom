@@ -1,0 +1,76 @@
+# Maps Termómetro Cultural topic slugs → pauta-meta TEMA categories.
+# Bump `version` whenever `mapping` changes so API consumers detect stale cache.
+#
+# null = no pauta TEMA equivalent (consumer should not auto-adjust paid budget).
+#
+# NOTA (v2): Los temas promocionales TURISMO, CULTURA, DEPORTE, AMBIENTE y SOCIAL
+# tienen señal de presión ciudadana más débil en conversación espontánea que temas
+# de queja (SEGURIDAD, INFRAESTRUCTURA). Los keywords abajo ayudan a detectar
+# menciones en redes; no sustituyen el volumen de quejas ciudadanas.
+
+version: "2.0.0"
+
+mapping:
+  security: SEGURIDAD
+  taxes: ECONOMIA
+  public_services: INSTITUCIONAL
+  infrastructure: INFRAESTRUCTURA
+  corruption: null
+  public_administration: INSTITUCIONAL
+  other: null
+  tourism: TURISMO
+  culture: CULTURA
+  health: SALUD
+  education: EDUCACION
+  sports: DEPORTE
+  environment: AMBIENTE
+  social: SOCIAL
+
+# Keywords de detección en conversación ciudadana (español colombiano / regional).
+# Señal más débil para temas promocionales — ver nota arriba.
+topic_keywords:
+  tourism:
+    - turismo
+    - carnaval
+    - feria
+    - hotel
+    - visitante
+    - atractivo turístico
+  culture:
+    - cultura
+    - festival
+    - arte
+    - patrimonio
+    - museo
+    - carnaval
+  sports:
+    - deporte
+    - cancha
+    - torneo
+    - intercolegiados
+    - escuela de fútbol
+  environment:
+    - ambiente
+    - basura
+    - reciclaje
+    - río
+    - contaminación
+    - árboles
+  social:
+    - bienestar
+    - inclusión
+    - vulnerable
+    - adulto mayor
+    - jóvenes en riesgo
+  health:
+    - salud
+    - hospital
+    - eps
+    - urgencias
+    - vacunación
+  education:
+    - educación
+    - colegio
+    - universidad
+    - becas
+    - matrícula

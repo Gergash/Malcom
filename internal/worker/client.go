@@ -30,6 +30,8 @@ type ProcessResult struct {
 	EChartsOption json.RawMessage `json:"echarts_option,omitempty"`
 	// Dashboard — tablero ejecutivo multi-widget (KPIs, charts, Q&A, bullets).
 	Dashboard json.RawMessage `json:"dashboard,omitempty"`
+	// Source — origen del resultado (p. ej. "listening_engine"); vacío = analista CSV.
+	Source string `json:"source,omitempty"`
 }
 
 // IngestResult — resultado que el Worker Python retorna tras ingestar un archivo.
@@ -49,6 +51,7 @@ type processRequest struct {
 	ReportConfig      *types.ReportConfig `json:"report_config,omitempty"`
 	RequireStrictData bool                `json:"require_strict_data"`
 	GenerateECharts   bool                `json:"generate_echarts"`
+	IsPremium         bool                `json:"is_premium"`
 }
 
 type ingestRequest struct {
@@ -64,7 +67,8 @@ type ingestRequest struct {
 type Client interface {
 	// ProcessMessage envía el mensaje al worker. requireStrictData indica si el chat
 	// tiene archivos subidos (Go lo infiere desde data/); el analista no debe inventar datos.
-	ProcessMessage(ctx context.Context, chatID int64, message string, reportConfig *types.ReportConfig, requireStrictData bool) (*ProcessResult, error)
+	// isPremium activa funciones de plan (Termómetro Cultural / listening).
+	ProcessMessage(ctx context.Context, chatID int64, message string, reportConfig *types.ReportConfig, requireStrictData, isPremium bool) (*ProcessResult, error)
 
 	// IngestFile envía la ruta de un archivo temporal al Worker para que lo
 	// indexe/almacene. storedFilename es el nombre en data/{chat_id}/; originalFilename es el nombre del usuario (RAG).
@@ -78,6 +82,7 @@ const defaultWorkerRequestTimeoutSec = 330
 var chartKeywords = []string{
 	"gráfic", "grafic", "chart", "tablero", "echart", "visualiz",
 	"dashboard", "barras", "heatmap", "mapa de calor", "plot",
+	"termómetro", "termometro", "listening", "escucha social",
 }
 
 // shouldGenerateECharts — v2: ECharts disponible con datos o cuando el usuario pide gráfica.
@@ -161,6 +166,7 @@ func (c *HTTPClient) ProcessMessage(
 	message string,
 	reportConfig *types.ReportConfig,
 	requireStrictData bool,
+	isPremium bool,
 ) (*ProcessResult, error) {
 	genECharts := shouldGenerateECharts(message, requireStrictData)
 	patience := calculateProcessTimeout(message, reportConfig, requireStrictData, genECharts, c.requestTimeoutSec)
@@ -178,6 +184,7 @@ func (c *HTTPClient) ProcessMessage(
 			ReportConfig:      reportConfig,
 			RequireStrictData: requireStrictData,
 			GenerateECharts:   genECharts,
+			IsPremium:         isPremium,
 		}).
 		SetResult(&result).
 		SetError(&apiErr).

@@ -7,6 +7,8 @@ services:
       POSTGRES_DB: insightflow
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # Solo se ejecuta en el primer arranque (volumen vacío).
+      - ./infra/postgres/init-listening-db.sql:/docker-entrypoint-initdb.d/02-listening-db.sql:ro
     # Sin ports: Postgres solo es accesible desde la red interna de Compose.
     # Para inspeccionarlo: docker compose exec postgres psql -U insightflow
     healthcheck:
@@ -15,6 +17,18 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Sin ports públicos — solo red Compose (Celery del listening engine).
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   # Worker Python: agentes + Orchestrator. Sin ports: → no expuesto al host; solo la API Go (WORKER_URL=http://brain:8001).
   brain:
     build: .
@@ -22,6 +36,7 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL es obligatorio (definir en .env)}
+      LISTENING_API_URL: ${LISTENING_API_URL:-http://listening-api:8002}
     working_dir: /app
     volumes:
       - ./data:/app/data
@@ -43,6 +58,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL es obligatorio (definir en .env)}
       WORKER_URL: http://brain:8001
+      LISTENING_API_URL: ${LISTENING_API_URL:-http://listening-api:8002}
       DATA_DIR: /app/data
       EMBED_DIR: /app/embed
       API_PORT: "8080"
@@ -76,5 +92,80 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # --- MOTOR DE ESCUCHA (TERMÓMETRO CULTURAL) ---
+  # DB propia termometro_cultural (NO reutilizar DATABASE_URL de InsightFlow).
+  listening-api:
+    build: ./services/listening_engine
+    container_name: listening-api
+    command: >
+      sh -c "alembic upgrade head &&
+      uvicorn app.api.main:app --host 0.0.0.0 --port 8002"
+    env_file: .env
+    environment:
+      APP_ENV: production
+      DATABASE_URL: ${LISTENING_DATABASE_URL:?LISTENING_DATABASE_URL es obligatorio}
+      DATABASE_URL_SYNC: ${LISTENING_DATABASE_URL_SYNC:?LISTENING_DATABASE_URL_SYNC es obligatorio}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      GROK_API_KEY: ${GROK_API_KEY:-}
+      GROK_MODEL: ${GROK_MODEL:-grok-3}
+    # Sin ports: solo red Compose (Caddy o Go pueden proxy después).
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  listening-worker:
+    build: ./services/listening_engine
+    container_name: listening-worker
+    command: >
+      celery -A app.scheduler.celery_app worker
+      --queues=scraping,processing,default
+      --concurrency=2
+      --loglevel=info
+    env_file: .env
+    environment:
+      APP_ENV: production
+      DATABASE_URL: ${LISTENING_DATABASE_URL:?LISTENING_DATABASE_URL es obligatorio}
+      DATABASE_URL_SYNC: ${LISTENING_DATABASE_URL_SYNC:?LISTENING_DATABASE_URL_SYNC es obligatorio}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      GROK_API_KEY: ${GROK_API_KEY:-}
+      GROK_MODEL: ${GROK_MODEL:-grok-3}
+      PLAYWRIGHT_HEADLESS: "true"
+      LOG_LEVEL: INFO
+      PROCESS_BATCH_SIZE: "50"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  listening-beat:
+    build: ./services/listening_engine
+    container_name: listening-beat
+    command: >
+      celery -A app.scheduler.celery_app beat
+      --loglevel=info
+      --scheduler celery.beat.PersistentScheduler
+      --schedule /var/lib/celery/celerybeat-schedule
+    env_file: .env
+    environment:
+      APP_ENV: production
+      DATABASE_URL_SYNC: ${LISTENING_DATABASE_URL_SYNC:?LISTENING_DATABASE_URL_SYNC es obligatorio}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      LOG_LEVEL: INFO
+    volumes:
+      - celery_schedule:/var/lib/celery
+    depends_on:
+      redis:
+        condition: service_healthy
+      listening-worker:
+        condition: service_started
+    restart: unless-stopped
+
 volumes:
   pgdata:
+  redis_data:
+  celery_schedule:

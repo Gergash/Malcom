@@ -1,0 +1,30 @@
+# Termómetro Cultural - Application configuration
+# Values can be overridden by environment variables
+
+app:
+  name: termometro-cultural
+  env: development  # development | staging | production
+  log_level: INFO
+
+retry:
+  max_attempts: 3
+  min_wait_seconds: 2
+  max_wait_seconds: 60
+
+rate_limits:
+  llm_rpm: 60
+  webhook_rpm: 30
+
+database:
+  pool_size: 10
+  max_overflow: 20
+  pool_pre_ping: true
+
+processing:
+  batch_size: 100
+  max_concurrent_llm: 5
+
+scraping:
+  timeout_ms: 30000
+  max_posts_per_source: 50
+  proxy_rotation: false
