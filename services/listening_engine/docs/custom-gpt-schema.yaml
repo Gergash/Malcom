@@ -1,0 +1,541 @@
+openapi: "3.1.0"
+info:
+  title: Termómetro Cultural — Tuluá
+  description: >
+    API de monitoreo de sentimiento ciudadano para el municipio de Tuluá, Valle del Cauca.
+    Analiza publicaciones de Facebook, Instagram, X y medios locales para medir el pulso
+    ciudadano en temas de seguridad, impuestos, servicios públicos, infraestructura,
+    corrupción y administración pública.
+  version: "1.2.0"
+servers:
+  - url: https://ef74-2800-484-b176-bd30-f855-6c32-34c6-dd92.ngrok-free.app
+
+paths:
+
+  /webhooks/weekly-thermometer:
+    get:
+      operationId: getWeeklyThermometer
+      summary: Reporte semanal completo del termómetro social
+      description: >
+        Devuelve el reporte completo del termómetro social para los últimos N días.
+        Incluye score del termómetro (0–100), tendencia, temas críticos, alertas y
+        bloques pre-formateados listos para presentar al usuario.
+      parameters:
+        - name: days
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 7
+            minimum: 1
+            maximum: 30
+          description: Ventana de tiempo en días (por defecto 7).
+        - name: alert_limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+            maximum: 50
+          description: Máximo de alertas críticas a incluir.
+      responses:
+        "200":
+          description: Reporte del termómetro generado correctamente.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportResponse"
+
+  /webhooks/latest-alerts:
+    get:
+      operationId: getLatestAlerts
+      summary: Últimas alertas críticas ciudadanas
+      description: >
+        Devuelve los posts más recientes clasificados como urgencia alta y sentimiento
+        negativo. Incluye bloques pre-formateados para GPT, Telegram y texto plano.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+            maximum: 50
+          description: Número de alertas a devolver.
+        - name: hours
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 24
+            minimum: 1
+            maximum: 168
+          description: Ventana de búsqueda en horas (por defecto últimas 24h).
+        - name: platform
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [facebook, instagram, twitter, news]
+          description: Filtrar por plataforma.
+        - name: topic
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [security, taxes, public_services, infrastructure, corruption, public_administration, other]
+          description: Filtrar por tema.
+      responses:
+        "200":
+          description: Alertas obtenidas correctamente.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LatestAlertsResponse"
+
+  /webhooks/generate-report:
+    post:
+      operationId: generateCustomReport
+      summary: Generar reporte para un período específico
+      description: >
+        Genera un reporte completo de sentimiento para el rango de fechas indicado.
+        Incluye score del termómetro, temas principales, desglose de sentimiento y alertas.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportRequest"
+      responses:
+        "200":
+          description: Reporte generado correctamente.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportResponse"
+
+  /api/sentiment/summary:
+    get:
+      operationId: getSentimentSummary
+      summary: Resumen de sentimiento ciudadano
+      description: >
+        Devuelve conteos agregados de sentimiento (positivo / neutral / negativo),
+        score neto en [-1, 1], porcentajes y desglose por plataforma.
+      parameters:
+        - name: from_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Inicio del rango de fechas (ISO 8601).
+        - name: to_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Fin del rango de fechas (ISO 8601).
+        - name: platform
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [facebook, instagram, twitter, news]
+          description: Filtrar por plataforma.
+        - name: topic
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [security, taxes, public_services, infrastructure, corruption, public_administration, other]
+          description: Filtrar por tema.
+      responses:
+        "200":
+          description: Resumen de sentimiento.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SentimentSummaryResponse"
+
+  /api/topics/trending:
+    get:
+      operationId: getTrendingTopics
+      summary: Temas municipales más discutidos
+      description: >
+        Devuelve los temas más discutidos por los ciudadanos, ordenados por volumen.
+        Incluye desglose de sentimiento y conteo de alertas de alta urgencia por tema.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+            maximum: 50
+          description: Número máximo de temas a devolver.
+        - name: from_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Inicio del rango de fechas (ISO 8601).
+        - name: to_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Fin del rango de fechas (ISO 8601).
+        - name: platform
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [facebook, instagram, twitter, news]
+          description: Filtrar por plataforma.
+      responses:
+        "200":
+          description: Temas trending.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TopicsTrendingResponse"
+
+  /api/timeline:
+    get:
+      operationId: getSentimentTimeline
+      summary: Evolución diaria del sentimiento
+      description: >
+        Devuelve un punto de datos por día con conteos de sentimiento y score neto.
+        Útil para analizar tendencias en el tiempo.
+      parameters:
+        - name: from_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Inicio del rango de fechas (ISO 8601).
+        - name: to_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Fin del rango de fechas (ISO 8601).
+        - name: platform
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [facebook, instagram, twitter, news]
+          description: Filtrar por plataforma.
+        - name: topic
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [security, taxes, public_services, infrastructure, corruption, public_administration, other]
+          description: Filtrar por tema.
+      responses:
+        "200":
+          description: Timeline de sentimiento.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimelineResponse"
+
+  /api/alerts:
+    get:
+      operationId: getAlerts
+      summary: Posts de alta urgencia y sentimiento negativo
+      description: >
+        Lista paginada de posts con urgencia alta o media y sentimiento negativo.
+        Son las señales críticas para la toma de decisiones municipales.
+      parameters:
+        - name: urgency
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [high, medium]
+            default: [high]
+          description: Niveles de urgencia a incluir.
+        - name: from_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Inicio del rango de fechas (ISO 8601).
+        - name: to_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Fin del rango de fechas (ISO 8601).
+        - name: platform
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [facebook, instagram, twitter, news]
+          description: Filtrar por plataforma.
+        - name: topic
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [security, taxes, public_services, infrastructure, corruption, public_administration, other]
+          description: Filtrar por tema.
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+          description: Número de página (base 1).
+        - name: page_size
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+          description: Items por página (máx 100).
+      responses:
+        "200":
+          description: Alertas paginadas.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedAlerts"
+
+components:
+  schemas:
+
+    ReportRequest:
+      type: object
+      properties:
+        from_date:
+          type: string
+          format: date-time
+          description: Inicio del período. Por defecto hace 7 días.
+        to_date:
+          type: string
+          format: date-time
+          description: Fin del período. Por defecto ahora.
+        alert_limit:
+          type: integer
+          default: 10
+          description: Máximo de alertas críticas a incluir.
+
+    ReportResponse:
+      type: object
+      properties:
+        thermometer_score:
+          type: number
+          description: Score 0–100. Mayor de 70 positivo, 40–70 neutro, menor de 40 negativo.
+        trend:
+          type: string
+          enum: [improving, stable, worsening]
+        period_days:
+          type: integer
+        total_posts:
+          type: integer
+        sentiment_breakdown:
+          type: object
+          properties:
+            positive:
+              type: integer
+            neutral:
+              type: integer
+            negative:
+              type: integer
+        top_issues:
+          type: array
+          items:
+            type: object
+            properties:
+              topic:
+                type: string
+              count:
+                type: integer
+              sentiment_score:
+                type: number
+              high_urgency_count:
+                type: integer
+        critical_alerts:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlertItem"
+        formatted:
+          $ref: "#/components/schemas/FormattedBlocks"
+
+    LatestAlertsResponse:
+      type: object
+      properties:
+        count:
+          type: integer
+        total:
+          type: integer
+        fetched_at:
+          type: string
+          format: date-time
+        alerts:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlertItem"
+        formatted:
+          $ref: "#/components/schemas/FormattedBlocks"
+
+    SentimentSummaryResponse:
+      type: object
+      properties:
+        summary:
+          type: object
+          properties:
+            total:
+              type: integer
+            positive:
+              type: integer
+            neutral:
+              type: integer
+            negative:
+              type: integer
+            net_score:
+              type: number
+              description: Score neto en [-1, 1].
+            positive_pct:
+              type: number
+            neutral_pct:
+              type: number
+            negative_pct:
+              type: number
+        by_platform:
+          type: object
+          additionalProperties:
+            type: object
+        meta:
+          $ref: "#/components/schemas/MetaResponse"
+
+    TopicsTrendingResponse:
+      type: object
+      properties:
+        topics:
+          type: array
+          items:
+            type: object
+            properties:
+              topic:
+                type: string
+              count:
+                type: integer
+              positive:
+                type: integer
+              neutral:
+                type: integer
+              negative:
+                type: integer
+              high_urgency_count:
+                type: integer
+        total_classified:
+          type: integer
+        meta:
+          $ref: "#/components/schemas/MetaResponse"
+
+    TimelineResponse:
+      type: object
+      properties:
+        timeline:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+              positive:
+                type: integer
+              neutral:
+                type: integer
+              negative:
+                type: integer
+              net_score:
+                type: number
+        meta:
+          $ref: "#/components/schemas/MetaResponse"
+
+    PaginatedAlerts:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlertItem"
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total_pages:
+          type: integer
+
+    AlertItem:
+      type: object
+      properties:
+        id:
+          type: string
+        text:
+          type: string
+        platform:
+          type: string
+        topic:
+          type: string
+        sentiment:
+          type: string
+          enum: [positive, neutral, negative]
+        urgency:
+          type: string
+          enum: [low, medium, high]
+        posted_at:
+          type: string
+          format: date-time
+        url:
+          type: string
+        source_name:
+          type: string
+
+    FormattedBlocks:
+      type: object
+      description: Bloques de texto pre-formateados para diferentes canales.
+      properties:
+        telegram:
+          type: string
+          description: Texto con formato Markdown para Telegram.
+        gpt_prompt:
+          type: string
+          description: Prompt listo para inyectar en un modelo LLM.
+        plain_text:
+          type: string
+          description: Texto plano sin formato.
+
+    MetaResponse:
+      type: object
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        filters_applied:
+          type: object

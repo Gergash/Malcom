@@ -1,0 +1,119 @@
+# Termómetro Cultural - Docker Compose
+# Run: docker-compose up -d
+
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: termometro-api
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=production
+      - DATABASE_URL=postgresql+asyncpg://termometro:termometro@db:5432/termometro_cultural
+      - DATABASE_URL_SYNC=postgresql://termometro:termometro@db:5432/termometro_cultural
+      - REDIS_URL=redis://redis:6379/0
+      - GROK_API_KEY=${GROK_API_KEY}
+      - GROK_MODEL=${GROK_MODEL:-grok-3}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - .:/app
+    command: sh -c "alembic upgrade head && uvicorn app.api.main:app --host 0.0.0.0 --port 8000"
+
+  db:
+    image: postgres:16-alpine
+    container_name: termometro-db
+    environment:
+      POSTGRES_USER: termometro
+      POSTGRES_PASSWORD: termometro
+      POSTGRES_DB: termometro_cultural
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U termometro -d termometro_cultural"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: termometro-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  # -------------------------------------------------------------------------
+  # Celery worker: processes scraping and NLP tasks
+  # Queues: scraping (Playwright), processing (LLM), default (analytics)
+  # -------------------------------------------------------------------------
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: termometro-worker
+    command: >
+      celery -A app.scheduler.celery_app worker
+        --queues=scraping,processing,default
+        --concurrency=2
+        --loglevel=info
+    environment:
+      - APP_ENV=production
+      - DATABASE_URL=postgresql+asyncpg://termometro:termometro@db:5432/termometro_cultural
+      - DATABASE_URL_SYNC=postgresql://termometro:termometro@db:5432/termometro_cultural
+      - REDIS_URL=redis://redis:6379/0
+      - GROK_API_KEY=${GROK_API_KEY}
+      - GROK_MODEL=${GROK_MODEL:-grok-3}
+      - PLAYWRIGHT_HEADLESS=true
+      - LOG_LEVEL=INFO
+      - PROCESS_BATCH_SIZE=50
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - .:/app
+      - celery_logs:/var/log/celery
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------------
+  # Celery Beat: periodic task scheduler (every 12h scrape, every 6h analytics)
+  # -------------------------------------------------------------------------
+  beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: termometro-beat
+    command: >
+      celery -A app.scheduler.celery_app beat
+        --loglevel=info
+        --scheduler celery.beat.PersistentScheduler
+        --schedule /var/lib/celery/celerybeat-schedule
+    environment:
+      - APP_ENV=production
+      - DATABASE_URL_SYNC=postgresql://termometro:termometro@db:5432/termometro_cultural
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=INFO
+    depends_on:
+      - redis
+      - worker
+    volumes:
+      - celery_logs:/var/log/celery
+      - celery_schedule:/var/lib/celery
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  celery_logs:
+  celery_schedule:

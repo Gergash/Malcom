@@ -1,0 +1,67 @@
+# Fuentes de monitoreo ciudadano — Tuluá, Valle del Cauca
+# Se insertan idempotentemente al arrancar el worker (seed_lookup_tables).
+
+sources:
+  # --- Búsquedas temáticas Grok (sin URL fija) ---
+  - name: Quejas ciudadanas Tulua
+    platform: grok_topic
+    url: quejas ciudadanas Tuluá servicios públicos alcaldía
+    is_active: true
+
+  - name: Seguridad Tulua
+    platform: grok_topic
+    url: seguridad Tuluá inseguridad denuncias
+    is_active: true
+
+  - name: Obras e infraestructura
+    platform: grok_topic
+    url: obras infraestructura vías Tuluá
+    is_active: true
+
+  - name: Salud Tulua
+    platform: grok_topic
+    url: salud hospital EPS Tuluá
+    is_active: true
+
+  # --- Medios de comunicación ---
+  - name: Las2orillas
+    platform: news
+    url: https://www.las2orillas.co/
+    is_active: true
+
+  - name: El País Cali
+    platform: news
+    url: https://www.elpais.com.co/
+    is_active: true
+
+  - name: Mundo Mas
+    platform: news
+    url: https://mundomas.com.co/
+    is_active: true
+
+  - name: El Tabloide
+    platform: news
+    url: https://eltabloide.com.co/
+    is_active: true
+
+  # --- Twitter / X (búsquedas en vivo) ---
+  - name: X Tulua Valle
+    platform: twitter
+    url: https://x.com/search?q=Tulua%20Valle&f=live
+    is_active: true
+
+  - name: X Calioknoticias Tulua
+    platform: twitter
+    url: https://x.com/search?q=(tulua)%20(from%3Acalioknoticias)&f=live
+    is_active: true
+
+  # --- Facebook (búsqueda de grupos ciudadanos) ---
+  - name: FB grupos tulua denuncia
+    platform: facebook_group
+    url: https://www.facebook.com/groups/search/groups/?q=tulua%20denuncia
+    is_active: true
+
+  - name: FB grupos alguien sabe tulua
+    platform: facebook_group
+    url: https://www.facebook.com/groups/search/groups/?q=alguien%20sabe%20tulua
+    is_active: true

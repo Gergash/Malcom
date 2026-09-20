@@ -12,6 +12,7 @@
 | [`skill-registry.md`](skill-registry.md) | Índice de skills Gentle AI (tooling dev) |
 | `VPS-DEPLOY.md` | Go-live Hostinger: SSH, Caddy, SSL, compose endurecido — runbook local, fuera del repo |
 | [`LOCAL-DOCKER-STAGING.md`](LOCAL-DOCKER-STAGING.md) | Probar `master` en Docker local antes de `git pull` en la VPS |
+| [`FUSION-LISTENING.md`](FUSION-LISTENING.md) | Integración Termómetro Cultural → `services/listening_engine` |
 | [`../embed/staging-ngrok/README.md`](../embed/staging-ngrok/README.md) | Frontend staging vía ngrok (sin WordPress o con snippet WP) |
 
 ## Reglas de producto (resumen v2 — vigente)
