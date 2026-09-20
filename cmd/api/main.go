@@ -13,6 +13,7 @@ import (
 	"github.com/powerups/insightflow-malcom/internal/config"
 	malcomdb "github.com/powerups/insightflow-malcom/internal/db"
 	"github.com/powerups/insightflow-malcom/internal/db/repos"
+	"github.com/powerups/insightflow-malcom/internal/listening"
 	"github.com/powerups/insightflow-malcom/internal/worker"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -82,6 +83,12 @@ func main() {
 	downloadHandler := handlers.NewDownloadHandler(tokenStore, userRepo, cfg.DataDir)
 	dashboardHandler := handlers.NewDashboardHandler(tokenStore, userRepo, cfg.DataDir, cfg.DevForcePremium)
 
+	listeningClient := listening.New(cfg.ListeningAPIURL, cfg.ListeningWebhookSecret)
+	listeningHandler := handlers.NewListeningHandler(
+		listeningClient, userRepo, cfg.WorkerURL, 45, cfg.DevForcePremium,
+	)
+	log.Printf("Listening (Termómetro) → %s (premium-only)", cfg.ListeningAPIURL)
+
 	router := gin.Default()
 	router.MaxMultipartMemory = uploadMaxBytes
 
@@ -141,6 +148,19 @@ func main() {
 		v1.POST("/billing/webhook", middleware.BillingWebhookAuth(cfg.BillingWebhookSecret), billingHandler.PaymentWebhook)
 		v1.POST("/billing/bold-webhook", billingHandler.BoldWebhook)
 		v1.POST("/billing/link-email", billingHandler.LinkEmail)
+
+		// Termómetro Cultural (listening-api) — proxy + overview ECharts vía Brain
+		listen := v1.Group("/listening")
+		{
+			listen.GET("/health", listeningHandler.Health)
+			listen.GET("/overview", listeningHandler.Overview)
+			listen.GET("/sentiment/summary", listeningHandler.ProxySentiment)
+			listen.GET("/topics/trending", listeningHandler.ProxyTopics)
+			listen.GET("/timeline", listeningHandler.ProxyTimeline)
+			listen.GET("/alerts", listeningHandler.ProxyAlerts)
+			listen.GET("/sources", listeningHandler.ProxySources)
+			listen.POST("/scrape", listeningHandler.TriggerScrape)
+		}
 	}
 	if cfg.BillingWebhookSecret != "" {
 		log.Println("BILLING_WEBHOOK_SECRET activo: el webhook exige cabecera compartida.")

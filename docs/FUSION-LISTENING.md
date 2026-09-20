@@ -43,6 +43,36 @@ Solo listening (sin bot Telegram):
 docker compose up -d --build postgres redis brain api listening-api listening-worker listening-beat
 ```
 
+## Integración InsightFlow ↔ Termómetro
+
+La UI / API Go ya pueden consumir el listening engine:
+
+| Ruta InsightFlow | Destino |
+|------------------|---------|
+| `GET /api/v1/listening/overview` | Brain → listening-api → `echarts_option` + `dashboard` |
+| `GET /api/v1/listening/sentiment/summary` | Proxy → `/api/sentiment/summary` |
+| `GET /api/v1/listening/topics/trending` | Proxy → `/api/topics/trending` |
+| `GET /api/v1/listening/timeline` | Proxy → `/api/timeline` |
+| `GET /api/v1/listening/alerts` | Proxy → `/api/alerts` |
+| `GET /api/v1/listening/sources` | Proxy → `/api/sources` |
+| `POST /api/v1/listening/scrape` | Proxy → `/webhooks/trigger-scraping` |
+| Chat (widget) | Si el mensaje menciona termómetro / escucha social / Tuluá, el Brain llama listening-api y devuelve gráfica |
+
+Variables: `LISTENING_API_URL` (default `http://listening-api:8002`), opcional `LISTENING_WEBHOOK_SECRET`.
+
+Ejemplos:
+
+```bash
+curl -sS http://127.0.0.1:8080/api/v1/listening/health
+curl -sS "http://127.0.0.1:8080/api/v1/listening/overview"
+curl -sS -X POST http://127.0.0.1:8080/api/v1/listening/scrape -H 'Content-Type: application/json' -d '{"note":"manual"}'
+```
+
+En el chat (**solo Premium**): *“muéstrame el termómetro cultural”* o *“recolectar datos del termómetro”*.
+Usuarios free reciben mensaje de upgrade (`Paywall: true`); no se llama a listening-api.
+
+Rutas de datos (`/overview`, proxies, `/scrape`) exigen `?chat_id=` de un usuario **premium** (o `DEV_FORCE_PREMIUM=true` en local). `/health` queda abierto.
+
 ## Instrucciones Anexo 6 (nuevo desarrollador)
 
 1. `git fetch && git checkout feat/fusion-termometro && git pull`
@@ -56,11 +86,15 @@ docker compose up -d --build postgres redis brain api listening-api listening-wo
 - [ ] `postgres` healthy; existe DB `termometro_cultural`
 - [ ] `redis` healthy
 - [ ] `listening-api` up; `/docs` responde
+- [ ] `GET /api/v1/listening/health` → ok
+- [ ] `GET /api/v1/listening/overview` → `echarts_option` + `dashboard`
+- [ ] Chat: “muéstrame el termómetro cultural” → gráfica en widget
 - [ ] `listening-worker` / `listening-beat` up (logs sin crash loop)
 - [ ] `http://127.0.0.1:8080/health` de Malcom sigue OK
 
 ## Fuera de alcance (tickets posteriores)
 
-- Exponer `listening-api` en Caddy (`api.powerupsecosistem.online` o subruta)
+- Exponer `listening-api` directo en Caddy (hoy entra por Go en `/api/v1/listening/*`)
 - Unificar auth / billing con InsightFlow
-- Merge a `master` tras validar Anexo 6
+- Merge a `master` tras validar Anexo 6 + smoke de overview
+- Scrapers YouTube/TikTok + etiqueta `imparcial` (Anexo 6)

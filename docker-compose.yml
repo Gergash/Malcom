@@ -36,6 +36,7 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL es obligatorio (definir en .env)}
+      LISTENING_API_URL: ${LISTENING_API_URL:-http://listening-api:8002}
     working_dir: /app
     volumes:
       - ./data:/app/data
@@ -57,6 +58,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL es obligatorio (definir en .env)}
       WORKER_URL: http://brain:8001
+      LISTENING_API_URL: ${LISTENING_API_URL:-http://listening-api:8002}
       DATA_DIR: /app/data
       EMBED_DIR: /app/embed
       API_PORT: "8080"

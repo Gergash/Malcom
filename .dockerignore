@@ -1,0 +1,23 @@
+# Contexto Docker Malcom (brain/bot) — sin basura local
+.git
+.github
+.cursor
+.claude
+.atl
+.ipynb_checkpoints
+.pytest_cache
+**/__pycache__
+**/*.pyc
+**/.venv
+**/venv
+.env
+.env.*
+!.env.example
+Test
+data
+*.md
+!requerimientos.txt
+agent-transcripts
+node_modules
+*.exe
+*.log

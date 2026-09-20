@@ -79,6 +79,11 @@ type Config struct {
 	// LoginGateEnabled — feature flag: activa las rutas de auth, el gate de BoldCheckout y el
 	// ticker de expiración premium. false = comportamiento actual sin gate (rollback rápido).
 	LoginGateEnabled bool
+
+	// ListeningAPIURL — Termómetro Cultural en red Compose (default http://listening-api:8002).
+	ListeningAPIURL string
+	// ListeningWebhookSecret — opcional; se envía como X-Webhook-Secret al disparar scraping.
+	ListeningWebhookSecret string
 }
 
 // Load reads .env (if present) and environment variables.
@@ -214,6 +219,15 @@ func Load() (*Config, error) {
 		loginGateEnabled = true
 	}
 
+	listeningURL := strings.TrimSpace(os.Getenv("LISTENING_API_URL"))
+	if listeningURL == "" {
+		listeningURL = "http://listening-api:8002"
+	}
+	listeningWebhook := strings.TrimSpace(os.Getenv("LISTENING_WEBHOOK_SECRET"))
+	if listeningWebhook == "" {
+		listeningWebhook = strings.TrimSpace(os.Getenv("WEBHOOK_SECRET"))
+	}
+
 	return &Config{
 		DatabaseURL:             NormalizeDatabaseURL(rawURL),
 		Port:                    port,
@@ -241,9 +255,11 @@ func Load() (*Config, error) {
 		ResendAPIKey:            resendAPIKey,
 		MailFrom:                mailFrom,
 		MailFromName:            mailFromName,
-		AuthRateLimitRPS:        authRPS,
-		AuthRateLimitBurst:      authBurst,
-		LoginGateEnabled:        loginGateEnabled,
+		AuthRateLimitRPS:         authRPS,
+		AuthRateLimitBurst:       authBurst,
+		LoginGateEnabled:         loginGateEnabled,
+		ListeningAPIURL:          strings.TrimRight(listeningURL, "/"),
+		ListeningWebhookSecret:   listeningWebhook,
 	}, nil
 }
 

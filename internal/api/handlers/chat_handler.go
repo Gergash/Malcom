@@ -129,13 +129,25 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		return
 	}
 
+	// 3b · Termómetro Cultural: solo Premium (gate temprano, sin llamar al Brain).
+	if worker.ListeningQuery(req.Message) && !creditStatus.IsPremium {
+		msg := worker.PremiumListeningDeniedMessage
+		_ = h.convRepo.AddMessage(ctx, req.ChatID, "assistant", msg)
+		c.JSON(http.StatusOK, types.ChatResponse{
+			Response:         msg,
+			Paywall:          true,
+			CreditsRemaining: creditStatus.CreditsRemaining,
+		})
+		return
+	}
+
 	// 4 · Gatekeeper: construir ReportConfig desde el tier/perfil real del usuario (DB es la autoridad).
 	// El frontend NO puede auto-upgradear enviando tier="premium" en el JSON.
 	rc := buildTierConfig(req.ReportConfig, creditStatus)
 
 	// 5 · Worker: strict data si ya hay archivos del usuario en data/{chat_id}/
 	requireStrict := filesystem.HasUploadedDataFiles(h.dataDir, req.ChatID)
-	result, err := h.worker.ProcessMessage(ctx, req.ChatID, req.Message, rc, requireStrict)
+	result, err := h.worker.ProcessMessage(ctx, req.ChatID, req.Message, rc, requireStrict, creditStatus.IsPremium)
 	if err != nil {
 		slog.Error("worker process message failed", "chat_id", req.ChatID, "error", err)
 		c.JSON(http.StatusInternalServerError, types.ErrorResponse{
@@ -198,11 +210,19 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		}
 	}
 
-	// 8b · Dashboard ECharts / multi-widget: disponible para todos los usuarios (v2).
+	// 8b · Dashboard ECharts / multi-widget: disponible para todos los usuarios (v2),
+	// EXCEPTO Termómetro Cultural (listening_engine) → solo Premium.
 	var dashboardURL *string
 	var echartsOpt json.RawMessage
 	var dashboardPayload json.RawMessage
-	if len(result.EChartsOption) > 0 || len(result.Dashboard) > 0 {
+	allowCharts := true
+	if result.Source == "listening_engine" && !creditStatus.IsPremium {
+		allowCharts = false
+		result.Response = worker.PremiumListeningDeniedMessage
+		result.EChartsOption = nil
+		result.Dashboard = nil
+	}
+	if allowCharts && (len(result.EChartsOption) > 0 || len(result.Dashboard) > 0) {
 		echartsOpt = result.EChartsOption
 		dashboardPayload = result.Dashboard
 		wrapMap := map[string]json.RawMessage{}
