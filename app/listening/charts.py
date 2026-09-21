@@ -184,6 +184,8 @@ def narrative_summary(
     *,
     scraped: bool = False,
     scrape_detail: Optional[str] = None,
+    collection_phase: str = "idle",
+    scrape_meta: Optional[dict] = None,
 ) -> str:
     s = _summary_block(sentiment)
     total = int(s.get("total") or 0)
@@ -191,14 +193,62 @@ def narrative_summary(
     pos = int(s.get("positive") or 0)
     neu = int(s.get("neutral") or 0)
     neg = int(s.get("negative") or 0)
+    meta = scrape_meta or {}
+
+    # --- Fase recolección: mensaje claro antes del resumen numérico ---
+    if collection_phase == "collecting":
+        task = meta.get("task_id") or "—"
+        n_src = meta.get("sources_count")
+        src_txt = f" sobre **{n_src} fuentes**" if n_src else ""
+        lines = [
+            "**Termómetro Cultural — recolección en proceso**",
+            "",
+            f"Estoy recolectando y clasificando menciones{src_txt}.",
+            f"Esto suele tardar unos **{meta.get('eta_minutes', 15)} minutos**.",
+            "",
+            f"- Estado: **en curso**",
+            f"- Task ID: `{task}`",
+            "",
+            "Cuando termine, escribe de nuevo: *“muéstrame el termómetro cultural”* "
+            "para ver el resumen y la gráfica.",
+        ]
+        if total > 0:
+            lines.extend(
+                [
+                    "",
+                    f"_Mientras tanto hay **{total}** posts ya analizados de corridas anteriores._",
+                ]
+            )
+        return "\n".join(lines)
 
     lines = [
         "**Termómetro Cultural — resumen**",
         "",
-        f"- Posts analizados: **{total}**",
-        f"- Sentimiento neto: **{score:+.2f}** (−1…1)",
-        f"- Desglose: positivo {pos} · neutral {neu} · negativo {neg}",
     ]
+
+    if collection_phase == "ready":
+        lines.append("**Datos listos** — la recolección ya tiene resultados para visualizar.")
+        lines.append("")
+    elif collection_phase == "empty" and scraped:
+        lines.append(
+            "La recolección **terminó**, pero **no se guardaron posts** "
+            "(fuentes vacías, timeouts o error de ingestión). Revisa logs del worker o vuelve a intentar."
+        )
+        lines.append("")
+    elif collection_phase == "empty":
+        lines.append(
+            "La última recolección **finalizó sin datos nuevos**. "
+            "Puedes pedir otra vez *“recolectar termómetro”*."
+        )
+        lines.append("")
+
+    lines.extend(
+        [
+            f"- Posts analizados: **{total}**",
+            f"- Sentimiento neto: **{score:+.2f}** (−1…1)",
+            f"- Desglose: positivo {pos} · neutral {neu} · negativo {neg}",
+        ]
+    )
     top = (topics.get("topics") or [])[:5]
     if top:
         lines.append("")
@@ -207,20 +257,21 @@ def narrative_summary(
             name = t.get("name") or t.get("slug") or "?"
             lines.append(f"- {name}: {t.get('count', 0)} menciones")
 
-    if scraped:
+    if scraped and collection_phase != "collecting":
         lines.append("")
-        lines.append("Se disparó una recolección de datos en el motor de escucha.")
+        lines.append("Se disparó una recolección en el motor de escucha.")
         if scrape_detail:
             lines.append(scrape_detail)
 
-    if total == 0:
+    if total == 0 and collection_phase == "idle":
         lines.append("")
         lines.append(
             "_Aún no hay posts clasificados. Pide “recolectar termómetro” para "
-            "lanzar scraping, o espera al ciclo de Celery Beat._"
+            "lanzar la recolección._"
         )
-    else:
+    elif total > 0:
         lines.append("")
         lines.append("La gráfica acompaña este mensaje en el tablero InsightFlow.")
 
     return "\n".join(lines)
+

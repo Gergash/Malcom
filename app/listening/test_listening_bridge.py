@@ -58,3 +58,12 @@ def test_sentiment_pie_and_dashboard():
     text = narrative_summary(sentiment, topics)
     assert "18" in text
     assert "Seguridad" in text
+    collecting = narrative_summary(
+        sentiment,
+        topics,
+        collection_phase="collecting",
+        scrape_meta={"task_id": "abc", "sources_count": 31, "eta_minutes": 15},
+    )
+    assert "recolección en proceso" in collecting.lower() or "en proceso" in collecting.lower()
+    assert "abc" in collecting
+

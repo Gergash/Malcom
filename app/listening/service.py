@@ -14,6 +14,12 @@ from app.listening.charts import (
     primary_echarts_option,
 )
 from app.listening.client import ListeningClient
+from app.listening.scrape_state import (
+    ETA_MINUTES,
+    load_scrape_state,
+    resolve_collection_phase,
+    save_scrape_queued,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +40,7 @@ LISTENING_KEYWORDS = (
     "cultura ciudadana",
     "opinión ciudadana",
     "opinion ciudadana",
+    "plan ayacucho",
 )
 
 SCRAPE_KEYWORDS = (
@@ -73,6 +80,14 @@ def _parse_days(message: str) -> Optional[int]:
     return max(1, min(n, 90))
 
 
+def _posts_total(sentiment: dict[str, Any]) -> int:
+    s = sentiment.get("summary") or {}
+    try:
+        return int(s.get("total") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 async def build_listening_overview(
     *,
     client: Optional[ListeningClient] = None,
@@ -85,16 +100,17 @@ async def build_listening_overview(
     """
     cli = client or ListeningClient()
     filters: dict[str, Any] = {}
-    # CommonFilters uses from_date/to_date; days alone only on priority-score.
-    # For overview we pass nothing unless days set — API defaults apply.
-    # Optional: leave empty for full history / API default window.
+    _ = days
 
     scrape_info: Optional[dict[str, Any]] = None
     scraped = False
+    scrape_state: Optional[dict[str, Any]] = None
     if trigger_scrape:
         try:
             scrape_info = await cli.trigger_scraping(note=scrape_note or "insightflow-chat")
             scraped = True
+            if not scrape_info.get("error"):
+                scrape_state = save_scrape_queued(scrape_info)
         except Exception as exc:
             logger.warning("listening scrape failed: %s", exc)
             scrape_info = {"error": str(exc)}
@@ -117,6 +133,7 @@ async def build_listening_overview(
             "raw": None,
             "scraped": scraped,
             "scrape": scrape_info,
+            "collection_phase": "error",
         }
 
     alerts: dict[str, Any] = {}
@@ -125,21 +142,40 @@ async def build_listening_overview(
     except Exception as exc:
         logger.warning("listening alerts skipped: %s", exc)
 
-    echarts = primary_echarts_option(sentiment, topics, timeline)
-    dashboard = build_listening_dashboard(
-        sentiment=sentiment,
-        topics=topics,
-        timeline=timeline,
-        alerts=alerts,
-    )
-    scrape_detail = None
-    if scrape_info and not scrape_info.get("error"):
-        scrape_detail = f"Job: `{scrape_info}`"
-    elif scrape_info and scrape_info.get("error"):
-        scrape_detail = f"_Scraping no disparado: {scrape_info['error']}_"
+    posts = _posts_total(sentiment)
+    phase = resolve_collection_phase(posts=posts, just_queued=bool(scraped and scrape_state))
+    if not scrape_state:
+        scrape_state = load_scrape_state()
 
-    # days reserved for future filter wiring (from_date)
-    _ = days
+    scrape_meta = {
+        "task_id": (scrape_info or scrape_state or {}).get("task_id"),
+        "sources_count": (scrape_info or scrape_state or {}).get("sources_count"),
+        "eta_minutes": ETA_MINUTES,
+    }
+
+    # Si acaba de encolar: priorizar mensaje "en proceso" (sin confundir con "sin datos").
+    echarts = None
+    dashboard = None
+    if phase != "collecting" and posts > 0:
+        echarts = primary_echarts_option(sentiment, topics, timeline)
+        dashboard = build_listening_dashboard(
+            sentiment=sentiment,
+            topics=topics,
+            timeline=timeline,
+            alerts=alerts,
+        )
+    elif phase == "ready" or (posts > 0):
+        echarts = primary_echarts_option(sentiment, topics, timeline)
+        dashboard = build_listening_dashboard(
+            sentiment=sentiment,
+            topics=topics,
+            timeline=timeline,
+            alerts=alerts,
+        )
+
+    scrape_detail = None
+    if scrape_info and scrape_info.get("error"):
+        scrape_detail = f"_Scraping no disparado: {scrape_info['error']}_"
 
     return {
         "ok": True,
@@ -149,6 +185,8 @@ async def build_listening_overview(
             topics,
             scraped=scraped,
             scrape_detail=scrape_detail,
+            collection_phase=phase,
+            scrape_meta=scrape_meta,
         ),
         "echarts_option": echarts,
         "dashboard": dashboard,
@@ -160,6 +198,7 @@ async def build_listening_overview(
         },
         "scraped": scraped,
         "scrape": scrape_info,
+        "collection_phase": phase,
         "source": "listening_engine",
     }
 
