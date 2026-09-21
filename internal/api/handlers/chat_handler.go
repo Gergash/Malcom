@@ -147,7 +147,12 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 
 	// 5 · Worker: strict data si ya hay archivos del usuario en data/{chat_id}/
 	requireStrict := filesystem.HasUploadedDataFiles(h.dataDir, req.ChatID)
-	result, err := h.worker.ProcessMessage(ctx, req.ChatID, req.Message, rc, requireStrict, creditStatus.IsPremium)
+	listeningCredits, _ := h.userRepo.GetListeningCredits(ctx, req.ChatID)
+	// En DEV_FORCE_PREMIUM dar saldo de prueba para poder ejercitar recolección.
+	if h.devForcePremium && listeningCredits < 40 {
+		listeningCredits = 40
+	}
+	result, err := h.worker.ProcessMessage(ctx, req.ChatID, req.Message, rc, requireStrict, creditStatus.IsPremium, listeningCredits)
 	if err != nil {
 		slog.Error("worker process message failed", "chat_id", req.ChatID, "error", err)
 		c.JSON(http.StatusInternalServerError, types.ErrorResponse{
@@ -248,20 +253,46 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		}
 	}
 
+	// 8c · Créditos listening: descontar si el Brain cobró un paquete.
+	if result.ListeningCreditsCharged > 0 && !h.devForcePremium {
+		if _, err := h.userRepo.DeductListeningCredits(ctx, req.ChatID, result.ListeningCreditsCharged); err != nil {
+			slog.Warn("deduct listening credits", "error", err, "chat_id", req.ChatID)
+		}
+	}
+
+	var listeningCheckout *string
+	if result.ListeningNeedCredits {
+		pack := result.ListeningPack
+		if pack == "" {
+			pack = "estandar"
+		}
+		u := publicBaseURL(c) + "/api/v1/billing/bold-checkout?chat_id=" +
+			strconv.FormatInt(req.ChatID, 10) + "&pack=" + pack
+		listeningCheckout = &u
+		result.Response = strings.TrimSpace(result.Response) +
+			"\n\n[Recargar créditos listening con Bold](" + u + ")"
+	}
+
 	// 9 · Respuesta
 	out := types.ChatResponse{
-		Response:         result.Response,
-		HasPDF:           result.HasPDF,
-		HasExcel:         result.HasExcel,
-		HasChart:         result.HasChart,
-		Paywall:          false,
-		CreditsRemaining: creditStatus.CreditsRemaining,
-		ImageURL:         imageURL,
-		DownloadURL:      downloadURL,
-		DownloadLabel:    downloadLabel,
-		ChartURLs:        chartURLs,
-		Artifacts:        artifacts,
-		DashboardURL:     dashboardURL,
+		Response:                 result.Response,
+		HasPDF:                   result.HasPDF,
+		HasExcel:                 result.HasExcel,
+		HasChart:                 result.HasChart,
+		Paywall:                  false,
+		CreditsRemaining:         creditStatus.CreditsRemaining,
+		ImageURL:                 imageURL,
+		DownloadURL:              downloadURL,
+		DownloadLabel:            downloadLabel,
+		ChartURLs:                chartURLs,
+		Artifacts:                artifacts,
+		DashboardURL:             dashboardURL,
+		ListeningNeedPack:        result.ListeningNeedPack,
+		ListeningNeedCredits:     result.ListeningNeedCredits,
+		ListeningPack:            result.ListeningPack,
+		ListeningCreditsRequired: result.ListeningCreditsRequired,
+		ListeningCreditsBalance:  result.ListeningCreditsBalance,
+		ListeningCheckoutURL:     listeningCheckout,
 	}
 	if len(echartsOpt) > 0 {
 		out.EChartsOption = echartsOpt

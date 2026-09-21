@@ -345,6 +345,25 @@ func (h *BillingHandler) BoldWebhook(c *gin.Context) {
 		msg = "Pago Bold ya procesado anteriormente."
 	}
 
+	// Recargas listening (order-id IF-L-* o montos de paquete): acreditar créditos Grok.
+	listeningCredits := 0
+	switch {
+	case strings.Contains(ref, "IF-L-rapida") || amountCOP == 15000:
+		listeningCredits = 5
+	case strings.Contains(ref, "IF-L-estandar") || amountCOP == 40000:
+		listeningCredits = 15
+	case strings.Contains(ref, "IF-L-profunda") || amountCOP == 90000:
+		listeningCredits = 40
+	}
+	if listeningCredits > 0 && event.ChatID != nil && !result.AlreadyProcessed {
+		if bal, err := h.userRepo.AddListeningCredits(c.Request.Context(), *event.ChatID, listeningCredits); err != nil {
+			slog.Warn("bold webhook: no se pudieron acreditar créditos listening", "error", err)
+		} else {
+			msg = fmt.Sprintf("%s Créditos listening +%d (saldo %d).", msg, listeningCredits, bal)
+			slog.Info("bold webhook: listening credits", "chat_id", *event.ChatID, "added", listeningCredits, "balance", bal)
+		}
+	}
+
 	slog.Info(
 		"bold webhook: premium activado",
 		slog.Int64("chat_id", *event.ChatID),
@@ -401,8 +420,25 @@ func (h *BillingHandler) BoldCheckout(c *gin.Context) {
 	if amount <= 0 {
 		amount = 40000
 	}
-	currency := "COP"
+	pack := strings.ToLower(strings.TrimSpace(c.Query("pack")))
 	description := fmt.Sprintf("InsightFlow Pro — chat_id=%d", chatID)
+	switch pack {
+	case "rapida":
+		amount = 15000
+		orderID = fmt.Sprintf("IF-L-%s-%d-%d", pack, chatID, time.Now().Unix())
+		description = fmt.Sprintf("Listening Rápida (5 créd. Grok) — chat_id=%d", chatID)
+	case "estandar", "estándar", "standard":
+		pack = "estandar"
+		amount = 40000
+		orderID = fmt.Sprintf("IF-L-%s-%d-%d", pack, chatID, time.Now().Unix())
+		description = fmt.Sprintf("Listening Estándar (15 créd. Grok) — chat_id=%d", chatID)
+	case "profunda", "deep":
+		pack = "profunda"
+		amount = 90000
+		orderID = fmt.Sprintf("IF-L-%s-%d-%d", pack, chatID, time.Now().Unix())
+		description = fmt.Sprintf("Listening Profunda (40 créd. Grok) — chat_id=%d", chatID)
+	}
+	currency := "COP"
 	redirectURL := h.premiumPortalURL
 	if redirectURL == "" {
 		redirectURL = "https://clarity-connector-18.lovable.app/insightflow/portal"
@@ -412,6 +448,9 @@ func (h *BillingHandler) BoldCheckout(c *gin.Context) {
 		sep = "&"
 	}
 	redirectURL = fmt.Sprintf("%s%schat_id=%d", redirectURL, sep, chatID)
+	if pack != "" {
+		redirectURL += "&listening_pack=" + pack
+	}
 
 	sig := bold.IntegritySignature(orderID, amount, currency, h.boldIntegritySecret)
 

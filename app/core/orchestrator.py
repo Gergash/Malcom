@@ -133,6 +133,7 @@ class Orchestrator:
         require_strict_data: bool = False,
         generate_echarts: bool = False,
         is_premium: bool = False,
+        listening_credits: int = 0,
     ) -> dict:
         """
         Procesa un mensaje de texto y devuelve un dict con response, flags de
@@ -165,11 +166,27 @@ class Orchestrator:
                     "source": "listening_engine",
                 }
             try:
-                listening = await handle_listening_message(message)
+                listening = await handle_listening_message(
+                    message,
+                    chat_id=self.chat_id,
+                    listening_credits=listening_credits,
+                )
                 self._echarts_option = listening.get("echarts_option")
                 self._dashboard = listening.get("dashboard")
                 out = self._build_result(listening.get("response") or "")
                 out["source"] = "listening_engine"
+                for k in (
+                    "collection_phase",
+                    "listening_need_pack",
+                    "listening_need_credits",
+                    "listening_pack",
+                    "listening_credits_required",
+                    "listening_credits_charged",
+                    "listening_credits_balance",
+                    "scraped",
+                ):
+                    if k in listening:
+                        out[k] = listening[k]
                 return out
             except Exception as exc:
                 return {

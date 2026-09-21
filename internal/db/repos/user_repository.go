@@ -4,6 +4,7 @@ package repos
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -159,6 +160,7 @@ func userToState(u *db.User, quotaLoc *time.Location) *repositories.UserState {
 		MessageCount:      u.MessagesToday, // compat widget: message_count = uso diario
 		LifetimeMessages:  u.MessageCount,
 		IsPremium:         u.IsPremium,
+		ListeningCredits:  u.ListeningCredits,
 		FreeMessageLimit:  u.FreeMessageLimit,
 		PremiumSince:      formatPremiumSince(u.PremiumSince),
 		BrandingColor:     u.BrandingColor,
@@ -387,4 +389,67 @@ func (r *userRepo) RecordUploadedFile(ctx context.Context, file *db.UserFile) er
 		return errors.New("file nil")
 	}
 	return r.db.WithContext(ctx).Create(file).Error
+}
+
+func (r *userRepo) GetListeningCredits(ctx context.Context, chatID int64) (int, error) {
+	u, err := lookupUserByChatID(ctx, r.db, chatID)
+	if err != nil {
+		return 0, err
+	}
+	if u == nil {
+		return 0, nil
+	}
+	return u.ListeningCredits, nil
+}
+
+func (r *userRepo) AddListeningCredits(ctx context.Context, chatID int64, delta int) (int, error) {
+	if delta == 0 {
+		return r.GetListeningCredits(ctx, chatID)
+	}
+	var balance int
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		cid := chatID
+		u, err := getOrCreateUserTx(tx, ctx, r.freeLimit, r.quotaLoc, &cid, nil, nil)
+		if err != nil {
+			return err
+		}
+		u.ListeningCredits += delta
+		if u.ListeningCredits < 0 {
+			u.ListeningCredits = 0
+		}
+		u.UpdatedAt = time.Now().UTC()
+		if err := tx.Save(u).Error; err != nil {
+			return err
+		}
+		balance = u.ListeningCredits
+		return nil
+	})
+	return balance, err
+}
+
+func (r *userRepo) DeductListeningCredits(ctx context.Context, chatID int64, amount int) (int, error) {
+	if amount <= 0 {
+		return r.GetListeningCredits(ctx, chatID)
+	}
+	var balance int
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		u, err := lookupUserByChatID(ctx, tx, chatID)
+		if err != nil {
+			return err
+		}
+		if u == nil {
+			return errors.New("usuario no encontrado")
+		}
+		if u.ListeningCredits < amount {
+			return fmt.Errorf("créditos listening insuficientes (%d < %d)", u.ListeningCredits, amount)
+		}
+		u.ListeningCredits -= amount
+		u.UpdatedAt = time.Now().UTC()
+		if err := tx.Save(u).Error; err != nil {
+			return err
+		}
+		balance = u.ListeningCredits
+		return nil
+	})
+	return balance, err
 }

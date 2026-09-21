@@ -20,6 +20,7 @@ type UserState struct {
 	MessageCount       int // messages_today expuesto como message_count (compat widget)
 	LifetimeMessages   int // message_count acumulado de por vida
 	IsPremium         bool
+	ListeningCredits  int // saldo paquetes Termómetro / Grok
 	FreeMessageLimit  int
 	CreditsRemaining  int
 	Paywall           bool
@@ -80,6 +81,11 @@ type UserRepository interface {
 	GetUserIDForChat(ctx context.Context, chatID int64) (*uint, error)
 	// RecordUploadedFile inserta auditoría en user_files (tras ingestión exitosa).
 	RecordUploadedFile(ctx context.Context, file *malcomdb.UserFile) error
+
+	// Listening credits (Termómetro / Grok)
+	GetListeningCredits(ctx context.Context, chatID int64) (int, error)
+	AddListeningCredits(ctx context.Context, chatID int64, delta int) (int, error)
+	DeductListeningCredits(ctx context.Context, chatID int64, amount int) (int, error)
 }
 
 // ConversationRepository — operaciones sobre el historial de conversación.

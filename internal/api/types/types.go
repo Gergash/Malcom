@@ -72,6 +72,13 @@ type ChatResponse struct {
 	EChartsOption json.RawMessage `json:"echarts_option,omitempty"`
 	Dashboard     json.RawMessage `json:"dashboard,omitempty"`
 	DashboardURL  *string         `json:"dashboard_url,omitempty"`
+	// Listening / Termómetro
+	ListeningNeedPack        bool    `json:"listening_need_pack,omitempty"`
+	ListeningNeedCredits     bool    `json:"listening_need_credits,omitempty"`
+	ListeningPack            string  `json:"listening_pack,omitempty"`
+	ListeningCreditsRequired int     `json:"listening_credits_required,omitempty"`
+	ListeningCreditsBalance  int     `json:"listening_credits_balance,omitempty"`
+	ListeningCheckoutURL     *string `json:"listening_checkout_url,omitempty"`
 }
 
 // ── Upload ────────────────────────────────────────────────────────────────────

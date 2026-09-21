@@ -48,6 +48,8 @@ class ProcessMessageRequest(BaseModel):
     generate_echarts: bool = False
     # Premium: habilita Termómetro Cultural / listening_engine.
     is_premium: bool = False
+    # Saldo de créditos listening (API Go / Bold).
+    listening_credits: int = 0
 
 
 class IngestFileRequest(BaseModel):
@@ -120,6 +122,7 @@ async def internal_process_message(body: ProcessMessageRequest):
             require_strict_data=body.require_strict_data,
             generate_echarts=body.generate_echarts,
             is_premium=body.is_premium,
+            listening_credits=body.listening_credits,
         )
         payload: dict[str, Any] = {
             "response": result.get("response", ""),
@@ -138,6 +141,18 @@ async def internal_process_message(body: ProcessMessageRequest):
             payload["dashboard"] = dash
         if result.get("source"):
             payload["source"] = result["source"]
+        for k in (
+            "collection_phase",
+            "listening_need_pack",
+            "listening_need_credits",
+            "listening_pack",
+            "listening_credits_required",
+            "listening_credits_charged",
+            "listening_credits_balance",
+            "scraped",
+        ):
+            if k in result:
+                payload[k] = result[k]
         return payload
 
     try:

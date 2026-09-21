@@ -32,6 +32,14 @@ type ProcessResult struct {
 	Dashboard json.RawMessage `json:"dashboard,omitempty"`
 	// Source — origen del resultado (p. ej. "listening_engine"); vacío = analista CSV.
 	Source string `json:"source,omitempty"`
+	// Listening / Termómetro Cultural
+	CollectionPhase           string `json:"collection_phase,omitempty"`
+	ListeningNeedPack         bool   `json:"listening_need_pack,omitempty"`
+	ListeningNeedCredits      bool   `json:"listening_need_credits,omitempty"`
+	ListeningPack             string `json:"listening_pack,omitempty"`
+	ListeningCreditsRequired  int    `json:"listening_credits_required,omitempty"`
+	ListeningCreditsCharged   int    `json:"listening_credits_charged,omitempty"`
+	ListeningCreditsBalance   int    `json:"listening_credits_balance,omitempty"`
 }
 
 // IngestResult — resultado que el Worker Python retorna tras ingestar un archivo.
@@ -52,6 +60,7 @@ type processRequest struct {
 	RequireStrictData bool                `json:"require_strict_data"`
 	GenerateECharts   bool                `json:"generate_echarts"`
 	IsPremium         bool                `json:"is_premium"`
+	ListeningCredits  int                 `json:"listening_credits"`
 }
 
 type ingestRequest struct {
@@ -68,7 +77,7 @@ type Client interface {
 	// ProcessMessage envía el mensaje al worker. requireStrictData indica si el chat
 	// tiene archivos subidos (Go lo infiere desde data/); el analista no debe inventar datos.
 	// isPremium activa funciones de plan (Termómetro Cultural / listening).
-	ProcessMessage(ctx context.Context, chatID int64, message string, reportConfig *types.ReportConfig, requireStrictData, isPremium bool) (*ProcessResult, error)
+	ProcessMessage(ctx context.Context, chatID int64, message string, reportConfig *types.ReportConfig, requireStrictData, isPremium bool, listeningCredits int) (*ProcessResult, error)
 
 	// IngestFile envía la ruta de un archivo temporal al Worker para que lo
 	// indexe/almacene. storedFilename es el nombre en data/{chat_id}/; originalFilename es el nombre del usuario (RAG).
@@ -167,6 +176,7 @@ func (c *HTTPClient) ProcessMessage(
 	reportConfig *types.ReportConfig,
 	requireStrictData bool,
 	isPremium bool,
+	listeningCredits int,
 ) (*ProcessResult, error) {
 	genECharts := shouldGenerateECharts(message, requireStrictData)
 	patience := calculateProcessTimeout(message, reportConfig, requireStrictData, genECharts, c.requestTimeoutSec)
@@ -185,6 +195,7 @@ func (c *HTTPClient) ProcessMessage(
 			RequireStrictData: requireStrictData,
 			GenerateECharts:   genECharts,
 			IsPremium:         isPremium,
+			ListeningCredits:  listeningCredits,
 		}).
 		SetResult(&result).
 		SetError(&apiErr).

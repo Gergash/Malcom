@@ -168,14 +168,25 @@ def primary_echarts_option(
     topics: dict[str, Any],
     timeline: dict[str, Any],
 ) -> Dict[str, Any]:
-    """Chart primario para el widget (compat echarts_option)."""
-    points = timeline.get("timeline") or []
-    if len(points) >= 2:
-        return timeline_stacked_option(timeline)
+    """
+    Chart primario para el widget (compat echarts_option).
+
+    Prioridad alineada al resumen textual:
+      1) Temas en tendencia (barras) — lo que el usuario lee en el mensaje
+      2) Distribución de sentimiento (pie)
+      3) Timeline apilado (solo si hay puntos)
+    """
     topic_list = topics.get("topics") or []
     if topic_list:
         return topics_bar_option(topics)
+    s = sentiment.get("summary") or {}
+    if int(s.get("total") or 0) > 0:
+        return sentiment_pie_option(sentiment)
+    points = timeline.get("timeline") or []
+    if len(points) >= 2:
+        return timeline_stacked_option(timeline)
     return sentiment_pie_option(sentiment)
+
 
 
 def narrative_summary(
