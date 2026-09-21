@@ -1,43 +1,43 @@
 # Documentación InsightFlow Malcom
 
-**Última actualización:** 2026-07-30  
-**Fuente de verdad para reglas de producto:** [`BUSINESS-RULES-v2.md`](BUSINESS-RULES-v2.md)
+**Última actualización:** 2026-09-21 · **HEAD de referencia:** `master` (`09cee57+`)  
+**Fuente de verdad para reglas de producto:** [`BUSINESS-RULES-v2.md`](BUSINESS-RULES-v2.md)  
+**Fuente de verdad Termómetro / COMES:** [`FUSION-LISTENING.md`](FUSION-LISTENING.md)
 
 | Archivo | Contenido |
 |---|---|
-| [`BUSINESS-RULES-v2.md`](BUSINESS-RULES-v2.md) | Plan gratis vs premium, login email, gates, estado de implementación |
-| [`CLAUDE.md`](CLAUDE.md) | Arquitectura, stack y convenciones para agentes de código |
-| [`BOLD-SETUP.txt`](BOLD-SETUP.txt) | Despliegue Bold + WordPress + Lovable + webhook + flujo correo |
-| [`bin_automation-README.md`](bin_automation-README.md) | Proyecto BIN + changelog histórico Malcom |
-| [`skill-registry.md`](skill-registry.md) | Índice de skills Gentle AI (tooling dev) |
-| `VPS-DEPLOY.md` | Go-live Hostinger: SSH, Caddy, SSL, compose endurecido — runbook local, fuera del repo |
-| [`LOCAL-DOCKER-STAGING.md`](LOCAL-DOCKER-STAGING.md) | Probar `master` en Docker local antes de `git pull` en la VPS |
-| [`FUSION-LISTENING.md`](FUSION-LISTENING.md) | Integración Termómetro Cultural → `services/listening_engine` |
-| [`../embed/staging-ngrok/README.md`](../embed/staging-ngrok/README.md) | Frontend staging vía ngrok (sin WordPress o con snippet WP) |
+| [`BUSINESS-RULES-v2.md`](BUSINESS-RULES-v2.md) | Plan gratis vs premium, login email, gates, listening premium |
+| [`FUSION-LISTENING.md`](FUSION-LISTENING.md) | Termómetro Cultural embebido, chat, packs, progreso, COMES/CGFM |
+| [`CLAUDE.md`](CLAUDE.md) | Arquitectura y convenciones para agentes de código |
+| [`LOCAL-DOCKER-STAGING.md`](LOCAL-DOCKER-STAGING.md) | Probar `master` en Docker local antes de pull en VPS |
+| [`BOLD-SETUP.txt`](BOLD-SETUP.txt) | Bold + WordPress + Lovable + webhook |
+| [`bin_automation-README.md`](bin_automation-README.md) | BIN automation + changelog histórico |
+| [`skill-registry.md`](skill-registry.md) | Índice de skills Gentle AI |
+| `VPS-DEPLOY.md` | Go-live Hostinger (runbook local / fuera del repo si aplica) |
+| [`../services/listening_engine/README.md`](../services/listening_engine/README.md) | Motor de escucha (scrapers, Celery, API) |
+| [`../services/listening_engine/docs/ANEXO6-SOURCES-CGFM.md`](../services/listening_engine/docs/ANEXO6-SOURCES-CGFM.md) | Fuentes Anexo 6 / COMES |
+| [`../embed/staging-ngrok/README.md`](../embed/staging-ngrok/README.md) | Staging widget vía ngrok |
 
-## Reglas de producto (resumen v2 — vigente)
+## Producto (v2 — vigente)
 
-- **Gratis:** 15 mensajes/día (reset medianoche `America/Bogota`), portal + dashboard ECharts multi-widget + multi-gráfica **incluidos**.
-- **Pago $40.000 COP (Bold):** mensajes **ilimitados** + PDF/Excel + branding.
-- **Paywall:** solo bloquea **nuevos mensajes** al agotar el cupo; no bloquea portal/dashboard.
-- **Identidad:** `chat_id` anónimo + email vía portal, tarjeta Lovable (`POST /billing/link-email`) o auto-vínculo en webhook Bold.
-- **Pago:** correo → revela botón Bold (`data-bold-gate=login` + `PU_mountBoldCheckout`).
-  - WordPress: `/portal-premium/#portal-login`
-  - Lovable: `embed/lovable-login-card.html` (iframe; ver snippet)
+- **Gratis:** 15 mensajes/día · portal + ECharts multi-widget incluidos  
+- **Premium ($40.000 COP Bold):** mensajes ilimitados + PDF/Excel + **Termómetro Cultural**  
+- **Listening:** packs rápida/estándar/profunda (créditos Bold → uso Grok)
 
-## Estado actual (julio 2026)
+## Capacidad Termómetro (sep-2026)
 
 | Capacidad | Estado |
 |---|---|
-| Cuota diaria + paywall mensajes | ✅ |
-| Portal + ECharts free | ✅ |
-| Visor multi-widget (`dashboard` + KPIs) | ✅ |
-| Login correo → Bold (portal) | ✅ |
-| Login correo → Bold (tarjeta Lovable) | ✅ |
-| `generate_echarts` condicional + timeouts | ✅ |
-| Formulario email en widget chat | ❌ Pendiente |
-| Magic link / OTP | ❌ Fase 2 |
-| No generar PDF/Excel free en worker | ⏳ Pendiente |
-| Gate PDF/Excel en bot Telegram | ⏳ Pendiente |
+| Chat → listening-api (premium) | ✅ |
+| Fuentes `sources_cgfm.yaml` (perfil exclusivo) | ✅ |
+| 5 redes vía Grok (X/FB/IG/TikTok/YouTube) | ✅ |
+| Paquetes + créditos listening | ✅ |
+| Barra / gauge de progreso en widget | ✅ |
+| Mensaje honesto si `new_posts=0` | ✅ |
+| Prompts scrapers/NLP orientados COMES | ✅ |
+| Scrapers nativos TikTok/YouTube (Playwright) | ⏳ Opcional (hoy Grok) |
+| Etiqueta sentimiento `imparcial` | ⏳ Pendiente (hoy `neutral`) |
 
-Detalle y checklist: [`BUSINESS-RULES-v2.md`](BUSINESS-RULES-v2.md) §9–§12.
+## Reglas de producto (resumen)
+
+Detalle: [`BUSINESS-RULES-v2.md`](BUSINESS-RULES-v2.md).

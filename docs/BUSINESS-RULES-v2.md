@@ -1,11 +1,11 @@
 # InsightFlow — Reglas de negocio v2
 
-**Última actualización:** 2026-07-30  
-**Estado:** **Implementado (API Go + Brain + embed)** para cuota diaria, portal/dashboard gratis, multi-gráfica free, visor multi-widget ejecutivo, PDF/Excel premium en backend, Bold checkout/webhook, login por correo en portal **y** tarjeta Lovable (gate del botón Bold).  
-**Pendiente:** formulario email en el widget del chat; magic link / OTP (fase 2); no generar PDF/Excel en el worker para free; paridad de gate PDF/Excel en el bot Telegram.
+**Última actualización:** 2026-09-21  
+**Estado:** **Implementado (API Go + Brain + embed)** para cuota diaria, portal/dashboard gratis, multi-gráfica free, visor multi-widget ejecutivo, PDF/Excel premium en backend, Bold checkout/webhook, login por correo en portal **y** tarjeta Lovable (gate del botón Bold). **Termómetro Cultural** (listening) disponible solo para premium, con packs de créditos listening.  
+**Pendiente:** formulario email en el widget del chat; magic link / OTP (fase 2); no generar PDF/Excel en el worker para free; paridad de gate PDF/Excel en el bot Telegram; etiqueta sentimiento `imparcial` en listening.
 
 **Precio premium:** $40.000 COP (Bold)  
-**Qué se vende:** mensajes ilimitados + uso ilimitado del panel/dashboard — **no** el acceso al portal ni a ECharts.
+**Qué se vende:** mensajes ilimitados + PDF/Excel + Termómetro Cultural — **no** el acceso al portal ni a ECharts genéricos (ya free).
 
 ---
 
@@ -18,11 +18,12 @@
 | **Dashboard ECharts (tablero en vivo)** | ✅ Incluido | ✅ Incluido |
 | **Multi-gráfica** | ✅ Incluido | ✅ Incluido |
 | **PDF / Excel** | ❌ Solo premium | ✅ Incluido |
+| **Termómetro Cultural / listening** | ❌ Solo premium | ✅ Incluido (+ créditos listening) |
 | **Branding (colores/fuentes)** | Gris fijo | Personalizable |
 | **Paywall** | Solo al agotar **15 mensajes del día** | Nunca (por mensajes) |
 | **Identificación** | `chat_id` anónimo (localStorage) | Mismo + **email** (portal / webhook Bold) |
 
-**Mensaje comercial:** InsightFlow es gratis para explorar (portal + gráficas + 15 preguntas al día). El pago de $40.000 COP elimina el límite diario de mensajes y desbloquea reportes PDF/Excel.
+**Mensaje comercial:** InsightFlow es gratis para explorar (portal + gráficas + 15 preguntas al día). El pago de $40.000 COP elimina el límite diario de mensajes, desbloquea reportes PDF/Excel y el **Termómetro Cultural** (escucha COMES/CGFM).
 
 ---
 
@@ -312,4 +313,19 @@ Respuesta actual (`BillingStatusResponse` en Go) — **no** incluye el objeto `f
 
 **Login:** Fase 0 (webhook) + Fase 1 (portal + tarjeta Lovable). Falta UI en widget y Fase 2 (verificación magic link/OTP).
 
-**Documentos alineados:** este archivo, `docs/README.md`, `docs/CLAUDE.md`, `README.md`, `docs/BOLD-SETUP.txt`, `embed/INTEGRATION-BEBUILDER.txt`, `.env.example`.
+---
+
+## 13. Termómetro Cultural (listening) — sep 2026
+
+| Regla | Detalle |
+|-------|---------|
+| Gate | Solo `is_premium` (o `DEV_FORCE_PREMIUM`) |
+| Perfil fuentes | `LISTENING_SOURCES_FILE=config/sources_cgfm.yaml` (COMES/CGFM) |
+| Packs | Rápida 5 / Estándar 15 / Profunda 40 créditos listening |
+| Cobro | Descuento de créditos; recarga Bold → uso Grok |
+| UX progreso | `collection_phase` + barra/gauge; poll overview |
+| `new_posts=0` | Mensaje `ready_no_new` (no fingir datos frescos) |
+
+Doc operativa: [`FUSION-LISTENING.md`](FUSION-LISTENING.md).
+
+**Documentos alineados:** este archivo, `docs/README.md`, `docs/CLAUDE.md`, `docs/FUSION-LISTENING.md`, `README.md`, `docs/BOLD-SETUP.txt`, `embed/INTEGRATION-BEBUILDER.txt`, `.env.example`.

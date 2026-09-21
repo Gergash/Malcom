@@ -1,8 +1,12 @@
-# Arquitectura – Termómetro Cultural
+# Arquitectura – Termómetro Cultural (Listening Engine)
 
 ## Visión general
 
-Sistema de monitoreo de sentimiento ciudadano para Tuluá (Valle del Cauca). Flujo principal: **Scheduler** (Celery Beat) dispara **scrape_sources** → **process_text_data** → **update_analytics**. Los datos se almacenan en PostgreSQL y se exponen vía API FastAPI.
+Motor de escucha digital embebido en InsightFlow Malcom. **Perfil de producción:** Comando General de las Fuerzas Militares (COMES / CGFM) y Plan Ayacucho (`config/sources_cgfm.yaml`).
+
+Flujo: **Celery Beat / webhook / chat** → **scrape_sources** (Grok web_search + progreso) → **process_text_data** → **update_analytics**. Datos en PostgreSQL; API FastAPI; producto vía Go/Brain (`docs/FUSION-LISTENING.md` en raíz Malcom).
+
+> Documentación histórica de operación Tuluá (jul-2026): `OPERACION_JULIO_2026.md` — útil como runbook técnico; el mandato de fuentes vigente es CGFM.
 
 ## Diagrama de flujo
 

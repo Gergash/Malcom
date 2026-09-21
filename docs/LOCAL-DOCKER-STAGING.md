@@ -1,8 +1,9 @@
 # Staging local con Docker — probar `master` antes de la VPS
 
-**Objetivo:** en tu PC levantar **el mismo stack** que producción (Postgres + brain + api [+ bot]) usando el mismo `docker-compose.yml`, validar cambios de `master`, y **solo entonces** desplegar en la KVM con `git pull`.
+**Objetivo:** en tu PC levantar **el mismo stack** que producción (Postgres + redis + brain + api + listening-* [+ bot]) usando el mismo `docker-compose.yml`, validar cambios de `master`, y **solo entonces** desplegar en la KVM con `git pull`.
 
-**Producción:** runbook `VPS-DEPLOY.md` (local, fuera del repo) · `~/apps/insightflow`
+**Producción:** runbook `VPS-DEPLOY.md` (local, fuera del repo) · `~/apps/insightflow`  
+**Termómetro:** [`FUSION-LISTENING.md`](FUSION-LISTENING.md) — en `.env` local: `LISTENING_SOURCES_FILE=config/sources_cgfm.yaml`, `GROK_API_KEY`, opcional `DEV_FORCE_PREMIUM=true`.
 
 ---
 

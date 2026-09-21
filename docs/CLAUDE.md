@@ -1,41 +1,42 @@
 # InsightFlow — Malcom
 
-Scope de Gentle AI para el proyecto **InsightFlow Malcom**: chatbot de análisis de datos con Telegram, motor Python de IA, y API Go para gestión de usuarios y pagos.
+Scope de Gentle AI para el proyecto **InsightFlow Malcom**: chatbot de análisis de datos con Telegram, motor Python de IA, API Go, y **Termómetro Cultural** (listening COMES/CGFM).
 
-**Última actualización:** 2026-08-31  
+**Última actualización:** 2026-09-21  
 **Reglas de producto:** [`BUSINESS-RULES-v2.md`](BUSINESS-RULES-v2.md) (fuente de verdad).  
-**Despliegue VPS:** runbook `VPS-DEPLOY.md` (local, fuera del repo) — en producción en `https://api.powerupsecosistem.online`.  
-**Staging local (Docker en PC):** [`LOCAL-DOCKER-STAGING.md`](LOCAL-DOCKER-STAGING.md) — probar `master` antes de `git pull` en la VPS.  
-**Estado v2:** cuota diaria, portal/ECharts free, visor multi-widget, PDF/Excel premium (gate Go), Bold + login correo en portal y tarjeta Lovable — implementados. Pendiente de producto: email UI en widget, magic link, no generar PDF/Excel free en worker. Go-live VPS completo: stack en marcha tras Caddy + SSL, llaves Bold cargadas y checkout firmado en vivo. Ollama descartado en la VPS. Pendiente de operación: registrar el webhook Bold en el panel, prueba de pago real y rotar la `BOLD_API_KEY` que estuvo expuesta.
+**Termómetro / listening:** [`FUSION-LISTENING.md`](FUSION-LISTENING.md).  
+**Despliegue VPS:** runbook `VPS-DEPLOY.md` (local) — prod `https://api.powerupsecosistem.online`.  
+**Staging local:** [`LOCAL-DOCKER-STAGING.md`](LOCAL-DOCKER-STAGING.md).  
+**Estado v2:** cuota diaria, portal/ECharts free, PDF/Excel premium, Bold + Termómetro premium (packs listening, progreso, fuentes CGFM). Pendiente: email UI en widget, magic link, scrapers nativos TikTok/YouTube, etiqueta `imparcial`.
 
 ---
 
 ## Arquitectura
 
 ```
-Telegram Bot (Python)
+Telegram Bot / Widget embed
        |
        v
-   Go API (Gin)          <- auth, uploads, billing, dashboard
+   Go API (Gin)          <- auth, uploads, billing, dashboard, /listening/*
        |
        v
- Python Worker (FastAPI) <- orquestacion de agentes IA
+ Python Worker (FastAPI) <- orquestacion de agentes IA + app/listening
        |
-  +----+----------------------+
-  |         Agentes           |
-  |  AnalystAgent             |
-  |  PredictorAgent           |
-  |  KnowledgeAgent           |
-  |  ComplianceAgent          |
+  +----+----------------------+     +---------------------------+
+  |         Agentes           |     | listening-api :8002       |
+  |  AnalystAgent             |────▶| Celery worker/beat        |
+  |  PredictorAgent           |     | PostgreSQL termometro_*   |
+  |  KnowledgeAgent           |     | Fuentes sources_cgfm.yaml |
+  |  ComplianceAgent          |     +---------------------------+
   |  ReportGeneratorAgent     |
   +---------------------------+
        |
   PostgreSQL  <-  Go (GORM) + Python (SQLAlchemy async)
 ```
 
-**Canales web:** widget WordPress/BeBuilder (`embed/`), portal premium, visor dashboard, tarjeta Lovable (`lovable-login-card.html`).
+**Canales web:** widget WordPress/BeBuilder (`embed/`), portal premium, visor dashboard, tarjeta Lovable.
 
-**Regla de routing (orchestrator.py):** keywords de predicción → `PredictorAgent`; archivos de documentos → `KnowledgeAgent`; resto → `AnalystAgent`.
+**Regla de routing (orchestrator.py):** keywords Termómetro/listening (premium) → `handle_listening_message`; predicción → `PredictorAgent`; documentos → `KnowledgeAgent`; resto → `AnalystAgent`.
 
 ---
 

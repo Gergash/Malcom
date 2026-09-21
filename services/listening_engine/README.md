@@ -1,180 +1,105 @@
-# Termómetro Cultural – Social Sentiment Monitoring System
+# Termómetro Cultural — Listening Engine
 
-Sistema de monitoreo de sentimiento ciudadano para el municipio de **Tuluá** (Valle del Cauca, Colombia). Ingiere publicaciones de Facebook, Instagram, X (Twitter) y noticias; las procesa con LLMs para clasificar sentimiento, temas y urgencia; almacena resultados en PostgreSQL y expone datos vía API para dashboards, reportes e integraciones (n8n, Custom GPT, Telegram).
+Motor de monitoreo de escucha digital embebido en **InsightFlow Malcom**.
+
+**Perfil de producción (COMES / CGFM):** fuentes en [`config/sources_cgfm.yaml`](config/sources_cgfm.yaml).  
+**Integración producto:** [`docs/FUSION-LISTENING.md`](../../docs/FUSION-LISTENING.md) · brief Anexo 6: [`docs/ANEXO6-SOURCES-CGFM.md`](docs/ANEXO6-SOURCES-CGFM.md).
+
+Ingesta publicaciones de **X, Facebook, Instagram, TikTok, YouTube** y medios; clasifica sentimiento / tema / urgencia con LLM; persiste en PostgreSQL; expone API para dashboards e InsightFlow.
+
+> El YAML `sources_tulua.yaml` es histórico. Con `LISTENING_SOURCES_FILE=config/sources_cgfm.yaml` el seed desactiva residuales fuera del perfil CGFM.
 
 ## Arquitectura
 
 ```
-┌──────────────┐     ┌──────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│ Celery Beat  │────▶│  scrape_sources  │────▶│ process_text_data│────▶│ update_analytics│
-│ (12h / 6h)   │     │  (queue:         │     │  (queue:         │     │ (queue: default)│
-└──────────────┘     │   scraping)      │     │   processing)    │     └─────────────────┘
-       │             └────────┬─────────┘     └────────┬─────────┘              │
-       │                      │                        │                        │
-       │                      ▼                        ▼                        ▼
-       │             ┌────────────────────────────────────────────────────────────┐
-       │             │                    PostgreSQL (Storage)                     │
-       │             │   sources → posts → analysis_results → topics, sentiment    │
-       │             └────────────────────────────────────────────────────────────┘
-       │                                         │
-       ▼                                         ▼
-┌──────────────┐                         ┌─────────────────┐
-│ Webhooks     │                         │ API FastAPI     │
-│ trigger-     │                         │ /api/sentiment  │
-│ scraping     │                         │ /api/topics     │
-└──────────────┘                         │ /api/alerts     │
-                                         │ /api/timeline   │
-                                         └─────────────────┘
+Celery Beat ──▶ scrape_sources ──▶ process_text_data ──▶ update_analytics
+                     │                      │
+                     ▼                      ▼
+              PostgreSQL (sources → posts → analysis_results)
+                     │
+        listening-api FastAPI  ←──  InsightFlow Go/Brain
+        webhooks: trigger-scraping, scrape-status
 ```
 
-### Flujo de tareas (Celery)
+### Tareas Celery
 
-1. **`scrape_sources`** — Obtiene fuentes activas, ejecuta scrapers por plataforma, hace upsert de posts. En cadena dispara `process_text_data` con los post_ids nuevos.
-2. **`process_text_data`** — Ejecuta el pipeline NLP (limpieza, idioma, clasificación) y persiste `analysis_results` y caché en `posts`. Luego dispara `update_analytics`.
-3. **`update_analytics`** — Reconcilia `cached_sentiment_label`, `cached_urgency`, `cached_confidence` en posts con análisis pero caché desactualizado.
+1. **`scrape_sources`** — Fuentes activas → scrapers → upsert posts; publica progreso; encadena NLP si hay posts nuevos.  
+2. **`process_text_data`** — Pipeline NLP → `analysis_results` + caché.  
+3. **`update_analytics`** — Reconcilia caché de sentimiento/urgencia.
 
-**Horario Beat:** `scrape_sources` cada 12 h (00:00 y 12:00 Bogotá), `update_analytics` cada 6 h (:30).
+Beat: scrape ~12 h; analytics ~6 h (America/Bogota). Disparo manual vía webhook / chat InsightFlow.
 
 ### Capas
 
 | Capa | Descripción |
 |------|-------------|
-| **ingestion** | Scrapers: GrokSearchScraper (API xAI) cuando hay `GROK_API_KEY` para facebook, instagram, twitter, grok_topic y **news**; Playwright/BeautifulSoup/NewsScraper como fallback. Fuentes Tuluá en `config/sources_tulua.yaml` (12 activas). Salida normalizada: `source`, `platform`, `text`, `date`, `url`, `metadata`. |
-| **processing** | Pipeline NLP: sanitización PII (Ley 1581), limpieza de texto, detección de idioma, clasificación combinada (topic, sentiment, urgency) en una llamada LLM. OpenAI o Grok (fallback). |
-| **storage** | PostgreSQL + SQLAlchemy. Tablas: sources, posts, comments, topics, sentiment_scores, analysis_results. Redis para cola Celery. |
-| **api** | FastAPI: analytics (`/api/sentiment`, `/api/topics`, `/api/alerts`, `/api/timeline`, `/api/sources`), webhooks (trigger-scraping, generate-report, latest-alerts, weekly-thermometer). |
-| **analysis** | Agregaciones usando `cached_sentiment_label` y `cached_urgency` en posts. Filtros por fecha, plataforma y tema. |
-| **scheduler** | Celery (Beat + Worker). Colas: scraping, processing, default. |
+| **ingestion** | `GrokSearchScraper` (xAI grok-4 + web_search) para redes + news + topics; Playwright/BS fallback. Metadata: engagement, reach, linked_urls, etc. |
+| **processing** | PII (Ley 1581) → clean → language → topic/sentiment/urgency (**enfoque COMES**). |
+| **storage** | PostgreSQL + Redis/Celery. |
+| **api** | Analytics + webhooks (`trigger-scraping`, `scrape-status/{id}`, reportes). |
+| **scheduler** | Colas `scraping`, `processing`, `default`. |
 
-## Stack tecnológico
+## Stack
 
-- **Python 3.11+**
-- **FastAPI** – API REST
-- **PostgreSQL** – Base de datos principal
-- **SQLAlchemy 2.0** – ORM y migraciones (Alembic)
-- **Playwright** – Scraping de páginas dinámicas
-- **BeautifulSoup** – Páginas estáticas
-- **OpenAI / Grok (x.ai)** – Clasificación de sentimiento, temas y urgencia
-- **Redis** – Cola de tareas y backend de Celery
-- **Celery** – Tareas asíncronas y scheduling
-- **Docker** – Contenedores y orquestación
+Python 3.11 · FastAPI · PostgreSQL · Celery/Redis · Playwright · OpenAI/Grok · Docker (servicios `listening-*` en compose raíz Malcom).
 
-## Servicios Docker
-
-| Servicio | Descripción |
-|----------|-------------|
-| **api** | FastAPI + `alembic upgrade head` en arranque. Puerto 8000. |
-| **db** | PostgreSQL 16 — puerto host **5433** (mapeo `5433:5432` en Windows si 5432 está ocupado) |
-| **redis** | Cola y resultados Celery |
-| **worker** | Celery worker (colas scraping, processing, default) |
-| **beat** | Celery Beat (cron periódico) |
-
-## API y Webhooks
+## API
 
 ### Analytics
 
-- `GET /api/sentiment/summary` — Resumen de sentimiento (total y por plataforma)
-- `GET /api/topics/trending` — Temas más mencionados
-- `GET /api/topics/priority-score` — Señales crudas para pauta-meta (integración Tuluá)
-- `GET /api/alerts` — Posts negativos de alta urgencia
-- `GET /api/timeline` — Sentimiento por día
-- `GET /api/sources` — Engagement por fuente
-- `GET /api/posts` — Posts con filtros
+- `GET /api/sentiment/summary`
+- `GET /api/topics/trending`
+- `GET /api/alerts` · `/api/timeline` · `/api/sources` · `/api/posts`
 
-### Webhooks (n8n, Custom GPT, Telegram)
+### Webhooks
 
-- `POST /webhooks/trigger-scraping` — Dispara tarea `scrape_sources` vía Celery
-- `POST /webhooks/generate-report` — Genera reporte para un período
-- `GET /webhooks/latest-alerts` — Últimas alertas (formato Telegram, GPT, plain text)
-- `GET /webhooks/weekly-thermometer` — Reporte semanal formateado
+- `POST /webhooks/trigger-scraping` → `task_id`
+- `GET /webhooks/scrape-status/{task_id}` → percent, phase, new_posts, ready
+- `POST /webhooks/generate-report` · `GET /webhooks/latest-alerts` · `GET /webhooks/weekly-thermometer`
 
-Opcional: header `X-Webhook-Secret` cuando `WEBHOOK_SECRET` está configurado.
+Auth opcional: `X-Webhook-Secret`.
 
 ## Configuración
 
-Variables clave en `.env` (ver `.env.example`):
-
 | Variable | Descripción |
 |----------|-------------|
-| `DATABASE_URL` / `DATABASE_URL_SYNC` | PostgreSQL (async / sync) |
-| `REDIS_URL` | Redis para Celery |
-| `OPENAI_API_KEY` | LLM primario (clasificación) |
-| `GROK_API_KEY` | Fallback LLM y GrokSearchScraper (scraping). Grok con server-side tools requiere familia grok-4. |
-| `GROK_MODEL` | Modelo Grok (ej. grok-2, grok-4) |
-| `WEBHOOK_SECRET` | Opcional, para auth en webhooks |
-| `LLM_RATE_LIMIT_RPM` / `WEBHOOK_RATE_LIMIT_RPM` | Límites de requests por minuto |
+| `LISTENING_SOURCES_FILE` | p.ej. `config/sources_cgfm.yaml` (perfil exclusivo) |
+| `DATABASE_URL` / sync | DB `termometro_cultural` |
+| `REDIS_URL` | Celery |
+| `GROK_API_KEY` | Scraping live + LLM fallback |
+| `OPENAI_API_KEY` | LLM primario opcional |
+| `WEBHOOK_SECRET` | Auth webhooks |
 
-## Estructura del proyecto
+En Compose Malcom las vars suelen ir como `LISTENING_*` en `.env` raíz.
+
+## Estructura
 
 ```
 app/
-├── api/          # FastAPI, routes, dependencies
-├── core/         # exceptions, logging, retry, rate_limiter, batch
-├── ingestion/    # scrapers (base, facebook, instagram, twitter, news, grok_search)
-├── processing/   # pipeline, _llm, sentiment, topics, urgency, privacy
-├── storage/      # database, models
-├── analysis/     # aggregates, scoring, reports
-└── scheduler/    # celery_app, tasks, repository
-config/           # app.yaml, scoring.yaml
-alembic/          # migraciones
-docs/             # ARCHITECTURE.md, DATABASE_SCHEMA.md, custom-gpt-schema.yaml
+├── api/          # FastAPI + webhooks
+├── ingestion/    # scrapers (grok_search, facebook, instagram, twitter, news)
+├── processing/   # NLP COMES
+├── storage/      # models
+├── analysis/     # aggregates, reports
+└── scheduler/    # celery, tasks, source_seeds
+config/
+├── sources_cgfm.yaml   # producción COMES
+└── sources_tulua.yaml  # histórico
 ```
 
-Ver [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md) y [docs/OPERACION_JULIO_2026.md](docs/OPERACION_JULIO_2026.md) (fuentes, pruebas jul-2026, integración pauta-meta).
+## Inicio (desde raíz Malcom)
 
-### Integración pauta-meta
-
-- Endpoint: `GET /api/topics/priority-score?days=30` — consumido por `pauta-meta` (`TERMOMETRO_API_URL=http://localhost:8000`).
-- Mapeo TEMA: `config/topic_tema_mapping.yaml` v2.0.0.
-
-### Nota operativa (jul-2026)
-
-Si los posts scrapeados no se guardan (`new_posts=0` en logs), verificar que exista la columna `language` en `posts` (ver `docs/OPERACION_JULIO_2026.md`).
-
-## Inicio rápido
-
-1. **Variables de entorno**
-
-   ```bash
-   cp .env.example .env
-   # Editar .env: DATABASE_URL, REDIS_URL, OPENAI_API_KEY y/o GROK_API_KEY
-   ```
-
-2. **Con Docker**
-
-   ```bash
-   docker-compose up -d
-   ```
-
-   - API: http://localhost:8000  
-   - Docs: http://localhost:8000/docs  
-
-3. **Sin Docker (desarrollo)**
-
-   ```bash
-   python -m venv .venv
-   .venv\Scripts\activate   # Windows
-   pip install -r requirements.txt
-   playwright install chromium
-   uvicorn app.api.main:app --reload
-   ```
-
-## Uso del módulo de scraping
-
-```python
-from app.ingestion.scrapers import FacebookScraper, NewsScraper, GrokSearchScraper
-
-# Playwright (requiere browser)
-scraper = FacebookScraper(proxy_rotation=True)
-items = await scraper.scrape(url="https://facebook.com/...")
-
-# Grok API (búsqueda web, sin browser)
-scraper = GrokSearchScraper(target_platform="grok_topic", days_back=7)
-items = await scraper.scrape(url="quejas sobre Tulua servicios públicos")
-
-# items: list[dict] con schema (source, platform, text, date, url, metadata)
+```bash
+cp .env.example .env   # LISTENING_SOURCES_FILE + GROK_API_KEY
+docker compose up -d --build listening-api listening-worker listening-beat redis
 ```
+
+Puerto interno API: **8002** (proxy público vía Go `:8080/api/v1/listening/*`).
+
+## Coste
+
+Una fuente activa ≈ una llamada Grok-4 + web_search **aunque** `new_posts=0`. Preferir packs de alcance y perfil CGFM limpio.
 
 ## Licencia
 
-Uso interno – Municipio de Tuluá.
+Uso interno — InsightFlow / PowerUps · despliegue cliente COMES/CGFM.

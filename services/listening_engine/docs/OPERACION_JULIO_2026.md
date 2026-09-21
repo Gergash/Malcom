@@ -1,7 +1,11 @@
 # Operación Termómetro Cultural — Julio 2026
 
-**Audiencia:** arquitecto de solución, operaciones Tuluá, integración con pauta-meta.  
-**Última actualización:** 2026-07-07.
+> **Nota (2026-09-21):** el perfil de **producción** es COMES/CGFM (`LISTENING_SOURCES_FILE=config/sources_cgfm.yaml`).  
+> Este documento describe la operación histórica **Tuluá** (jul-2026) y sigue siendo útil como runbook de scrapers/Grok/DB.  
+> Estado actual del producto: [`../../docs/FUSION-LISTENING.md`](../../docs/FUSION-LISTENING.md) · [`ANEXO6-SOURCES-CGFM.md`](ANEXO6-SOURCES-CGFM.md).
+
+**Audiencia:** arquitecto de solución, operaciones, integración.  
+**Última actualización del cuerpo histórico:** 2026-07-07 · **banner:** 2026-09-21.
 
 ---
 

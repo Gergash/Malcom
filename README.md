@@ -1,13 +1,13 @@
 # InsightFlow — Malcom
 
-Plataforma de Business Intelligence conversacional para Colombia. Combina un bot de Telegram, una API pública en Go y un motor de agentes de IA en Python para analizar archivos corporativos y gubernamentales (DIAN, RIPS, extractos bancarios, inventarios) y generar reportes PDF/Excel enriquecidos con gráficas interactivas.
+Plataforma de Business Intelligence conversacional para Colombia. Combina un bot de Telegram, una API pública en Go y un motor de agentes de IA en Python para analizar archivos corporativos y gubernamentales (DIAN, RIPS, extractos bancarios, inventarios) y generar reportes PDF/Excel enriquecidos con gráficas interactivas. Incluye el **Termómetro Cultural** (escucha social COMES/CGFM) como servicio hermano premium.
 
-**Reglas de producto (v2):** [`docs/BUSINESS-RULES-v2.md`](docs/BUSINESS-RULES-v2.md) · **Índice de documentación:** [`docs/README.md`](docs/README.md)
+**Reglas de producto (v2):** [`docs/BUSINESS-RULES-v2.md`](docs/BUSINESS-RULES-v2.md) · **Índice:** [`docs/README.md`](docs/README.md) · **Termómetro:** [`docs/FUSION-LISTENING.md`](docs/FUSION-LISTENING.md)
 
-| Plan | Mensajes | Portal + dashboard ECharts | Pago Bold $40k |
-|---|---|---|---|
-| Gratis | 15/día (reset medianoche `America/Bogota`) | Incluidos | — |
-| Premium | Ilimitados | Incluidos | Mensajes ilimitados + PDF/Excel |
+| Plan | Mensajes | Portal + ECharts | Termómetro | Pago Bold $40k |
+|---|---|---|---|---|
+| Gratis | 15/día (reset `America/Bogota`) | Incluidos | — | — |
+| Premium | Ilimitados | Incluidos | Sí (+ créditos listening) | Mensajes ilimitados + PDF/Excel + listening |
 
 ---
 
@@ -15,48 +15,34 @@ Plataforma de Business Intelligence conversacional para Colombia. Combina un bot
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Canales de entrada                                             │
-│   Telegram Bot (app/main.py)                                   │
-│   Widget Web WordPress / BeBuilder / Lovable (embed/)          │
+│  Canales: Telegram · Widget WordPress/BeBuilder (embed/)        │
 └──────────────────────────┬──────────────────────────────────────┘
                            │ HTTP
                            ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  API Go — Malcom  (cmd/api/main.go  :8080)                      │
-│  Gin • GORM • PostgreSQL                                        │
-│  • Rate limit  • CORS  • Security headers                       │
-│  • Paywall / créditos  • Subida de archivos                     │
-│  • Billing: Wompi + Bold webhooks                               │
-│  • Dashboard session tokens  • Descarga segura de artefactos   │
+│  API Go — Malcom  (:8080)                                       │
+│  Chat · billing Bold · dashboard · /api/v1/listening/* (proxy) │
 └──────────────────────────┬──────────────────────────────────────┘
-                           │ HTTP interno (WORKER_URL)
+                           │ WORKER_URL
                            ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  Worker Python — InsightFlow Brain  (app/worker.py  :8001)      │
-│  FastAPI  • NO expuesto al exterior                             │
-│  POST /internal/process-message                                 │
-│  POST /internal/ingest-file                                     │
-│                                                                  │
-│  Orchestrator (app/core/orchestrator.py)                        │
-│   ├── AnalystAgent   → análisis CSV/Excel + reportes            │
-│   ├── PredictorAgent → forecast / preguntas de inventario       │
-│   ├── KnowledgeAgent → RAG vectorial por chat_id (PDF/DOCX/TXT)│
-│   ├── ComplianceAgent→ diagnóstico normativo/aduanero Colombia  │
-│   ├── ModelManager   → Gemini 3.x (flash-preview + fallbacks) + Ollama
-└──────────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-                  PostgreSQL :5432
+│  Brain Python (:8001) — Orchestrator + agentes + app/listening │
+└────────────┬─────────────────────────────┬───────────────────────┘
+             │                             │
+             ▼                             ▼
+      PostgreSQL insightflow        listening-api :8002
+                                    listening-worker / beat
+                                    DB termometro_cultural
+                                    fuentes: sources_cgfm.yaml
 ```
 
 ### Flujo de un mensaje
 
-1. El usuario envía texto/archivo por Telegram o por el widget web.
-2. La **API Go** verifica créditos, registra el mensaje y llama al **Worker**.
-3. El **Orchestrator** decide si es consulta de predicción o análisis general.
-4. El **AnalystAgent** genera código Python, lo ejecuta en sandbox (`safe_exec`) y resume los resultados con Gemini.
-5. El **ComplianceAgent** añade un bloque de cumplimiento normativo colombiano.
-6. La API Go devuelve texto + artefactos (PDF, Excel, gráfica, `echarts_option` + `dashboard` multi-widget).
+1. Usuario envía texto/archivo por Telegram o widget.
+2. API Go verifica créditos / premium y llama al Brain.
+3. Si es consulta Termómetro (premium) → `handle_listening_message` (packs, scrape, progreso, ECharts).
+4. Si no: Orchestrator → Analyst / Predictor / Knowledge / Compliance.
+5. Respuesta: texto + artefactos (`echarts_option`, `dashboard`, PDF/Excel si premium).
 
 ---
 
@@ -74,7 +60,7 @@ Plataforma de Business Intelligence conversacional para Colombia. Combina un bot
 | Pagos | Wompi Colombia + Bold (HMAC-SHA256) |
 | Bot | python-telegram-bot, httpx |
 | Widget web | JavaScript vanilla + iframe (WordPress/BeBuilder + tarjeta Lovable) |
-| Infraestructura | Docker Compose (4 servicios: postgres, brain, api, bot) |
+| Infraestructura | Docker Compose: postgres, redis, brain, api, bot, listening-api/worker/beat |
 
 ---
 
@@ -111,9 +97,11 @@ Malcom/
 │   │   ├── data_cleaner.py          # Utilidades de limpieza de datos
 │   │   └── credits.py               # Lógica de créditos (legado)
 │   ├── core/
-│   │   ├── orchestrator.py          # Enrutador de mensajes → agentes
-│   │   ├── echarts_builder.py       # Helpers para generar options Apache ECharts
-│   │   └── config.py                # Pydantic Settings centralizado
+│   │   ├── orchestrator.py          # Enrutador → agentes + Termómetro
+│   │   ├── echarts_builder.py       # Helpers Apache ECharts
+│   │   ├── dashboard_builder.py     # Tablero multi-widget
+│   │   └── config.py                # Pydantic Settings
+│   ├── listening/                   # Puente Termómetro (packs, progreso, charts)
 │   ├── api/
 │   │   └── schemas.py               # Modelos Pydantic: ChatRequest, ReportConfig, Billing…
 │   └── database/
@@ -123,6 +111,11 @@ Malcom/
 │           ├── user_repo.py         # CRUD + paywall + activación premium
 │           ├── conversation_repo.py # Historial de mensajes
 │           └── payment_repo.py      # Webhooks de pago
+│
+├── services/listening_engine/       # Termómetro Cultural (COMES/CGFM)
+│   ├── app/                         # API FastAPI, scrapers, NLP, Celery
+│   ├── config/sources_cgfm.yaml     # Fuentes producción Anexo 6
+│   └── docs/                        # ARCHITECTURE, ANEXO6, …
 │
 ├── embed/
 │   ├── widget-loader.js             # Script host (WordPress hook "Bottom")
@@ -222,10 +215,15 @@ Servicios que levanta:
 
 | Servicio | Puerto host | Descripción |
 |---|---|---|
-| `postgres` | — (solo red Compose) | PostgreSQL 16; no publicar `5432` en prod |
-| `brain` | — (interno `:8001`) | Worker Python FastAPI |
+| `postgres` | — (solo red Compose) | DBs `insightflow` + `termometro_cultural` |
+| `redis` | — | Cola Celery (listening) |
+| `brain` | — (interno `:8001`) | Worker Python FastAPI + puente listening |
 | `api` | **127.0.0.1:8080** | API Go (loopback; delante Caddy/ngrok) |
+| `listening-api` | — (interno `:8002`) | Termómetro FastAPI |
+| `listening-worker` / `listening-beat` | — | Scraping + NLP + cron |
 | `bot` | — | Bot de Telegram |
+
+Termómetro: setear `LISTENING_SOURCES_FILE=config/sources_cgfm.yaml` y `GROK_API_KEY` — ver [`docs/FUSION-LISTENING.md`](docs/FUSION-LISTENING.md).
 
 Producción en VPS: runbook `docs/VPS-DEPLOY.md` (local, fuera del repo).  
 Probar cambios de `master` en tu PC antes de desplegar: [`docs/LOCAL-DOCKER-STAGING.md`](docs/LOCAL-DOCKER-STAGING.md).
@@ -272,6 +270,20 @@ python app/main.py
 | `POST` | `/api/v1/billing/webhook` | Webhook genérico / Wompi PSE |
 | `POST` | `/api/v1/billing/bold-webhook` | Webhook Bold (HMAC-SHA256) |
 | `POST` | `/api/v1/billing/link-email` | Vincular email a chat_id Telegram |
+
+### Termómetro Cultural (premium · `?chat_id=`)
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/api/v1/listening/health` | Health del listening-api (sin gate) |
+| `GET` | `/api/v1/listening/overview` | Overview + ECharts / progreso |
+| `GET` | `/api/v1/listening/sentiment/summary` | Proxy analytics |
+| `GET` | `/api/v1/listening/topics/trending` | Proxy |
+| `GET` | `/api/v1/listening/timeline` | Proxy |
+| `GET` | `/api/v1/listening/alerts` | Proxy |
+| `GET` | `/api/v1/listening/sources` | Proxy |
+| `POST` | `/api/v1/listening/scrape` | Disparar scrape |
+
+Detalle: [`docs/FUSION-LISTENING.md`](docs/FUSION-LISTENING.md).
 
 ### Otros
 | Método | Ruta | Descripción |
