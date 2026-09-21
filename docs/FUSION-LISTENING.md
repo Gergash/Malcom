@@ -75,11 +75,17 @@ Rutas de datos (`/overview`, proxies, `/scrape`) exigen `?chat_id=` de un usuari
 
 ## Instrucciones Anexo 6 (nuevo desarrollador)
 
-1. `git fetch && git checkout feat/fusion-termometro && git pull`
-2. Trabaja **solo** bajo `services/listening_engine/`.
-3. **Prioridad 1 — Scrapers:** [`config/sources_tulua.yaml`](../services/listening_engine/config/sources_tulua.yaml) — implementar fuentes YouTube y TikTok con queries alineados a Comando General / Plan Ayacucho.
-4. **Prioridad 2 — Sentimiento:** en [`app/processing/pipeline.py`](../services/listening_engine/app/processing/pipeline.py) (y validadores en `sentiment.py`, agregados geo) devolver la etiqueta exacta **`imparcial`** en lugar de **`neutral`**.
-5. **No modificar** en este ticket: API Go (`cmd/api`), brain Malcom (`app/` raíz), embed WordPress, ni billing Bold.
+Brief completo: [`services/listening_engine/docs/ANEXO6-SOURCES-CGFM.md`](../services/listening_engine/docs/ANEXO6-SOURCES-CGFM.md)
+
+1. Trabaja en `master` (o rama propia desde master). Solo bajo `services/listening_engine/`.
+2. Fuentes CGFM: [`config/sources_cgfm.yaml`](../services/listening_engine/config/sources_cgfm.yaml) — X/FB/IG/news/grok listos; TikTok/YouTube con `is_active: false`.
+3. Activar perfil: `LISTENING_SOURCES_FILE=config/sources_cgfm.yaml` (+ `GROK_API_KEY`).
+4. **Prioridad 1 — Scrapers:** implementar `tiktok.py` y `youtube.py`, registrar en `app/scheduler/tasks.py`, activar filas en el YAML.
+5. **Prioridad 2 — Sentimiento:** etiqueta **`imparcial`** en lugar de **`neutral`** (pipeline + validadores).
+6. **No modificar** en este ticket: API Go, brain Malcom raíz, embed, billing Bold.
+
+El sketch con `id` / `keywords[]` **no** es el schema del seed actual; mapear a `name` + `platform` + `url` (ver brief Anexo 6).
+
 
 ## Smoke checklist
 

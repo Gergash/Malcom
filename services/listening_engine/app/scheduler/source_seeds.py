@@ -1,6 +1,12 @@
-"""Idempotent seed of monitoring sources from config/sources_tulua.yaml."""
+"""Idempotent seed of monitoring sources from YAML config.
+
+Default: config/sources_tulua.yaml
+Override: env LISTENING_SOURCES_FILE (ruta relativa a services/listening_engine/
+          o absoluta), p. ej. config/sources_cgfm.yaml
+"""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -11,25 +17,38 @@ from sqlalchemy.orm import Session
 
 logger = structlog.get_logger(__name__)
 
-_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "sources_tulua.yaml"
+_ENGINE_ROOT = Path(__file__).resolve().parents[2]
+_DEFAULT_REL = "config/sources_tulua.yaml"
+
+
+def _config_path() -> Path:
+    raw = (os.getenv("LISTENING_SOURCES_FILE") or "").strip()
+    if not raw:
+        return _ENGINE_ROOT / _DEFAULT_REL
+    p = Path(raw)
+    if not p.is_absolute():
+        p = _ENGINE_ROOT / p
+    return p
 
 
 def _load_sources_config() -> List[Dict[str, Any]]:
-    if not _CONFIG_PATH.is_file():
-        logger.warning("sources_config_missing", path=str(_CONFIG_PATH))
+    path = _config_path()
+    if not path.is_file():
+        logger.warning("sources_config_missing", path=str(path))
         return []
-    with _CONFIG_PATH.open(encoding="utf-8") as fh:
+    with path.open(encoding="utf-8") as fh:
         data = yaml.safe_load(fh) or {}
     sources = data.get("sources") or []
     if not isinstance(sources, list):
-        logger.warning("sources_config_invalid", path=str(_CONFIG_PATH))
+        logger.warning("sources_config_invalid", path=str(path))
         return []
+    logger.info("sources_config_loaded", path=str(path), count=len(sources))
     return sources
 
 
 def seed_sources(session: Session) -> int:
     """
-    Insert sources from YAML when no row exists with the same platform+url.
+    Insert sources from YAML when no row exists with the same name.
     Returns count of newly inserted rows.
     """
     inserted = 0

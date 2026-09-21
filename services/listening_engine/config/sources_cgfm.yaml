@@ -1,0 +1,138 @@
+# Fuentes CGFM / Comando General FF.MM. — Plan Ayacucho (Anexo 6)
+#
+# Schema que entiende el seed HOY (source_seeds.py):
+#   name: str          — único (idempotencia por name)
+#   platform: str      — twitter | facebook | facebook_group | instagram | news | grok_topic
+#                        | tiktok | youtube  ← stubs hasta scrapers Anexo 6
+#   url: str           — URL de búsqueda/perfil, o query libre si platform=grok_topic
+#   is_active: bool
+#
+# NO usar aún: id / type / keywords[] (eso requiere cambiar seed + scrapers).
+# Activar en runtime: LISTENING_SOURCES_FILE=config/sources_cgfm.yaml
+#
+# Requisito pliego — 5 redes:
+#   X, Facebook, Instagram → implementadas (GrokSearch + Playwright fallback)
+#   TikTok, YouTube        → entradas con is_active:false hasta scrapers nuevos
+
+sources:
+  # ── 1. X (Twitter) — cuentas oficiales + etiquetas ─────────────────────────
+  - name: "X oficial FuerzasMilCol"
+    platform: twitter
+    url: "https://x.com/FuerzasMilCol"
+    is_active: true
+
+  - name: "X oficial COMANDANTE_FFMM"
+    platform: twitter
+    url: "https://x.com/COMANDANTE_FFMM"
+    is_active: true
+
+  - name: "X busqueda Plan Ayacucho"
+    platform: twitter
+    url: "https://x.com/search?q=%22Plan%20Ayacucho%22&f=live"
+    is_active: true
+
+  - name: "X busqueda Fuerzas Militares Colombia"
+    platform: twitter
+    url: "https://x.com/search?q=%22Fuerzas%20Militares%20de%20Colombia%22%20OR%20%22Comando%20General%22&f=live"
+    is_active: true
+
+  # ── 2. Facebook ────────────────────────────────────────────────────────────
+  - name: "FB menciones Fuerzas Militares"
+    platform: facebook
+    url: "https://www.facebook.com/search/posts/?q=Fuerzas%20Militares%20Colombia"
+    is_active: true
+
+  - name: "FB Plan Ayacucho"
+    platform: facebook
+    url: "https://www.facebook.com/search/posts/?q=Plan%20Ayacucho"
+    is_active: true
+
+  # ── 3. Instagram ───────────────────────────────────────────────────────────
+  - name: "IG menciones Fuerzas Militares"
+    platform: instagram
+    url: "https://www.instagram.com/explore/tags/fuerzasmilitares/"
+    is_active: true
+
+  - name: "IG Plan Ayacucho"
+    platform: instagram
+    url: "fuerzas militares colombia Plan Ayacucho"
+    is_active: true
+
+  # ── 4. TikTok (Anexo 6 — scraper PENDIENTE) ────────────────────────────────
+  - name: "TikTok Fuerzas Militares Colombia"
+    platform: tiktok
+    url: "Fuerzas Militares Colombia"
+    is_active: false   # activar cuando exista TikTokScraper
+
+  - name: "TikTok Ejercito Colombia"
+    platform: tiktok
+    url: "Ejercito Colombia"
+    is_active: false
+
+  # ── 5. YouTube (Anexo 6 — scraper PENDIENTE) ───────────────────────────────
+  - name: "YouTube Fuerzas Militares Colombia"
+    platform: youtube
+    url: "Fuerzas Militares Colombia"
+    is_active: false   # activar cuando exista YouTubeScraper
+
+  - name: "YouTube Plan Ayacucho"
+    platform: youtube
+    url: "Plan Ayacucho"
+    is_active: false
+
+  # ── Grok topic — campañas / tendencias transversales ───────────────────────
+  - name: "Grok Plan Ayacucho"
+    platform: grok_topic
+    url: "Plan Ayacucho Fuerzas Militares Colombia"
+    is_active: true
+
+  - name: "Grok Comando General FFMM"
+    platform: grok_topic
+    url: "Comando General Fuerzas Militares Colombia @FuerzasMilCol @COMANDANTE_FFMM"
+    is_active: true
+
+  - name: "Grok seguridad nacional menciones"
+    platform: grok_topic
+    url: "seguridad nacional Colombia Fuerzas Militares tendencia"
+    is_active: true
+
+  # ── Prensa nacional / regional (NewsScraper + Grok fallback) ───────────────
+  - name: "El Tiempo"
+    platform: news
+    url: "https://www.eltiempo.com/"
+    is_active: true
+
+  - name: "El Espectador"
+    platform: news
+    url: "https://www.elespectador.com/"
+    is_active: true
+
+  - name: "Revista Semana"
+    platform: news
+    url: "https://www.semana.com/"
+    is_active: true
+
+  - name: "W Radio"
+    platform: news
+    url: "https://www.wradio.com.co/"
+    is_active: true
+
+  - name: "Caracol Radio"
+    platform: news
+    url: "https://caracol.com.co/"
+    is_active: true
+
+  - name: "RCN Radio"
+    platform: news
+    url: "https://www.rcnradio.com/"
+    is_active: true
+
+  - name: "Infobae Colombia"
+    platform: news
+    url: "https://www.infobae.com/colombia/"
+    is_active: true
+
+  - name: "Pulzo"
+    platform: news
+    url: "https://www.pulzo.com/"
+    is_active: true

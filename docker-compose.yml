@@ -108,6 +108,7 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       GROK_API_KEY: ${GROK_API_KEY:-}
       GROK_MODEL: ${GROK_MODEL:-grok-3}
+      LISTENING_SOURCES_FILE: ${LISTENING_SOURCES_FILE:-config/sources_tulua.yaml}
     # Sin ports: solo red Compose (Caddy o Go pueden proxy después).
     depends_on:
       postgres:
@@ -132,6 +133,7 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       GROK_API_KEY: ${GROK_API_KEY:-}
       GROK_MODEL: ${GROK_MODEL:-grok-3}
+      LISTENING_SOURCES_FILE: ${LISTENING_SOURCES_FILE:-config/sources_tulua.yaml}
       PLAYWRIGHT_HEADLESS: "true"
       LOG_LEVEL: INFO
       PROCESS_BATCH_SIZE: "50"
