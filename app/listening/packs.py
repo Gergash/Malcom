@@ -87,7 +87,15 @@ def parse_pack_choice(message: str) -> Optional[str]:
         return "rapida"
     if re.fullmatch(r"\s*[2]\s*", lower) or "estándar" in lower or "estandar" in lower or "standard" in lower:
         return "estandar"
-    if re.fullmatch(r"\s*[3]\s*", lower) or "profunda" in lower or "deep" in lower or "completa" in lower:
+    if (
+        re.fullmatch(r"\s*[3]\s*", lower)
+        or "profunda" in lower
+        or "deep" in lower
+        or "completa" in lower
+        or "exhaustiv" in lower  # exhaustivo / exhaustiva
+        or "máxima cobertura" in lower
+        or "maxima cobertura" in lower
+    ):
         return "profunda"
     # "paquete estándar", etc.
     for pid in PACKS:

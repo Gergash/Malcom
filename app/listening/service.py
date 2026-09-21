@@ -63,7 +63,16 @@ SCRAPE_KEYWORDS = (
     "lanzar scraping",
     "traer datos",
     "capturar datos",
+    "monitor",  # monitoreo / monitorear / monitorizar
+    "seguimiento",
+    "vigilar",
+    "rastrear",
+    "escuchar cuentas",
+    "escucha de cuentas",
 )
+
+# Pedir escucha de handles (@cuenta) con contexto Termómetro = recolección nueva.
+_HANDLE_RE = re.compile(r"@[\w.]{2,}")
 
 
 def is_listening_query(message: str) -> bool:
@@ -78,7 +87,10 @@ def is_scrape_intent(message: str) -> bool:
     )
     if not has_context:
         return False
-    return any(kw in lower for kw in SCRAPE_KEYWORDS)
+    if any(kw in lower for kw in SCRAPE_KEYWORDS):
+        return True
+    # "termómetro … @FuerzasMilCol" implica nueva recolección de esas cuentas
+    return bool(_HANDLE_RE.search(message or ""))
 
 
 def _parse_days(message: str) -> Optional[int]:

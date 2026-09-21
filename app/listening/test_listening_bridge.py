@@ -8,6 +8,7 @@ from app.listening.charts import (
     primary_echarts_option,
     sentiment_pie_option,
 )
+from app.listening.packs import parse_pack_choice
 from app.listening.service import is_listening_query, is_scrape_intent
 
 
@@ -21,6 +22,21 @@ def test_is_scrape_intent_requires_context():
     assert is_scrape_intent("recolectar datos del termómetro")
     assert not is_scrape_intent("recolectar datos")  # sin contexto listening
 
+
+def test_is_scrape_intent_monitoreo_y_handles():
+    msg = (
+        "Termómetro Cultural Monitoreo exhaustivo de las cuentas "
+        "@FuerzasMilCol y @COMANDANTE_FFMM"
+    )
+    assert is_listening_query(msg)
+    assert is_scrape_intent(msg)
+    # Solo handles sin contexto listening no dispara scrape
+    assert not is_scrape_intent("mira @FuerzasMilCol")
+
+
+def test_parse_pack_exhaustivo_es_profunda():
+    assert parse_pack_choice("monitoreo exhaustivo") == "profunda"
+    assert parse_pack_choice("cobertura completa") == "profunda"
 
 def test_sentiment_pie_and_dashboard():
     sentiment = {
