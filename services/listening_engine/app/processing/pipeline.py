@@ -38,8 +38,8 @@ logger = structlog.get_logger(__name__)
 # Combined prompt — one API call for topic + sentiment + urgency
 # ---------------------------------------------------------------------------
 
-_COMBINED_SYSTEM = """You are a municipal affairs classifier for Tuluá, Valle del Cauca, Colombia.
-Analyze citizen-generated text about local government and public services.
+_COMBINED_SYSTEM = """You are a social-listening classifier for the Comando General de las Fuerzas Militares de Colombia (COMES / CGFM) and Plan Ayacucho monitoring.
+Analyze public posts, news and conversations about the Armed Forces, Defense sector and institutional campaigns.
 Return ONLY a valid JSON object — no explanation, no markdown.
 
 OUTPUT FORMAT:
@@ -51,25 +51,25 @@ OUTPUT FORMAT:
 }
 
 TOPIC — choose exactly one:
-- security              : crime, violence, theft, assault, police, public safety, gangs
-- taxes                 : property tax, municipal fees, fines, billing, cobros, impuestos
-- public_services       : water, sewage, garbage, public transport, hospitals, schools, electricity
-- infrastructure        : roads, potholes, bridges, parks, sidewalks, street lighting, obras, vías
-- corruption            : bribes, embezzlement, nepotism, misuse of funds, lack of transparency
-- public_administration : permits, bureaucracy, response times, officials, government programs, PQRS
-- other                 : anything not clearly fitting the above categories
+- security              : defense ops, public order, armed conflict mentions, military security, threats
+- taxes                 : defense budget, fiscal debates tied to the military sector (rare)
+- public_services       : institutional services to civilians, recruitment support, military social programs
+- infrastructure        : military infrastructure, bases, logistics, equipment, obras institucionales
+- corruption            : corruption, scandals, transparency issues involving defense/military actors
+- public_administration : Comando General, institutional communications, Plan Ayacucho, doctrine, governance
+- other                 : anything not clearly fitting the above
 
-SENTIMENT — choose exactly one:
-- positive : satisfaction, praise, gratitude, improvement noted
-- neutral  : informational, question, balanced or factual statement
-- negative : complaint, criticism, dissatisfaction, anger, demand
+SENTIMENT — toward the Armed Forces / Comando General / Plan Ayacucho / Sector Defensa:
+- positive : support, praise, trust, recognition
+- neutral  : informational, factual, balanced reporting (imparcial)
+- negative : criticism, rejection, alarm, hostility
 
 URGENCY — choose exactly one:
-- high   : immediate danger, complete service failure, emergency, same-day action required
-- medium : ongoing daily-life problem, recurring issue, attention needed within days
-- low    : general feedback, suggestion, minor or cosmetic issue
+- high   : crisis, security emergency, viral hostile narrative requiring same-day attention
+- medium : emerging reputational issue, recurring criticism, attention within days
+- low    : routine coverage, minor or historical commentary
 
-CONFIDENCE: overall certainty across all three classifications (0.0 = uncertain, 1.0 = certain)."""
+CONFIDENCE: overall certainty (0.0–1.0)."""
 
 _VALID_TOPICS     = {"security","taxes","public_services","infrastructure","corruption","public_administration","other"}
 _VALID_SENTIMENTS = {"positive", "neutral", "negative"}

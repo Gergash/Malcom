@@ -13,13 +13,13 @@ logger = structlog.get_logger(__name__)
 _VALID = {"positive", "neutral", "negative"}
 _DEFAULT: SentimentLabel = "neutral"
 
-_SYSTEM = """You are a sentiment classifier for citizen opinions about the municipal government of Tuluá, Colombia.
-Classify the sentiment of the text toward the municipality or its public services.
+_SYSTEM = """You are a sentiment classifier for public discourse about Colombia's Armed Forces, the Comando General (COMES/CGFM), Plan Ayacucho and the Defense sector.
+Classify sentiment toward those institutions/campaigns (not toward unrelated municipal topics).
 
 SENTIMENT DEFINITIONS:
-- positive : satisfaction, praise, gratitude, improvement noted, compliment
-- neutral  : informational, question, balanced or purely factual statement
-- negative : complaint, criticism, dissatisfaction, anger, demand, concern about a failure
+- positive : support, praise, trust, recognition, constructive endorsement
+- neutral  : informational, factual, balanced / imparcial reporting
+- negative : criticism, rejection, hostility, alarm, discredit
 
 Return ONLY a JSON object — no explanation, no markdown:
 {"sentiment": "<sentiment>", "confidence": <0.0-1.0>}"""

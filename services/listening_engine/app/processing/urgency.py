@@ -13,16 +13,13 @@ logger = structlog.get_logger(__name__)
 _VALID = {"low", "medium", "high"}
 _DEFAULT: UrgencyLabel = "low"
 
-_SYSTEM = """You are an urgency classifier for a municipal early-warning system in Tuluá, Colombia.
-Assess how urgently the described situation requires government action.
+_SYSTEM = """You are an urgency classifier for reputational and security listening of Colombia's Armed Forces (COMES / CGFM) and Plan Ayacucho.
+Assess how urgently the described narrative requires institutional attention.
 
 URGENCY DEFINITIONS:
-- high   : immediate danger to life or property, complete service failure (no water, road collapse,
-           active violence), emergency requiring same-day response
-- medium : ongoing problem clearly affecting daily life (recurring outages, unsafe road, chronic
-           service failure), needs attention within a few days
-- low    : general feedback, suggestion, minor inconvenience, long-term or cosmetic issue,
-           historical or anecdotal complaint
+- high   : crisis, security emergency, viral hostile narrative, same-day response needed
+- medium : emerging reputational issue, recurring criticism, attention within a few days
+- low    : routine coverage, minor commentary, historical or anecdotal mention
 
 Return ONLY a JSON object — no explanation, no markdown:
 {"urgency": "<urgency>", "confidence": <0.0-1.0>}"""

@@ -1,24 +1,15 @@
 """
 GrokSearchScraper — live web search via xAI Grok API.
 
-Uses Grok's built-in search_parameters to find recent public posts from
-Facebook and Instagram pages without requiring Meta API credentials or
-browser automation.
+Perfil COMES / Comando General FF.MM. (Anexo 6):
+  Extrae menciones y publicaciones sobre cuentas oficiales, Plan Ayacucho,
+  Sector Defensa y actores de interés — no monitoreo municipal.
 
 How it works:
-  1. Receives a source URL (e.g. facebook.com/AlcaldiaTulua) or a plain
-     search topic (e.g. "Tuluá servicios públicos").
-  2. Sends a structured prompt to grok-2 with search_parameters enabled
-     so the model performs a live web search and reads actual page content.
-  3. Instructs the model to return a JSON array of individual posts found,
-     each with: text, url, date, platform, engagement signals.
-  4. Parses and normalises each item into the standard ScrapedItem schema.
-
-Platforms supported via this scraper:
-  facebook, instagram, twitter (x), and generic topic searches.
-
-Fallback: if GROK_API_KEY is not set the scraper raises RuntimeError and
-the task scheduler falls back to the Playwright scrapers.
+  1. Recibe URL de perfil/búsqueda o query libre (grok_topic / tiktok / youtube).
+  2. Llama a grok-4 con tools web_search.
+  3. Devuelve JSON de posts con texto, métricas y enlaces.
+  4. Normaliza a ScrapedItem (metadata con engagement / reach / URLs).
 """
 from __future__ import annotations
 
@@ -34,43 +25,66 @@ from app.ingestion.scrapers.base import BaseScraper
 logger = structlog.get_logger(__name__)
 
 # ---------------------------------------------------------------------------
-# Prompt templates
+# Prompt templates — COMES / CGFM / Plan Ayacucho
 # ---------------------------------------------------------------------------
 
 _SYSTEM = """\
-Eres un extractor de contenido de redes sociales para el sistema de monitoreo \
-ciudadano del municipio de Tuluá, Valle del Cauca, Colombia.
+Eres un extractor de inteligencia de escucha digital para el Comando General \
+de las Fuerzas Militares de Colombia (COMES / CGFM) y el monitoreo del Plan Ayacucho.
 
-Tu tarea: busca publicaciones RECIENTES (últimos 7 días) en la URL o página indicada \
-y extrae el contenido textual de cada publicación individual.
+Tu tarea: busca publicaciones RECIENTES en la URL, perfil o consulta indicada \
+y extrae el contenido textual de cada publicación, mención o conversación \
+relevante para el Sector Defensa y las Fuerzas Militares.
 
-Devuelve ÚNICAMENTE un JSON válido con el siguiente formato — sin explicaciones, \
-sin markdown, sin texto adicional:
+Devuelve ÚNICAMENTE un JSON válido — sin explicaciones, sin markdown, sin texto adicional:
 
 {
   "posts": [
     {
-      "text": "<texto completo de la publicación>",
-      "url": "<URL directa a la publicación o al perfil si no hay URL individual>",
+      "text": "<texto completo de la publicación o comentario>",
+      "url": "<URL directa a la publicación>",
       "date": "<fecha ISO 8601 o null>",
-      "platform": "<facebook|instagram|twitter|news>",
+      "platform": "<twitter|facebook|instagram|tiktok|youtube|news|web>",
+      "author": "<handle o nombre público o null>",
       "likes": <número o null>,
       "comments": <número o null>,
-      "shares": <número o null>
+      "shares": <número o null>,
+      "views": <número o null>,
+      "impressions": <número o null>,
+      "reach": <número o null>,
+      "followers": <número o null>,
+      "linked_urls": ["<URLs compartidas en el post>"],
+      "points_to_institutional": <true|false|null>,
+      "csat_signal": <número 1-5 o null>,
+      "nps_signal": <número -100..100 o null>
     }
   ],
-  "source_name": "<nombre de la página o cuenta>",
+  "source_name": "<nombre de la página, cuenta o medio>",
   "total_found": <número de publicaciones encontradas>
 }
 
-Reglas:
-- Incluye SOLO publicaciones ciudadanas sobre servicios municipales, obras, \
-  seguridad, impuestos, corrupción o gestión pública en Tuluá.
-- Excluye publicaciones puramente comerciales o de entretenimiento sin relación \
-  con la gestión municipal.
-- Si no encuentras publicaciones relevantes, devuelve {"posts": [], "source_name": "", "total_found": 0}.
-- El texto de cada publicación debe ser completo, no truncado.
-- Máximo 20 publicaciones por llamada.
+INCLUYE (prioridad COMES):
+- Publicaciones de cuentas oficiales @FuerzasMilCol y @COMANDANTE_FFMM.
+- Menciones directas e indirectas de "Plan Ayacucho" y hashtags asociados.
+- Contenido sobre Comando General, Fuerzas Militares, Ejército, Armada, FAC, \
+  Sector Defensa, seguridad nacional y operaciones institucionales de interés público.
+- Publicaciones de líderes de opinión, periodistas, gremios y medios \
+  (regionales, nacionales e internacionales) sobre esos temas.
+- Comentarios y respuestas públicas relevantes cuando sean visibles.
+- Enlaces compartidos; marca points_to_institutional=true si apuntan a sitios \
+  oficiales (.mil.co, fuerzasmilitares, comando general, etc.).
+
+EXCLUYE:
+- Contenido puramente comercial o de entretenimiento sin vínculo con Defensa / FF.MM.
+- Rumores sin texto usable; no inventes métricas ni citas.
+
+REGLAS:
+- Si no hay publicaciones relevantes, devuelve {"posts": [], "source_name": "", "total_found": 0}.
+- Texto completo, no truncado. Máximo 20 publicaciones por llamada.
+- Métricas (likes, comments, shares, views, impressions, reach, followers): \
+  solo si son visibles/públicas; si no, null. No inventes cifras.
+- csat_signal / nps_signal solo si el post es claramente una encuesta o reacción \
+  tipificable de satisfacción; si no, null.
 """
 
 
@@ -80,12 +94,16 @@ def _is_url(value: str) -> bool:
 
 
 def _is_search_results_url(url: str) -> bool:
-    """True for X/Facebook search pages that list many posts."""
+    """True for X/Facebook/TikTok/YouTube search pages that list many posts."""
     lower = url.lower()
     return (
         "x.com/search" in lower
         or "twitter.com/search" in lower
+        or "facebook.com/search" in lower
         or "facebook.com/groups/search" in lower
+        or "tiktok.com/search" in lower
+        or "youtube.com/results" in lower
+        or "youtube.com/search" in lower
     )
 
 
@@ -94,9 +112,25 @@ def _is_news_homepage(url: str) -> bool:
     try:
         parsed = urlparse(url)
         path = parsed.path.strip("/")
-        return not path or path in {"noticias", "actualidad", "valle", "region"}
+        return not path or path in {
+            "noticias",
+            "actualidad",
+            "colombia",
+            "mundo",
+            "politica",
+            "nacion",
+            "defense",
+            "defensa",
+        }
     except Exception:
         return False
+
+
+_FOCUS_BRIEF = (
+    "Enfoque COMES: Comando General de las Fuerzas Militares, "
+    "@FuerzasMilCol, @COMANDANTE_FFMM, Plan Ayacucho, Sector Defensa, "
+    "seguridad nacional, líderes de opinión y medios que traten estos temas."
+)
 
 
 def _build_user_prompt(
@@ -106,54 +140,68 @@ def _build_user_prompt(
     target_platform: str = "facebook",
 ) -> str:
     """
-    Build the user message for Grok.
-
-    If `query` is a URL  → ask Grok to read that specific page.
-    If `query` is text   → ask Grok to search freely across all platforms.
+    Build the user message for Grok (perfil COMES / CGFM).
     """
     since = (datetime.now(tz=timezone.utc) - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    plat = (target_platform or "").lower()
 
     if _is_url(query):
-        if target_platform == "news" or _is_news_homepage(query):
+        if plat == "news" or _is_news_homepage(query):
             return (
-                f"Visita el sitio de noticias: {query}\n"
+                f"Visita el medio digital: {query}\n"
                 f"Nombre de la fuente: {source_name}\n"
                 f"Periodo: desde {since} hasta hoy.\n\n"
-                f"Lee el contenido de las noticias publicadas en ese medio que mencionen "
-                f"Tuluá, Valle del Cauca (gestión municipal, seguridad, obras, salud, "
-                f"servicios públicos, denuncias ciudadanas).\n"
-                f"Para cada artículo relevante, extrae el texto completo del cuerpo "
-                f"(no solo el titular) y la URL directa del artículo.\n"
+                f"{_FOCUS_BRIEF}\n\n"
+                f"Extrae artículos/editoriales/blogs recientes sobre Fuerzas Militares, "
+                f"Comando General, Plan Ayacucho, Sector Defensa u operaciones "
+                f"institucionales de interés público. Por cada pieza: texto usable "
+                f"(titular + lead o cuerpo), URL directa, y métricas públicas si aparecen.\n"
                 f"Máximo 20 artículos."
             )
         if _is_search_results_url(query):
             return (
                 f"Visita esta página de resultados de búsqueda: {query}\n"
                 f"Nombre de la fuente: {source_name}\n"
+                f"Plataforma esperada: {plat or 'web'}\n"
                 f"Periodo: desde {since} hasta hoy.\n\n"
-                f"Lee las publicaciones visibles en esa página de búsqueda sobre Tuluá, "
-                f"Valle del Cauca. Extrae el texto completo de cada publicación individual "
-                f"(posts, tweets, hilos o publicaciones de grupos) con su URL directa.\n"
-                f"Incluye denuncias ciudadanas, noticias locales y conversación sobre "
-                f"gestión municipal en Tuluá."
+                f"{_FOCUS_BRIEF}\n\n"
+                f"Extrae cada publicación/mención visible con texto completo, URL directa, "
+                f"autor si aparece, métricas de engagement (likes/comentarios/shares/"
+                f"views/impresiones/alcance) y URLs enlazadas en el post."
             )
+        # Perfil oficial u otra URL concreta (X/FB/IG/TikTok/YouTube)
         return (
-            f"Busca y extrae publicaciones recientes desde: {query}\n"
+            f"Monitorea de forma exhaustiva el perfil o página: {query}\n"
             f"Nombre de la fuente: {source_name}\n"
-            f"Periodo: desde {since} hasta hoy.\n"
-            f"Incluye publicaciones de ciudadanos o de la alcaldía sobre gestión municipal en Tuluá."
+            f"Plataforma: {plat or 'web'}\n"
+            f"Periodo: desde {since} hasta hoy.\n\n"
+            f"{_FOCUS_BRIEF}\n\n"
+            f"Extrae las publicaciones recientes de esa cuenta/página (texto completo, "
+            f"URL de cada post, métricas públicas de rendimiento, seguidores del perfil "
+            f"si son visibles, y cualquier enlace compartido). "
+            f"Si es @FuerzasMilCol o @COMANDANTE_FFMM, prioriza cobertura completa del feed reciente."
         )
-    else:
-        # Free-topic search: Grok decides where to look
-        return (
-            f"Busca en internet (Facebook, Instagram, Twitter/X, noticias locales) "
-            f"publicaciones recientes sobre el siguiente tema:\n\n"
-            f"\"{query}\"\n\n"
-            f"Periodo: desde {since} hasta hoy.\n"
-            f"Municipio de interés: Tuluá, Valle del Cauca, Colombia.\n"
-            f"Busca en todas las plataformas disponibles y recopila las publicaciones "
-            f"más relevantes de ciudadanos, medios locales o la alcaldía."
-        )
+
+    # Query libre (grok_topic / keywords / hashtags)
+    platform_hint = {
+        "tiktok": "Prioriza resultados de TikTok.",
+        "youtube": "Prioriza videos y comentarios públicos de YouTube.",
+        "twitter": "Prioriza X (Twitter).",
+        "facebook": "Prioriza Facebook.",
+        "instagram": "Prioriza Instagram.",
+        "grok_topic": "Busca en X, Facebook, Instagram, TikTok, YouTube y medios digitales.",
+    }.get(plat, "Busca en redes sociales y medios digitales.")
+
+    return (
+        f"Busca en internet publicaciones recientes sobre:\n\n"
+        f"\"{query}\"\n\n"
+        f"Periodo: desde {since} hasta hoy.\n"
+        f"{platform_hint}\n"
+        f"{_FOCUS_BRIEF}\n\n"
+        f"Incluye menciones de campañas (Plan Ayacucho), cuentas oficiales, "
+        f"periodistas, gremios y keywords/hashtags del Sector Defensa. "
+        f"Devuelve texto, URL, métricas y enlaces compartidos por cada hallazgo."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -162,11 +210,7 @@ def _build_user_prompt(
 
 class GrokSearchScraper(BaseScraper):
     """
-    Scraper that uses Grok's live web search to extract social media posts
-    without requiring platform API credentials or browser automation.
-
-    Supports any platform whose public pages are indexable by web search
-    (Facebook public pages, Instagram public profiles, Twitter/X, news sites).
+    Scraper COMES: Grok live search para redes y medios sin API de plataforma.
     """
 
     platform = "grok_search"
@@ -177,7 +221,6 @@ class GrokSearchScraper(BaseScraper):
         target_platform: str = "facebook",
         days_back: int = 7,
         max_results: int = 20,
-        # BaseScraper kwargs (unused but accepted for interface compatibility)
         proxy_rotation: bool = False,
         proxy_list: Optional[List[str]] = None,
         headless: bool = True,
@@ -196,9 +239,7 @@ class GrokSearchScraper(BaseScraper):
     def _grok_client(self):
         """
         Return (AsyncOpenAI, model_name) pointing at xAI.
-
         Web search via responses.create() requires the grok-4 model family.
-        This is separate from the NLP model (grok-3-latest) used for classification.
         """
         from openai import AsyncOpenAI
         from app.config import get_settings
@@ -208,19 +249,11 @@ class GrokSearchScraper(BaseScraper):
             raise RuntimeError(
                 "GROK_API_KEY is not set. Cannot use GrokSearchScraper."
             )
-        # grok-4-0709 is required for server-side tools (web_search via responses API)
         search_model = "grok-4-0709"
         return AsyncOpenAI(api_key=s.grok_api_key, base_url="https://api.x.ai/v1"), search_model
 
     async def _call_grok_search(self, url: str, source_name: str) -> Optional[Dict[str, Any]]:
-        """
-        Send a live-search request to Grok using the xAI Agent Tools API.
-
-        Uses client.responses.create() with tools=[{"type": "web_search"}].
-        This replaced the deprecated search_parameters approach (HTTP 410).
-        Requires openai >= 1.66.0.
-        Returns the parsed dict or None on failure.
-        """
+        """Live-search request to Grok (responses API + web_search)."""
         client, model = self._grok_client()
 
         try:
@@ -241,14 +274,11 @@ class GrokSearchScraper(BaseScraper):
             logger.error("grok_search_api_error", url=url, error=str(exc))
             return None
 
-        # Extract text from the response output
         raw = ""
         try:
-            # response.output_text is the convenience property in openai >= 1.66
             if hasattr(response, "output_text"):
                 raw = response.output_text or ""
             else:
-                # Fallback: iterate output items
                 for item in (response.output or []):
                     if hasattr(item, "content"):
                         for block in (item.content or []):
@@ -273,14 +303,6 @@ class GrokSearchScraper(BaseScraper):
             return None
 
     async def _scrape_impl(self, url: Optional[str] = None, **kwargs: Any) -> List[Dict[str, Any]]:
-        """
-        Scrape a Facebook/Instagram/Twitter page using Grok live search.
-
-        Args:
-            url: Public page URL (e.g. https://www.facebook.com/AlcaldiaTulua)
-                 or a topic query string.
-            kwargs: source_name — human-readable name for the source.
-        """
         if not url:
             return []
 
@@ -318,6 +340,24 @@ class GrokSearchScraper(BaseScraper):
                 except (ValueError, TypeError):
                     pass
 
+            linked = post.get("linked_urls") or []
+            if not isinstance(linked, list):
+                linked = [linked] if linked else []
+
+            likes = post.get("likes")
+            comments = post.get("comments")
+            shares = post.get("shares")
+            views = post.get("views")
+            impressions = post.get("impressions")
+            reach = post.get("reach")
+            engagement = None
+            try:
+                parts = [x for x in (likes, comments, shares) if isinstance(x, (int, float))]
+                if parts:
+                    engagement = int(sum(parts))
+            except (TypeError, ValueError):
+                engagement = None
+
             results.append(
                 self._normalize(
                     source=resolved_source,
@@ -326,10 +366,21 @@ class GrokSearchScraper(BaseScraper):
                     date=post_date or datetime.now(tz=timezone.utc),
                     metadata={
                         "platform_label": self.target_platform,
-                        "likes":    post.get("likes"),
-                        "comments": post.get("comments"),
-                        "shares":   post.get("shares"),
-                        "via":      "grok_live_search",
+                        "author": post.get("author"),
+                        "likes": likes,
+                        "comments": comments,
+                        "shares": shares,
+                        "views": views,
+                        "impressions": impressions,
+                        "reach": reach,
+                        "followers": post.get("followers"),
+                        "engagement": engagement,
+                        "linked_urls": [str(u) for u in linked if u],
+                        "points_to_institutional": post.get("points_to_institutional"),
+                        "csat_signal": post.get("csat_signal"),
+                        "nps_signal": post.get("nps_signal"),
+                        "via": "grok_live_search",
+                        "mandate": "comes_cgfm",
                     },
                 )
             )
@@ -338,15 +389,11 @@ class GrokSearchScraper(BaseScraper):
         return results
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 def _infer_source_name(url: str) -> str:
     """Derive a readable source name from a URL."""
     try:
         path = urlparse(url).path.strip("/")
-        parts = [p for p in path.split("/") if p and p not in ("groups", "pages")]
+        parts = [p for p in path.split("/") if p and p not in ("groups", "pages", "search", "results")]
         return parts[0] if parts else urlparse(url).netloc
     except Exception:
         return url[:50]

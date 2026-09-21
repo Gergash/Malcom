@@ -13,7 +13,24 @@ from playwright.async_api import async_playwright, Browser, Page, BrowserContext
 
 from app.ingestion.scrapers.base import BaseScraper
 
-_TULUA_MARKERS = ("tulua", "tuluá", "tulúa")
+_FOCUS_MARKERS = (
+    "fuerzas militares",
+    "fuerzasmilitares",
+    "comando general",
+    "plan ayacucho",
+    "planayacucho",
+    "ejercito",
+    "ejército",
+    "armada nacional",
+    "fuerza aerea",
+    "fuerza aérea",
+    "sector defensa",
+    "ministerio de defensa",
+    "fuerzasmilcol",
+    "comandante_ffmm",
+    "comes",
+    "cgfm",
+)
 
 
 def _normalize_text(value: str) -> str:
@@ -27,9 +44,10 @@ def _normalize_text(value: str) -> str:
     )
 
 
-def _mentions_tulua(value: str) -> bool:
-    norm = _normalize_text(value)
-    return any(marker.replace("ú", "u").replace("á", "a") in norm for marker in _TULUA_MARKERS)
+def _mentions_focus(value: str) -> bool:
+    """True if text/URL looks related to COMES / FF.MM. / Plan Ayacucho."""
+    norm = _normalize_text(value or "")
+    return any(m in norm for m in _FOCUS_MARKERS)
 
 
 class NewsScraper(BaseScraper):
@@ -117,8 +135,8 @@ class NewsScraper(BaseScraper):
         )
         return results
 
-    def _extract_tulua_article_links(self, html: str, base_url: str, limit: int = 8) -> List[str]:
-        """Find article URLs on a listing/home page that mention Tuluá."""
+    def _extract_focus_article_links(self, html: str, base_url: str, limit: int = 8) -> List[str]:
+        """Find article URLs on a listing/home page related to COMES / FF.MM."""
         soup = BeautifulSoup(html, "lxml")
         parsed_base = urlparse(base_url)
         seen: Set[str] = set()
@@ -132,7 +150,7 @@ class NewsScraper(BaseScraper):
             if parsed.netloc and parsed.netloc != parsed_base.netloc:
                 continue
             label = f"{anchor.get_text(separator=' ', strip=True)} {href}"
-            if not _mentions_tulua(label):
+            if not _mentions_focus(label):
                 continue
             if href in seen:
                 continue
@@ -171,7 +189,7 @@ class NewsScraper(BaseScraper):
         """
         Scrape a news article or a list page.
 
-        On listing/home pages, follows links that mention Tuluá and extracts each article.
+        On listing/home pages, follows links related to COMES / FF.MM. / Plan Ayacucho.
         """
         if not url:
             return []
@@ -209,7 +227,7 @@ class NewsScraper(BaseScraper):
                 )
             ]
 
-        article_links = self._extract_tulua_article_links(html, url)
+        article_links = self._extract_focus_article_links(html, url)
         if article_links:
             results: List[Dict[str, Any]] = []
             for article_url in article_links:
@@ -220,6 +238,6 @@ class NewsScraper(BaseScraper):
                 return results
 
         parsed = self._parse_article_bs(html, url)
-        if parsed and _mentions_tulua(parsed[0].get("text", "")):
+        if parsed and _mentions_focus(parsed[0].get("text", "")):
             return parsed
         return []

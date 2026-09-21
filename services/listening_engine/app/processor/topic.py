@@ -21,16 +21,16 @@ _VALID_TOPICS = {
 
 _DEFAULT: TopicLabel = "other"
 
-_SYSTEM = """You are a municipal affairs classifier for Tuluá, Valle del Cauca, Colombia.
-Classify the citizen text into exactly ONE topic.
+_SYSTEM = """You are a topic classifier for social listening of Colombia's Armed Forces (COMES / CGFM) and Plan Ayacucho.
+Classify the text into exactly ONE topic.
 
 TOPIC DEFINITIONS:
-- security: crime, violence, theft, assault, police, public safety, gangs, homicides
-- taxes: property tax, municipal fees, fines, billing, tax collection, cobros, impuestos
-- public_services: water supply, sewage, garbage collection, public transport, hospitals, schools, electricity, acueducto, alcantarillado
-- infrastructure: roads, potholes, bridges, parks, sidewalks, street lighting, construction, obras, vías, andenes
-- corruption: bribes, embezzlement, nepotism, misuse of public funds, lack of transparency, irregularidades
-- public_administration: permits, bureaucracy, response times, officials conduct, government programs, PQRS, trámites
+- security: defense, public order, threats, operations, military security
+- taxes: defense budget / fiscal debate tied to the military sector
+- public_services: institutional services to civilians, recruitment support, military social programs
+- infrastructure: bases, logistics, equipment, institutional obras
+- corruption: corruption, scandals, transparency involving defense/military actors
+- public_administration: Comando General, institutional comms, Plan Ayacucho, doctrine, governance
 - other: anything not fitting the categories above
 
 Return ONLY a JSON object:

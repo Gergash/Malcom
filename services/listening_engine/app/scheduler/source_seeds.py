@@ -3,12 +3,17 @@
 Default: config/sources_tulua.yaml
 Override: env LISTENING_SOURCES_FILE (ruta relativa a services/listening_engine/
           o absoluta), p. ej. config/sources_cgfm.yaml
+
+Con LISTENING_SOURCES_FILE definido, el seed:
+  - inserta fuentes nuevas
+  - actualiza url/platform/is_active de las existentes (mismo name)
+  - desactiva fuentes que NO estén en el YAML (perfil exclusivo CGFM)
 """
 from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Set
 
 import structlog
 import yaml
@@ -31,6 +36,11 @@ def _config_path() -> Path:
     return p
 
 
+def _exclusive_profile() -> bool:
+    """Si hay archivo override (p. ej. CGFM), el YAML es la fuente de verdad."""
+    return bool((os.getenv("LISTENING_SOURCES_FILE") or "").strip())
+
+
 def _load_sources_config() -> List[Dict[str, Any]]:
     path = _config_path()
     if not path.is_file():
@@ -48,10 +58,12 @@ def _load_sources_config() -> List[Dict[str, Any]]:
 
 def seed_sources(session: Session) -> int:
     """
-    Insert sources from YAML when no row exists with the same name.
-    Returns count of newly inserted rows.
+    Upsert sources from YAML. Returns count of newly inserted rows.
     """
     inserted = 0
+    yaml_names: Set[str] = set()
+    exclusive = _exclusive_profile()
+
     for row in _load_sources_config():
         name = (row.get("name") or "").strip()
         platform = (row.get("platform") or "").strip().lower()
@@ -61,11 +73,31 @@ def seed_sources(session: Session) -> int:
             logger.warning("source_seed_skipped_invalid", row=row)
             continue
 
+        yaml_names.add(name)
+
         exists = session.execute(
-            text("SELECT 1 FROM sources WHERE name = :name LIMIT 1"),
+            text("SELECT id FROM sources WHERE name = :name LIMIT 1"),
             {"name": name},
         ).first()
         if exists:
+            session.execute(
+                text(
+                    "UPDATE sources SET platform = :platform, url = :url, "
+                    "is_active = :is_active WHERE name = :name"
+                ),
+                {
+                    "name": name,
+                    "platform": platform,
+                    "url": url,
+                    "is_active": is_active,
+                },
+            )
+            logger.info(
+                "source_seed_updated",
+                name=name,
+                platform=platform,
+                is_active=is_active,
+            )
             continue
 
         session.execute(
@@ -82,5 +114,20 @@ def seed_sources(session: Session) -> int:
         )
         inserted += 1
         logger.info("source_seeded", name=name, platform=platform, url=url[:80])
+
+    if exclusive and yaml_names:
+        # Desactivar residuales (p. ej. Tuluá) que no están en el perfil CGFM
+        rows = session.execute(text("SELECT id, name FROM sources")).fetchall()
+        deactivated = 0
+        for row in rows:
+            if row.name not in yaml_names:
+                session.execute(
+                    text("UPDATE sources SET is_active = false WHERE id = :id"),
+                    {"id": row.id},
+                )
+                deactivated += 1
+                logger.info("source_deactivated_not_in_profile", name=row.name)
+        if deactivated:
+            logger.info("sources_exclusive_cleanup", deactivated=deactivated)
 
     return inserted

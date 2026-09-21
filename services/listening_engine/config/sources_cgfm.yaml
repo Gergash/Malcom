@@ -1,21 +1,17 @@
-# Fuentes CGFM / Comando General FF.MM. — Plan Ayacucho (Anexo 6)
+# Fuentes CGFM / Comando General FF.MM. — Plan Ayacucho (Anexo 6 / COMES)
 #
-# Schema que entiende el seed HOY (source_seeds.py):
-#   name: str          — único (idempotencia por name)
-#   platform: str      — twitter | facebook | facebook_group | instagram | news | grok_topic
-#                        | tiktok | youtube  ← stubs hasta scrapers Anexo 6
-#   url: str           — URL de búsqueda/perfil, o query libre si platform=grok_topic
+# Schema (source_seeds.py):
+#   name: str          — único
+#   platform: str      — twitter | facebook | facebook_group | instagram
+#                        | tiktok | youtube | news | grok_topic
+#   url: str           — URL o query libre
 #   is_active: bool
 #
-# NO usar aún: id / type / keywords[] (eso requiere cambiar seed + scrapers).
-# Activar en runtime: LISTENING_SOURCES_FILE=config/sources_cgfm.yaml
-#
-# Requisito pliego — 5 redes:
-#   X, Facebook, Instagram → implementadas (GrokSearch + Playwright fallback)
-#   TikTok, YouTube        → entradas con is_active:false hasta scrapers nuevos
+# Activar: LISTENING_SOURCES_FILE=config/sources_cgfm.yaml
+# Con ese env, el seed desactiva fuentes fuera de este archivo (perfil exclusivo).
 
 sources:
-  # ── 1. X (Twitter) — cuentas oficiales + etiquetas ─────────────────────────
+  # ── 1. X (Twitter) — cuentas oficiales + campañas + keywords ───────────────
   - name: "X oficial FuerzasMilCol"
     platform: twitter
     url: "https://x.com/FuerzasMilCol"
@@ -28,12 +24,17 @@ sources:
 
   - name: "X busqueda Plan Ayacucho"
     platform: twitter
-    url: "https://x.com/search?q=%22Plan%20Ayacucho%22&f=live"
+    url: "https://x.com/search?q=%22Plan%20Ayacucho%22%20OR%20%23PlanAyacucho&f=live"
     is_active: true
 
   - name: "X busqueda Fuerzas Militares Colombia"
     platform: twitter
-    url: "https://x.com/search?q=%22Fuerzas%20Militares%20de%20Colombia%22%20OR%20%22Comando%20General%22&f=live"
+    url: "https://x.com/search?q=%22Fuerzas%20Militares%20de%20Colombia%22%20OR%20%22Comando%20General%22%20OR%20%23FuerzasMilitares&f=live"
+    is_active: true
+
+  - name: "X busqueda Sector Defensa"
+    platform: twitter
+    url: "https://x.com/search?q=%22Sector%20Defensa%22%20OR%20%22Ministerio%20de%20Defensa%22%20Colombia&f=live"
     is_active: true
 
   # ── 2. Facebook ────────────────────────────────────────────────────────────
@@ -47,6 +48,11 @@ sources:
     url: "https://www.facebook.com/search/posts/?q=Plan%20Ayacucho"
     is_active: true
 
+  - name: "FB Comando General FFMM"
+    platform: facebook
+    url: "https://www.facebook.com/search/posts/?q=Comando%20General%20Fuerzas%20Militares"
+    is_active: true
+
   # ── 3. Instagram ───────────────────────────────────────────────────────────
   - name: "IG menciones Fuerzas Militares"
     platform: instagram
@@ -55,35 +61,50 @@ sources:
 
   - name: "IG Plan Ayacucho"
     platform: instagram
-    url: "fuerzas militares colombia Plan Ayacucho"
+    url: "Plan Ayacucho Fuerzas Militares Colombia"
     is_active: true
 
-  # ── 4. TikTok (Anexo 6 — scraper PENDIENTE) ────────────────────────────────
+  - name: "IG hashtag PlanAyacucho"
+    platform: instagram
+    url: "https://www.instagram.com/explore/tags/planayacucho/"
+    is_active: true
+
+  # ── 4. TikTok (vía GrokSearchScraper) ──────────────────────────────────────
   - name: "TikTok Fuerzas Militares Colombia"
     platform: tiktok
     url: "Fuerzas Militares Colombia"
-    is_active: false   # activar cuando exista TikTokScraper
+    is_active: true
 
-  - name: "TikTok Ejercito Colombia"
+  - name: "TikTok Ejercito Nacional"
     platform: tiktok
-    url: "Ejercito Colombia"
-    is_active: false
+    url: "Ejército Nacional de Colombia"
+    is_active: true
 
-  # ── 5. YouTube (Anexo 6 — scraper PENDIENTE) ───────────────────────────────
+  - name: "TikTok Plan Ayacucho"
+    platform: tiktok
+    url: "Plan Ayacucho"
+    is_active: true
+
+  # ── 5. YouTube (vía GrokSearchScraper) ─────────────────────────────────────
   - name: "YouTube Fuerzas Militares Colombia"
     platform: youtube
-    url: "Fuerzas Militares Colombia"
-    is_active: false   # activar cuando exista YouTubeScraper
+    url: "https://www.youtube.com/results?search_query=Fuerzas+Militares+Colombia"
+    is_active: true
 
   - name: "YouTube Plan Ayacucho"
     platform: youtube
-    url: "Plan Ayacucho"
-    is_active: false
+    url: "https://www.youtube.com/results?search_query=Plan+Ayacucho"
+    is_active: true
 
-  # ── Grok topic — campañas / tendencias transversales ───────────────────────
+  - name: "YouTube Comando General FFMM"
+    platform: youtube
+    url: "Comando General Fuerzas Militares Colombia"
+    is_active: true
+
+  # ── Grok topic — campañas, actores, keywords transversales ─────────────────
   - name: "Grok Plan Ayacucho"
     platform: grok_topic
-    url: "Plan Ayacucho Fuerzas Militares Colombia"
+    url: "Plan Ayacucho Fuerzas Militares Colombia #PlanAyacucho"
     is_active: true
 
   - name: "Grok Comando General FFMM"
@@ -93,10 +114,20 @@ sources:
 
   - name: "Grok seguridad nacional menciones"
     platform: grok_topic
-    url: "seguridad nacional Colombia Fuerzas Militares tendencia"
+    url: "seguridad nacional Colombia Fuerzas Militares Sector Defensa"
     is_active: true
 
-  # ── Prensa nacional / regional (NewsScraper + Grok fallback) ───────────────
+  - name: "Grok lideres opinion defensa"
+    platform: grok_topic
+    url: "líderes de opinión periodistas gremios Fuerzas Militares Colombia Plan Ayacucho"
+    is_active: true
+
+  - name: "Grok hashtags defensa"
+    platform: grok_topic
+    url: "#FuerzasMilitares #PlanAyacucho #EjércitoColombia #COMES Comando General"
+    is_active: true
+
+  # ── Prensa nacional / regional / internacional ─────────────────────────────
   - name: "El Tiempo"
     platform: news
     url: "https://www.eltiempo.com/"
@@ -135,4 +166,9 @@ sources:
   - name: "Pulzo"
     platform: news
     url: "https://www.pulzo.com/"
+    is_active: true
+
+  - name: "BBC Mundo Colombia"
+    platform: news
+    url: "https://www.bbc.com/mundo/topics/c7zz68g8qm7t"
     is_active: true
