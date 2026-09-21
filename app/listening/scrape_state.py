@@ -50,10 +50,12 @@ def load_scrape_state() -> Optional[dict[str, Any]]:
     return data if isinstance(data, dict) else None
 
 
-def mark_ready(*, posts: int) -> None:
+def mark_ready(*, posts: int, new_posts: Optional[int] = None) -> None:
     state = load_scrape_state() or {}
     state["status"] = "ready" if posts > 0 else "empty"
     state["posts"] = posts
+    if new_posts is not None:
+        state["new_posts"] = int(new_posts)
     state["finished_ts"] = time.time()
     _state_path().write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -75,12 +77,13 @@ def resolve_collection_phase(
     just_queued: bool = False,
     celery_ready: bool = False,
     has_celery_status: bool = False,
+    new_posts: Optional[int] = None,
 ) -> str:
     """
-    collecting | ready | empty | idle
+    collecting | ready | ready_no_new | empty | idle
 
     Con estado Celery: no marcar ready hasta celery_ready (aunque ya haya posts).
-    Sin Celery: posts > posts_baseline o vencimiento STALE.
+    Si Celery termina con new_posts=0 → ready_no_new (no fingir datos frescos).
     """
     if just_queued:
         return "collecting"
@@ -93,12 +96,16 @@ def resolve_collection_phase(
 
         if has_celery_status:
             if celery_ready:
-                mark_ready(posts=posts)
-                return "ready" if posts > 0 else "empty"
+                mark_ready(posts=posts, new_posts=new_posts)
+                if new_posts is not None and int(new_posts) <= 0:
+                    return "ready_no_new" if posts > 0 else "empty"
+                if posts <= baseline:
+                    return "ready_no_new" if posts > 0 else "empty"
+                return "ready"
             if within_window:
                 return "collecting"
-            mark_ready(posts=posts)
-            return "ready" if posts > 0 else "empty"
+            mark_ready(posts=posts, new_posts=new_posts if new_posts is not None else 0)
+            return "ready_no_new" if posts > 0 else "empty"
 
         # Fallback sin Celery: posts nuevos o ventana
         if posts > baseline:
@@ -106,15 +113,20 @@ def resolve_collection_phase(
             return "ready"
         if within_window:
             return "collecting"
-        mark_ready(posts=posts)
+        mark_ready(posts=posts, new_posts=0)
+        return "ready_no_new" if posts > 0 else "empty"
+
+    # Ya marcado ready: si la última corrida no trajo posts, ser honestos
+    if state and state.get("status") == "ready":
+        last_new = state.get("new_posts")
+        if posts > 0 and last_new is not None and int(last_new) <= 0:
+            return "ready_no_new"
         return "ready" if posts > 0 else "empty"
 
     if posts > 0:
         return "ready"
     if not state:
         return "idle"
-    if state.get("status") == "ready":
-        return "ready"
     if state.get("status") == "empty":
         return "empty"
     return state.get("status") or "idle"

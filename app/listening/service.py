@@ -220,6 +220,7 @@ async def build_listening_overview(
         just_queued=bool(scraped and scrape_state),
         celery_ready=celery_ready,
         has_celery_status=has_celery_status,
+        new_posts=int(progress.get("new_posts") or 0) if has_celery_status else None,
     )
 
     # Progreso para UI
@@ -234,17 +235,19 @@ async def build_listening_overview(
         or 0
     )
     progress_detail = str(progress.get("detail") or "")
+    new_posts_n = int(progress.get("new_posts") or (scrape_state or {}).get("new_posts") or 0)
 
     scrape_meta = {
         "task_id": task_id,
         "sources_count": (scrape_info or scrape_state or {}).get("sources_count"),
         "eta_minutes": ETA_MINUTES,
         "pack_id": pack_id,
-        "progress_percent": pct if phase == "collecting" else (100 if phase == "ready" else pct),
+        "progress_percent": pct if phase == "collecting" else (100 if phase != "collecting" else pct),
         "progress_phase": progress_phase,
         "progress_done": progress_done,
         "progress_total": progress_total,
         "progress_detail": progress_detail,
+        "new_posts": new_posts_n,
     }
     if pack_id and pack_id in PACKS:
         scrape_meta["pack_label"] = PACKS[pack_id]["label"]

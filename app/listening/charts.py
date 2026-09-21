@@ -325,6 +325,19 @@ def narrative_summary(
     if collection_phase == "ready":
         lines.append("**Datos listos** — la recolección ya tiene resultados para visualizar.")
         lines.append("")
+    elif collection_phase == "ready_no_new":
+        lines.append(
+            "**Recolección terminada sin datos nuevos.** "
+            "Se consultaron las fuentes (incluidas las cuentas pedidas), pero no se "
+            "guardó ningún post nuevo (scraper vacío o URLs ya indexadas)."
+        )
+        lines.append("")
+        if total > 0:
+            lines.append(
+                f"_Abajo ves el resumen de **{total}** posts de corridas anteriores "
+                "(no de esta recolección)._"
+            )
+            lines.append("")
     elif collection_phase == "empty" and scraped:
         lines.append(
             "La recolección **terminó**, pero **no se guardaron posts** "
