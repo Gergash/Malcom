@@ -34,6 +34,7 @@ type ProcessResult struct {
 	Source string `json:"source,omitempty"`
 	// Listening / Termómetro Cultural
 	CollectionPhase           string `json:"collection_phase,omitempty"`
+	ProgressPercent           int    `json:"progress_percent,omitempty"`
 	ListeningNeedPack         bool   `json:"listening_need_pack,omitempty"`
 	ListeningNeedCredits      bool   `json:"listening_need_credits,omitempty"`
 	ListeningPack             string `json:"listening_pack,omitempty"`

@@ -8,6 +8,7 @@ All endpoints:
 
 Endpoints:
   POST /webhooks/trigger-scraping    — Dispatch Celery scrape job
+  GET  /webhooks/scrape-status/{id}  — Poll Celery scrape progress
   POST /webhooks/backfill-comments   — Persist comments_sample from post.metadata
   POST /webhooks/generate-report     — Generate report for a custom period
   GET  /webhooks/latest-alerts       — Latest high-urgency alerts (formatted)
@@ -36,6 +37,7 @@ from app.api.schemas import (
     LatestAlertsResponse,
     ReportRequest,
     ReportResponse,
+    ScrapeStatusResponse,
     TriggerScrapingRequest,
     TriggerScrapingResponse,
 )
@@ -193,6 +195,98 @@ async def trigger_scraping(
             queued_at=now,
             sources_count=0,
         )
+
+
+# ---------------------------------------------------------------------------
+# GET /webhooks/scrape-status/{task_id}
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/scrape-status/{task_id}",
+    response_model=ScrapeStatusResponse,
+    summary="Poll scraping task progress",
+    description=(
+        "Consulta el estado Celery de `scrape_sources` (y, si aplica, el "
+        "`process_text_data` encadenado). Pensado para la barra de progreso "
+        "del Termómetro en InsightFlow."
+    ),
+    tags=["webhooks"],
+)
+async def scrape_status(
+    task_id: str,
+    _auth: None = Depends(_verify_secret),
+    _rate: None = Depends(require_webhook_rate_limit("scrape-status")),
+) -> ScrapeStatusResponse:
+    from celery.result import AsyncResult
+
+    from app.scheduler.celery_app import celery_app
+
+    result = AsyncResult(task_id, app=celery_app)
+    state = str(result.state or "PENDING")
+    meta = result.info if isinstance(result.info, dict) else {}
+
+    percent = int(meta.get("percent") or 0)
+    phase = str(meta.get("phase") or "queued")
+    done = int(meta.get("done") or 0)
+    total = int(meta.get("total") or 0)
+    new_posts = int(meta.get("new_posts") or 0)
+    detail = str(meta.get("detail") or "")
+    process_task_id = meta.get("process_task_id")
+
+    if state == "PENDING":
+        phase, percent = "queued", max(percent, 2)
+    elif state == "STARTED" and phase == "queued":
+        phase, percent = "scraping", max(percent, 5)
+    elif state == "SUCCESS":
+        # Resultado final de scrape_sources (dict)
+        if isinstance(result.result, dict):
+            new_posts = int(result.result.get("new_posts") or new_posts)
+            process_task_id = result.result.get("process_task_id") or process_task_id
+            percent = int(result.result.get("percent") or percent or 85)
+        if process_task_id:
+            child = AsyncResult(str(process_task_id), app=celery_app)
+            child_state = str(child.state or "PENDING")
+            child_meta = child.info if isinstance(child.info, dict) else {}
+            if child_state in ("SUCCESS", "FAILURE"):
+                phase = "done" if child_state == "SUCCESS" else "error"
+                percent = 100 if child_state == "SUCCESS" else max(percent, 90)
+                detail = "clasificación lista" if child_state == "SUCCESS" else str(child.result)[:120]
+            else:
+                phase = "processing"
+                if isinstance(child_meta, dict) and child_meta.get("total"):
+                    c_done = int(child_meta.get("processed") or child_meta.get("done") or 0)
+                    c_total = int(child_meta.get("total") or 1)
+                    # Map processing 85→99
+                    percent = 85 + int(round(14.0 * c_done / c_total))
+                    detail = f"clasificando {c_done}/{c_total}"
+                else:
+                    percent = max(percent, 88)
+                    detail = detail or "clasificando menciones"
+        else:
+            phase, percent = "done", 100
+            detail = detail or "sin posts nuevos"
+    elif state == "FAILURE":
+        phase, percent = "error", max(percent, 0)
+        detail = str(result.result)[:160] if result.result else "error"
+    elif state == "PROGRESS":
+        phase = str(meta.get("phase") or "scraping")
+        percent = int(meta.get("percent") or percent)
+
+    percent = max(0, min(100, percent))
+    ready = phase == "done" or (state == "SUCCESS" and not process_task_id)
+
+    return ScrapeStatusResponse(
+        task_id=task_id,
+        state=state,
+        phase=phase,
+        percent=percent,
+        done=done,
+        total=total,
+        new_posts=new_posts,
+        detail=detail,
+        process_task_id=str(process_task_id) if process_task_id else None,
+        ready=ready,
+    )
 
 
 # ---------------------------------------------------------------------------

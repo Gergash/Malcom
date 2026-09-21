@@ -293,6 +293,8 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		ListeningCreditsRequired: result.ListeningCreditsRequired,
 		ListeningCreditsBalance:  result.ListeningCreditsBalance,
 		ListeningCheckoutURL:     listeningCheckout,
+		CollectionPhase:          result.CollectionPhase,
+		ProgressPercent:          result.ProgressPercent,
 	}
 	if len(echartsOpt) > 0 {
 		out.EChartsOption = echartsOpt

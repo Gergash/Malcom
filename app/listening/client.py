@@ -47,8 +47,9 @@ class ListeningClient:
 
     async def get_json(self, path: str, params: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         clean = {k: v for k, v in (params or {}).items() if v is not None and v != ""}
+        headers = _webhook_headers() if path.startswith("/webhooks/") else {}
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            res = await client.get(self._url(path), params=clean)
+            res = await client.get(self._url(path), params=clean, headers=headers)
             res.raise_for_status()
             data = res.json()
             if not isinstance(data, dict):
@@ -102,6 +103,9 @@ class ListeningClient:
             body,
             use_webhook_auth=True,
         )
+
+    async def scrape_status(self, task_id: str) -> dict[str, Any]:
+        return await self.get_json(f"/webhooks/scrape-status/{task_id}")
 
     def query_string(self, params: Optional[dict[str, Any]] = None) -> str:
         clean = {k: v for k, v in (params or {}).items() if v is not None and v != ""}

@@ -403,6 +403,88 @@
    * Fuente principal: `echarts_option` en el JSON de respuesta.
    * Fuente secundaria: `dashboard_url` → link "Abrir en pestaña" con token one-shot.
    */
+  var _listeningPollTimer = null;
+  var _listeningPollBusy = false;
+
+  function setCollectProgressUI(percent, phase) {
+    var wrap = el('powerups-edge-collect-progress');
+    var fill = el('powerups-edge-collect-progress-fill');
+    var pctEl = el('powerups-edge-collect-progress-pct');
+    var label = el('powerups-edge-collect-progress-label');
+    var bar = el('powerups-edge-collect-progress-bar');
+    if (!wrap || !fill) return;
+    var pct = Math.max(0, Math.min(100, parseInt(percent, 10) || 0));
+    var collecting = phase === 'collecting';
+    wrap.hidden = !collecting && pct <= 0;
+    if (!collecting && phase && phase !== 'collecting') {
+      wrap.hidden = true;
+      return;
+    }
+    if (collecting) wrap.hidden = false;
+    fill.style.width = pct + '%';
+    if (pctEl) pctEl.textContent = pct + '%';
+    if (bar) bar.setAttribute('aria-valuenow', String(pct));
+    if (label) {
+      var phaseEs = {
+        collecting: 'Recolección Termómetro',
+        queued: 'En cola…',
+        scraping: 'Recolectando fuentes…',
+        processing: 'Clasificando menciones…',
+      };
+      label.textContent = phaseEs[phase] || 'Recolección Termómetro';
+    }
+  }
+
+  function stopListeningProgressPoll() {
+    if (_listeningPollTimer) {
+      clearInterval(_listeningPollTimer);
+      _listeningPollTimer = null;
+    }
+    _listeningPollBusy = false;
+  }
+
+  async function pollListeningOverviewOnce() {
+    if (_listeningPollBusy) return;
+    _listeningPollBusy = true;
+    try {
+      var chatId = getOrCreateChatId();
+      var url = String(CONFIG.API_BASE).replace(/\/$/, '') +
+        '/api/v1/listening/overview?chat_id=' + encodeURIComponent(chatId);
+      var res = await fetch(url, {
+        method: 'GET',
+        headers: { 'ngrok-skip-browser-warning': 'true' },
+        credentials: 'omit',
+      });
+      if (!res.ok) return;
+      var data = await res.json();
+      var phase = data.collection_phase || '';
+      var pct = data.progress_percent;
+      if (typeof pct === 'undefined' && data.dashboard && data.dashboard.progress_percent != null) {
+        pct = data.dashboard.progress_percent;
+      }
+      setCollectProgressUI(pct, phase === 'collecting' ? 'collecting' : phase);
+      var opt = data.echarts_option || data.echartsOption;
+      if (opt && typeof opt === 'object' && Object.keys(opt).length > 0) {
+        renderLiveChart(opt, true);
+      }
+      if (phase && phase !== 'collecting') {
+        stopListeningProgressPoll();
+        setCollectProgressUI(100, phase);
+        setTimeout(function () { setCollectProgressUI(0, ''); }, 2500);
+      }
+    } catch (e) {
+      /* silencioso: el usuario puede pedir el termómetro a mano */
+    } finally {
+      _listeningPollBusy = false;
+    }
+  }
+
+  function startListeningProgressPoll() {
+    stopListeningProgressPoll();
+    pollListeningOverviewOnce();
+    _listeningPollTimer = setInterval(pollListeningOverviewOnce, 12000);
+  }
+
   function applyDashboardFromChatResponse(out) {
     if (!out) return;
 
@@ -410,6 +492,17 @@
     var opt = out.echarts_option || out.echartsOption || null;
     if (opt && typeof opt === 'object' && Object.keys(opt).length > 0) {
       renderLiveChart(opt); // guarda en historial y dibuja
+    }
+
+    // 1b. Barra de progreso Termómetro + auto-poll mientras recolecta
+    var phase = out.collection_phase || '';
+    var pct = out.progress_percent;
+    if (phase === 'collecting') {
+      setCollectProgressUI(pct != null ? pct : 5, 'collecting');
+      startListeningProgressPoll();
+    } else {
+      stopListeningProgressPoll();
+      setCollectProgressUI(0, '');
     }
 
     // 2. Actualizar link "Abrir en pestaña" con la URL tokenizada del API

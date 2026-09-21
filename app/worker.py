@@ -108,6 +108,8 @@ async def internal_listening_overview(body: ListeningOverviewRequest | None = No
         "dashboard": result.get("dashboard"),
         "raw": result.get("raw"),
         "scraped": bool(result.get("scraped")),
+        "collection_phase": result.get("collection_phase"),
+        "progress_percent": result.get("progress_percent"),
         "source": "listening_engine",
     }
 
@@ -143,6 +145,7 @@ async def internal_process_message(body: ProcessMessageRequest):
             payload["source"] = result["source"]
         for k in (
             "collection_phase",
+            "progress_percent",
             "listening_need_pack",
             "listening_need_credits",
             "listening_pack",

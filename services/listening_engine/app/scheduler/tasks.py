@@ -225,8 +225,26 @@ def scrape_sources(self) -> Dict[str, Any]:
 
     new_post_ids: List[int] = []
     source_results: List[Dict[str, Any]] = []
+    total_sources = len(sources)
 
-    for source in sources:
+    def _publish_progress(done: int, *, phase: str, detail: str = "") -> None:
+        # Scraping ocupa 0–80%; el 20% restante lo usa process_text_data.
+        pct = int(round(80.0 * done / total_sources)) if total_sources else 0
+        self.update_state(
+            state="PROGRESS",
+            meta={
+                "phase": phase,
+                "done": done,
+                "total": total_sources,
+                "percent": pct,
+                "new_posts": len(new_post_ids),
+                "detail": detail,
+            },
+        )
+
+    _publish_progress(0, phase="scraping", detail="iniciando")
+
+    for idx, source in enumerate(sources):
         src_log = log.bind(source_id=source["id"], source_name=source["name"], platform=source["platform"])
         try:
             items = _run_async(_scrape_one(source))
@@ -259,6 +277,12 @@ def scrape_sources(self) -> Dict[str, Any]:
             src_log.exception("source_scrape_failed", error=str(exc))
             source_results.append({"source": source["name"], "error": str(exc)})
 
+        _publish_progress(
+            idx + 1,
+            phase="scraping",
+            detail=source.get("name") or "",
+        )
+
     elapsed = round(time.monotonic() - t0, 2)
     log.info(
         "scrape_complete",
@@ -268,14 +292,33 @@ def scrape_sources(self) -> Dict[str, Any]:
     )
 
     # Chain to processing
+    process_task_id = None
     if new_post_ids:
-        process_text_data.apply_async(
+        self.update_state(
+            state="PROGRESS",
+            meta={
+                "phase": "processing",
+                "done": total_sources,
+                "total": total_sources,
+                "percent": 85,
+                "new_posts": len(new_post_ids),
+                "detail": "clasificando menciones",
+            },
+        )
+        async_result = process_text_data.apply_async(
             args=[new_post_ids],
             queue="processing",
             countdown=5,  # brief pause to let DB settle
         )
+        process_task_id = async_result.id
 
-    return {"run_id": run_id, "sources": len(sources), "new_posts": len(new_post_ids)}
+    return {
+        "run_id": run_id,
+        "sources": len(sources),
+        "new_posts": len(new_post_ids),
+        "process_task_id": process_task_id,
+        "percent": 100 if not new_post_ids else 85,
+    }
 
 
 # ---------------------------------------------------------------------------

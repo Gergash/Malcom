@@ -110,6 +110,15 @@
           <span class="powerups-edge__dashboard-sub">InsightFlow · ECharts</span>
         </div>
         <p class="powerups-edge__dashboard-hint">Sigue escribiendo abajo: cada análisis puede renovar la gráfica (tipo de vista, filtros, comparaciones).</p>
+        <div class="powerups-edge__collect-progress" id="powerups-edge-collect-progress" hidden>
+          <div class="powerups-edge__collect-progress-labels">
+            <span id="powerups-edge-collect-progress-label">Recolección Termómetro</span>
+            <span id="powerups-edge-collect-progress-pct">0%</span>
+          </div>
+          <div class="powerups-edge__collect-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="powerups-edge-collect-progress-bar">
+            <div class="powerups-edge__collect-progress-fill" id="powerups-edge-collect-progress-fill"></div>
+          </div>
+        </div>
         <div class="powerups-edge__dashboard-actions">
           <button type="button" class="powerups-edge__dashboard-btn" id="powerups-edge-dashboard-toggle" aria-expanded="true" aria-controls="powerups-edge-dashboard-frame-wrap">Ocultar gráfico</button>
           <a class="powerups-edge__dashboard-link" id="powerups-edge-dashboard-open" href="#" target="_blank" rel="noopener noreferrer" hidden>Abrir en pestaña</a>

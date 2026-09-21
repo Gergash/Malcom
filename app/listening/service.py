@@ -10,6 +10,7 @@ from typing import Any, Optional
 
 from app.listening.charts import (
     build_listening_dashboard,
+    collection_progress_option,
     narrative_summary,
     primary_echarts_option,
 )
@@ -28,6 +29,7 @@ from app.listening.scrape_state import (
     load_scrape_state,
     resolve_collection_phase,
     save_scrape_queued,
+    time_based_percent,
 )
 
 logger = logging.getLogger(__name__)
@@ -141,6 +143,15 @@ async def build_listening_overview(
     scrape_info: Optional[dict[str, Any]] = None
     scraped = False
     scrape_state: Optional[dict[str, Any]] = None
+    sentiment: Optional[dict[str, Any]] = None
+    posts_before = 0
+    try:
+        sentiment = await cli.sentiment_summary(**filters)
+        posts_before = _posts_total(sentiment)
+    except Exception:
+        sentiment = None
+        posts_before = 0
+
     if trigger_scrape:
         note = scrape_note or "insightflow-chat"
         if pack_id and pack_id in PACKS:
@@ -150,13 +161,17 @@ async def build_listening_overview(
             scrape_info = await cli.trigger_scraping(note=note)
             scraped = True
             if not scrape_info.get("error"):
-                scrape_state = save_scrape_queued(scrape_info)
+                scrape_state = save_scrape_queued(
+                    scrape_info,
+                    posts_baseline=posts_before,
+                )
         except Exception as exc:
             logger.warning("listening scrape failed: %s", exc)
             scrape_info = {"error": str(exc)}
 
     try:
-        sentiment = await cli.sentiment_summary(**filters)
+        if sentiment is None:
+            sentiment = await cli.sentiment_summary(**filters)
         topics = await cli.topics_trending(limit=10, **filters)
         timeline = await cli.timeline(**filters)
     except Exception as exc:
@@ -184,22 +199,97 @@ async def build_listening_overview(
         logger.warning("listening alerts skipped: %s", exc)
 
     posts = _posts_total(sentiment)
-    phase = resolve_collection_phase(posts=posts, just_queued=bool(scraped and scrape_state))
     if not scrape_state:
         scrape_state = load_scrape_state()
 
+    progress: dict[str, Any] = {}
+    celery_ready = False
+    has_celery_status = False
+    task_id = (scrape_info or scrape_state or {}).get("task_id")
+    if task_id:
+        try:
+            progress = await cli.scrape_status(str(task_id))
+            has_celery_status = True
+            celery_ready = bool(progress.get("ready"))
+        except Exception as exc:
+            logger.warning("listening scrape status skipped: %s", exc)
+            progress = {}
+
+    phase = resolve_collection_phase(
+        posts=posts,
+        just_queued=bool(scraped and scrape_state),
+        celery_ready=celery_ready,
+        has_celery_status=has_celery_status,
+    )
+
+    # Progreso para UI
+    pct = int(progress.get("percent") or 0) if progress else 0
+    if phase == "collecting" and pct <= 0:
+        pct = time_based_percent(scrape_state)
+    progress_phase = str(progress.get("phase") or ("scraping" if phase == "collecting" else phase))
+    progress_done = int(progress.get("done") or 0)
+    progress_total = int(
+        progress.get("total")
+        or (scrape_info or scrape_state or {}).get("sources_count")
+        or 0
+    )
+    progress_detail = str(progress.get("detail") or "")
+
     scrape_meta = {
-        "task_id": (scrape_info or scrape_state or {}).get("task_id"),
+        "task_id": task_id,
         "sources_count": (scrape_info or scrape_state or {}).get("sources_count"),
         "eta_minutes": ETA_MINUTES,
         "pack_id": pack_id,
+        "progress_percent": pct if phase == "collecting" else (100 if phase == "ready" else pct),
+        "progress_phase": progress_phase,
+        "progress_done": progress_done,
+        "progress_total": progress_total,
+        "progress_detail": progress_detail,
     }
     if pack_id and pack_id in PACKS:
         scrape_meta["pack_label"] = PACKS[pack_id]["label"]
 
     echarts = None
     dashboard = None
-    if phase != "collecting" and posts > 0:
+    if phase == "collecting":
+        echarts = collection_progress_option(
+            percent=pct,
+            phase=progress_phase,
+            detail=progress_detail,
+            sources_done=progress_done,
+            sources_total=progress_total,
+        )
+        dashboard = {
+            "title": "Termómetro Cultural",
+            "subtitle": "Recolección en curso",
+            "live": True,
+            "metrics": [
+                {"label": "Progreso", "value": f"{pct}%", "tone": "neutral"},
+                {
+                    "label": "Fuentes",
+                    "value": f"{progress_done}/{progress_total}" if progress_total else "—",
+                    "tone": "neutral",
+                },
+                {
+                    "label": "Fase",
+                    "value": progress_phase,
+                    "tone": "neutral",
+                },
+            ],
+            "widgets": [
+                {
+                    "id": "collection_progress",
+                    "kind": "echarts",
+                    "title": "Progreso de recolección",
+                    "span": 2,
+                    "option": echarts,
+                }
+            ],
+            "source": "listening_engine",
+            "collection_phase": "collecting",
+            "progress_percent": pct,
+        }
+    elif posts > 0:
         echarts = primary_echarts_option(sentiment, topics, timeline)
         dashboard = build_listening_dashboard(
             sentiment=sentiment,
@@ -235,10 +325,12 @@ async def build_listening_overview(
             "topics": topics,
             "timeline": timeline,
             "alerts": alerts,
+            "progress": progress,
         },
         "scraped": scraped,
         "scrape": scrape_info,
         "collection_phase": phase,
+        "progress_percent": scrape_meta.get("progress_percent"),
         "source": "listening_engine",
     }
 

@@ -34,6 +34,16 @@ def test_is_scrape_intent_monitoreo_y_handles():
     assert not is_scrape_intent("mira @FuerzasMilCol")
 
 
+def test_collection_progress_option():
+    from app.listening.charts import collection_progress_option
+
+    opt = collection_progress_option(
+        percent=42, phase="scraping", sources_done=10, sources_total=31
+    )
+    assert opt["series"][0]["type"] == "gauge"
+    assert opt["series"][0]["data"][0]["value"] == 42
+
+
 def test_parse_pack_exhaustivo_es_profunda():
     assert parse_pack_choice("monitoreo exhaustivo") == "profunda"
     assert parse_pack_choice("cobertura completa") == "profunda"

@@ -177,6 +177,7 @@ class Orchestrator:
                 out["source"] = "listening_engine"
                 for k in (
                     "collection_phase",
+                    "progress_percent",
                     "listening_need_pack",
                     "listening_need_credits",
                     "listening_pack",

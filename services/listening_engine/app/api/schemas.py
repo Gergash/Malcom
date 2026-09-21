@@ -206,6 +206,20 @@ class TriggerScrapingResponse(BaseModel):
     sources_count: int = Field(0, description="Number of active sources that will be scraped.")
 
 
+class ScrapeStatusResponse(BaseModel):
+    """Estado de una tarea Celery de scraping (para barra de progreso)."""
+    task_id: str
+    state: str = Field(..., description="PENDING | STARTED | PROGRESS | SUCCESS | FAILURE | …")
+    phase: str = Field("unknown", description="queued | scraping | processing | done | error")
+    percent: int = Field(0, ge=0, le=100)
+    done: int = 0
+    total: int = 0
+    new_posts: int = 0
+    detail: str = ""
+    process_task_id: Optional[str] = None
+    ready: bool = False
+
+
 class ReportRequest(BaseModel):
     """Body for POST /webhooks/generate-report."""
     from_date: Optional[datetime] = Field(None, description="Start of report period (ISO 8601).")

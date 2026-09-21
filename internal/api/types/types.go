@@ -79,6 +79,8 @@ type ChatResponse struct {
 	ListeningCreditsRequired int     `json:"listening_credits_required,omitempty"`
 	ListeningCreditsBalance  int     `json:"listening_credits_balance,omitempty"`
 	ListeningCheckoutURL     *string `json:"listening_checkout_url,omitempty"`
+	CollectionPhase          string  `json:"collection_phase,omitempty"`
+	ProgressPercent          int     `json:"progress_percent,omitempty"`
 }
 
 // ── Upload ────────────────────────────────────────────────────────────────────

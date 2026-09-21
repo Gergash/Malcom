@@ -163,6 +163,69 @@ def build_listening_dashboard(
     }
 
 
+def collection_progress_option(
+    *,
+    percent: int,
+    phase: str = "scraping",
+    detail: str = "",
+    sources_done: int = 0,
+    sources_total: int = 0,
+) -> Dict[str, Any]:
+    """Barra/gauge de progreso para recolección en curso (widget ECharts)."""
+    pct = max(0, min(100, int(percent or 0)))
+    phase_labels = {
+        "queued": "En cola",
+        "scraping": "Recolectando fuentes",
+        "processing": "Clasificando menciones",
+        "done": "Listo",
+        "error": "Error",
+    }
+    title = phase_labels.get(phase, "Recolección en curso")
+    if sources_total > 0 and phase == "scraping":
+        subtitle = f"{sources_done}/{sources_total} fuentes"
+    elif detail:
+        subtitle = detail[:80]
+    else:
+        subtitle = f"{pct}%"
+
+    return {
+        "title": {"text": title, "subtext": subtitle, "left": "center", "top": 8},
+        "series": [
+            {
+                "type": "gauge",
+                "startAngle": 200,
+                "endAngle": -20,
+                "min": 0,
+                "max": 100,
+                "splitNumber": 5,
+                "radius": "80%",
+                "center": ["50%", "60%"],
+                "axisLine": {
+                    "lineStyle": {
+                        "width": 14,
+                        "color": [
+                            [pct / 100, "#3d6bb3"],
+                            [1, "rgba(42,51,68,0.45)"],
+                        ],
+                    }
+                },
+                "pointer": {"show": False},
+                "axisTick": {"show": False},
+                "splitLine": {"show": False},
+                "axisLabel": {"show": False},
+                "detail": {
+                    "valueAnimation": True,
+                    "formatter": "{value}%",
+                    "fontSize": 28,
+                    "color": "#e8eef8",
+                    "offsetCenter": [0, "10%"],
+                },
+                "data": [{"value": pct, "name": "Progreso"}],
+            }
+        ],
+    }
+
+
 def primary_echarts_option(
     sentiment: dict[str, Any],
     topics: dict[str, Any],
@@ -211,18 +274,40 @@ def narrative_summary(
         task = meta.get("task_id") or "—"
         n_src = meta.get("sources_count")
         src_txt = f" sobre **{n_src} fuentes**" if n_src else ""
+        pct = meta.get("progress_percent")
+        phase = meta.get("progress_phase") or "scraping"
+        src_done = meta.get("progress_done")
+        src_total = meta.get("progress_total")
+        detail = meta.get("progress_detail") or ""
         lines = [
             "**Termómetro Cultural — recolección en proceso**",
             "",
             f"Estoy recolectando y clasificando menciones{src_txt}.",
             f"Esto suele tardar unos **{meta.get('eta_minutes', 15)} minutos**.",
             "",
-            f"- Estado: **en curso**",
-            f"- Task ID: `{task}`",
-            "",
-            "Cuando termine, escribe de nuevo: *“muéstrame el termómetro cultural”* "
-            "para ver el resumen y la gráfica.",
         ]
+        if pct is not None:
+            lines.append(f"- Progreso: **{int(pct)}%**")
+            if src_total:
+                lines.append(f"- Fuentes: **{src_done or 0}/{src_total}**")
+            if detail:
+                lines.append(f"- Detalle: _{detail}_")
+            phase_es = {
+                "queued": "en cola",
+                "scraping": "recolectando",
+                "processing": "clasificando",
+            }.get(str(phase), str(phase))
+            lines.append(f"- Fase: **{phase_es}**")
+        else:
+            lines.append("- Estado: **en curso**")
+        lines.extend(
+            [
+                f"- Task ID: `{task}`",
+                "",
+                "La barra de progreso se actualiza sola en el tablero. "
+                "También puedes escribir: *“muéstrame el termómetro cultural”*.",
+            ]
+        )
         if total > 0:
             lines.extend(
                 [
